@@ -52,7 +52,7 @@ services:
             context: ./resources/js
             dockerfile: Dockerfile
         ports:
-            - '${VITE_PORT:-5173}:5173'
+            - '${VITE_PORT:-4173}:4173'
         volumes:
             - './resources/js:/app'
             - '/app/node_modules'

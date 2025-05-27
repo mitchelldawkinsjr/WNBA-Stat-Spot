@@ -2,12 +2,18 @@ FROM node:20-alpine
 
 WORKDIR /app
 
+# Install dependencies first (better caching)
 COPY package*.json ./
-
 RUN npm install
+RUN npm install @sveltejs/adapter-node --save-dev
 
+# Copy the rest of the application
 COPY . .
 
-EXPOSE 5173
+# Build the application
+RUN npm run build
 
-CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
+EXPOSE 4173
+
+# Use the production build
+CMD ["npm", "run", "preview", "--", "--host"]

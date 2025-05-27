@@ -24,11 +24,12 @@ app/Services/WNBA/
 ├── Predictions/
 │   ├── PropsPredictionService.php    # Main prediction orchestrator
 │   ├── StatisticalEngineService.php  # Core statistical calculations
+│   ├── MonteCarloSimulator.php       # Monte Carlo simulation engine
+│   ├── DistributionAnalyzer.php      # Statistical distribution analysis
 │   └── ModelValidationService.php    # Model validation and backtesting
 ├── Math/
 │   ├── BayesianCalculator.php        # Bayesian inference calculations
 │   ├── PoissonCalculator.php         # Poisson distribution analysis
-│   ├── MonteCarloSimulator.php       # Monte Carlo simulations
 │   └── RegressionAnalyzer.php        # Regression analysis tools
 └── Data/
     ├── DataAggregatorService.php     # Data collection and processing
@@ -119,11 +120,11 @@ use App\Services\WNBA\Predictions\PropsPredictionService;
 $predictionService = app(PropsPredictionService::class);
 
 // Predict points for a player
-$prediction = $predictionService->predictPoints(
+$prediction = $predictionService->predict(
     playerId: 12345,
     gameId: 67890,
-    season: 2024,
-    simulationRuns: 10000
+    statType: 'points',
+    lineValue: 15.5
 );
 
 // Result structure:
@@ -248,6 +249,28 @@ $defensiveMetrics = $teamAnalytics->getDefensiveMetrics(1, 2024);
 ### Game Analytics
 
 **GET** `/api/wnba/analytics/game/{gameId}`
+
+## 🔄 Recent Optimizations
+
+### Code Structure
+- Centralized prediction logic in dedicated services
+- Improved type safety with TypeScript interfaces
+- Enhanced code organization and documentation
+
+### Performance
+- Implemented intelligent caching for predictions
+- Optimized Monte Carlo simulations
+- Added database indexes for common queries
+
+### Testing
+- Comprehensive unit tests for prediction services
+- Integration tests for API endpoints
+- Frontend component tests with Vitest
+
+### Frontend
+- Modern UI with Tailwind CSS
+- Responsive chart components
+- Improved state management with Svelte stores
 
 ## 🧮 Mathematical Models
 

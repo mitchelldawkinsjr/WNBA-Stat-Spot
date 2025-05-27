@@ -14,6 +14,7 @@ use App\Http\Controllers\WnbaPredictionsController;
 use App\Http\Controllers\Api\BettingAnalyticsController;
 use App\Http\Controllers\Api\DataQualityController;
 use App\Http\Controllers\Api\PredictionTestingController;
+use App\Http\Controllers\Api\PredictionsController;
 
 Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
     return $request->user();
@@ -142,75 +143,55 @@ Route::get('/stats', [StatsController::class, 'index']);
 
 // WNBA Analytics and Predictions API Routes
 Route::prefix('wnba')->group(function () {
-    // Test endpoint
-    Route::get('/test/player/{playerId}', [WnbaPredictionsController::class, 'testAnalytics']);
-
-    // Player predictions and analytics
-    Route::get('/analytics/player/{playerId}', [WnbaPredictionsController::class, 'getPlayerAnalytics']);
-    Route::post('/predictions/props', [WnbaPredictionsController::class, 'getPlayerPropPredictions']);
-    Route::post('/predictions/betting', [WnbaPredictionsController::class, 'getBettingRecommendations']);
-    Route::get('/predictions/prop-bets', [WnbaPredictionsController::class, 'getPropBets']);
-    Route::post('/predictions/generate', [WnbaPredictionsController::class, 'generatePrediction']);
-
-    // Team analytics
-    Route::get('/analytics/team/{teamId}', [WnbaPredictionsController::class, 'getTeamAnalytics']);
-
-    // Game analytics
-    Route::get('/analytics/game/{gameId}', [WnbaPredictionsController::class, 'getGameAnalytics']);
-
-    // Model validation and performance
-    Route::get('/validation', [WnbaPredictionsController::class, 'getModelValidation']);
-
-    // Cache management
-    Route::get('/cache/stats', [WnbaPredictionsController::class, 'getCacheStats']);
-    Route::post('/cache/clear', [WnbaPredictionsController::class, 'clearCache']);
-    Route::post('/cache/warm', [WnbaPredictionsController::class, 'warmCache']);
-
-    // Prop Scanner endpoints
-    Route::prefix('prop-scanner')->group(function () {
-        Route::get('/scan-all', [PropScannerController::class, 'scanAllPlayers']);
-        Route::get('/scan-player/{playerId}', [PropScannerController::class, 'scanPlayer']);
+    // Predictions and Analytics
+    Route::prefix('predictions')->group(function () {
+        Route::get('/player/{playerId}', [PredictionsController::class, 'getPlayerAnalytics']);
+        Route::post('/props', [PredictionsController::class, 'getPlayerPropPredictions']);
+        Route::post('/betting', [PredictionsController::class, 'getBettingRecommendations']);
+        Route::get('/team/{teamId}', [PredictionsController::class, 'getTeamAnalytics']);
+        Route::get('/game/{gameId}', [PredictionsController::class, 'getGameAnalytics']);
+        Route::post('/monte-carlo', [PredictionsController::class, 'runMonteCarloSimulation']);
     });
 
-    // Data Aggregator endpoints
-    Route::prefix('data')->group(function () {
-        // Player data aggregation
-        Route::get('/players/{playerId}', [DataAggregatorController::class, 'getPlayerData']);
-        Route::get('/players/{playerId}/props', [DataAggregatorController::class, 'getPropData']);
-
-        // Team data aggregation
-        Route::get('/teams/{teamId}', [DataAggregatorController::class, 'getTeamData']);
-
-        // Game data aggregation
-        Route::get('/games/{gameId}', [DataAggregatorController::class, 'getGameData']);
-
-        // Matchup data aggregation
-        Route::get('/matchups/{team1Id}/{team2Id}', [DataAggregatorController::class, 'getMatchupData']);
-
-        // League data aggregation
-        Route::get('/league/{season}', [DataAggregatorController::class, 'getLeagueData']);
+    // Cache Management
+    Route::prefix('cache')->group(function () {
+        Route::get('/stats', [PredictionsController::class, 'getCacheStats']);
+        Route::post('/clear', [PredictionsController::class, 'clearCache']);
+        Route::post('/warm', [PredictionsController::class, 'warmCache']);
     });
 
     // Prop Scanner
-    Route::get('/prop-scanner/scan', [PropScannerController::class, 'scanAllPlayers']);
-    Route::get('/prop-scanner/player/{playerId}', [PropScannerController::class, 'scanPlayer']);
+    Route::prefix('prop-scanner')->group(function () {
+        Route::post('/scan', [PropScannerController::class, 'scan']);
+        Route::get('/results/{gameId}', [PropScannerController::class, 'getResults']);
+        Route::get('/status/{gameId}', [PropScannerController::class, 'getStatus']);
+    });
+
+    // Data Aggregation
+    Route::prefix('data')->group(function () {
+        Route::get('/players/{playerId}', [DataAggregatorController::class, 'getPlayerData']);
+        Route::get('/players/{playerId}/props', [DataAggregatorController::class, 'getPropData']);
+        Route::get('/teams/{teamId}', [DataAggregatorController::class, 'getTeamData']);
+        Route::get('/games/{gameId}', [DataAggregatorController::class, 'getGameData']);
+        Route::get('/matchups/{team1Id}/{team2Id}', [DataAggregatorController::class, 'getMatchupData']);
+        Route::get('/league/{season}', [DataAggregatorController::class, 'getLeagueData']);
+    });
 
     // Betting Analytics
-    Route::get('/betting/analytics', [BettingAnalyticsController::class, 'getAnalytics']);
+    Route::prefix('betting')->group(function () {
+        Route::get('/analytics', [BettingAnalyticsController::class, 'getAnalytics']);
+    });
 
     // Data Quality
-    Route::get('/data-quality/metrics', [DataQualityController::class, 'getMetrics']);
+    Route::prefix('quality')->group(function () {
+        Route::get('/metrics', [DataQualityController::class, 'getMetrics']);
+    });
 
-    // Monte Carlo Simulations
-    Route::post('/monte-carlo/run', [WnbaPredictionsController::class, 'runMonteCarloSimulation']);
-
-    // Prediction Testing & Validation
+    // Testing & Validation
     Route::prefix('testing')->group(function () {
         Route::post('/player-accuracy', [PredictionTestingController::class, 'testPlayerAccuracy']);
         Route::post('/bulk-testing', [PredictionTestingController::class, 'runBulkTesting']);
         Route::get('/historical', [PredictionTestingController::class, 'getHistoricalTests']);
-
-        // Historical Testing Routes
         Route::post('/historical/start', [PredictionTestingController::class, 'startHistoricalTesting']);
         Route::get('/historical/results', [PredictionTestingController::class, 'getHistoricalResults']);
         Route::get('/historical/status', [PredictionTestingController::class, 'getTestingStatus']);

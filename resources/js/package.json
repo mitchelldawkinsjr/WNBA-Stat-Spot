@@ -37,6 +37,7 @@
     "@sveltestrap/sveltestrap": "^6.2.7",
     "apexcharts": "^3.54.1",
     "bootstrap": "^5.3.3",
+    "chart.js": "^4.4.9",
     "choices.js": "^10.2.0",
     "dayjs": "^1.11.11",
     "dropzone": "^6.0.0-beta.2",

@@ -11,6 +11,8 @@ use App\Services\WNBA\Analytics\PlayerAnalyticsService;
 use App\Services\WNBA\Math\BayesianCalculator;
 use App\Services\WNBA\Math\MonteCarloSimulator;
 use App\Services\WNBA\Math\PoissonCalculator;
+use App\Services\WNBA\Data\DataAggregatorService;
+use App\Services\WNBA\Analytics\StatisticalEngineService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -18,24 +20,21 @@ use Carbon\Carbon;
 
 class PropsPredictionService
 {
+    private PredictionEngine $predictionEngine;
     private PlayerAnalyticsService $playerAnalytics;
-    private StatisticalEngineService $statisticalEngine;
-    private BayesianCalculator $bayesianCalculator;
-    private MonteCarloSimulator $monteCarloSimulator;
-    private PoissonCalculator $poissonCalculator;
+    private DataAggregatorService $dataAggregator;
+    private \App\Services\WNBA\Predictions\StatisticalEngineService $statisticalEngine;
 
     public function __construct(
+        PredictionEngine $predictionEngine,
         PlayerAnalyticsService $playerAnalytics,
-        StatisticalEngineService $statisticalEngine,
-        BayesianCalculator $bayesianCalculator,
-        MonteCarloSimulator $monteCarloSimulator,
-        PoissonCalculator $poissonCalculator
+        DataAggregatorService $dataAggregator,
+        \App\Services\WNBA\Predictions\StatisticalEngineService $statisticalEngine
     ) {
+        $this->predictionEngine = $predictionEngine;
         $this->playerAnalytics = $playerAnalytics;
+        $this->dataAggregator = $dataAggregator;
         $this->statisticalEngine = $statisticalEngine;
-        $this->bayesianCalculator = $bayesianCalculator;
-        $this->monteCarloSimulator = $monteCarloSimulator;
-        $this->poissonCalculator = $poissonCalculator;
     }
 
     /**
@@ -163,265 +162,123 @@ class PropsPredictionService
     }
 
     /**
-     * Predict specific stat categories
+     * Predict points for a player in a game
      */
-    public function predictPoints(int $playerId, int $gameId): array
+    public function predictPoints(int $playerId, int $gameId, float $lineValue = null): array
     {
-        $gameContext = $this->getGameContext($gameId, $playerId);
-        $playerProfile = $this->getPlayerProfile($playerId, 'points');
-
-        // Get recent scoring data
-        $recentGames = WnbaPlayerGame::where('player_id', $playerId)
-            ->whereHas('game', function($query) {
-                $query->orderBy('game_date', 'desc');
-            })
-            ->limit(15)
-            ->get();
-
-        if ($recentGames->isEmpty()) {
-            return $this->getEmptyPrediction('points');
-        }
-
-        // Calculate base expectation
-        $seasonAvg = $recentGames->avg('points');
-        $recentForm = $recentGames->take(5)->avg('points');
-
-        // Apply contextual adjustments
-        $adjustedExpectation = $this->applyContextualAdjustments($seasonAvg, $gameContext, [
-            'recent_form_weight' => 0.3,
-            'opponent_defense_weight' => 0.25,
-            'pace_weight' => 0.2,
-            'rest_weight' => 0.15,
-            'home_court_weight' => 0.1
-        ]);
-
-        // Use Poisson distribution for points prediction
-        $lambda = max(0.1, $adjustedExpectation);
-
-        return [
-            'predicted_value' => round($lambda, 1),
-            'distribution_type' => 'poisson',
-            'lambda' => $lambda,
-            'confidence_interval_68' => [
-                round($lambda - sqrt($lambda), 1),
-                round($lambda + sqrt($lambda), 1)
-            ],
-            'confidence_interval_95' => [
-                round($lambda - (1.96 * sqrt($lambda)), 1),
-                round($lambda + (1.96 * sqrt($lambda)), 1)
-            ],
-            'factors' => [
-                'season_average' => round($seasonAvg, 1),
-                'recent_form' => round($recentForm, 1),
-                'opponent_defense_rating' => $gameContext['opponent_defense_rating'],
-                'pace_factor' => $gameContext['pace_factor'],
-                'rest_advantage' => $gameContext['rest_days'],
-                'minutes_projection' => $gameContext['projected_minutes']
-            ]
-        ];
+        return $this->predictionEngine->predict('points', $playerId, $gameId, $lineValue);
     }
 
-    public function predictRebounds(int $playerId, int $gameId): array
+    /**
+     * Predict rebounds for a player in a game
+     */
+    public function predictRebounds(int $playerId, int $gameId, float $lineValue = null): array
     {
-        $gameContext = $this->getGameContext($gameId, $playerId);
-
-        // Get rebounding data
-        $recentGames = WnbaPlayerGame::where('player_id', $playerId)
-            ->whereHas('game', function($query) {
-                $query->orderBy('game_date', 'desc');
-            })
-            ->limit(15)
-            ->get();
-
-        if ($recentGames->isEmpty()) {
-            return $this->getEmptyPrediction('rebounds');
-        }
-
-        $seasonAvg = $recentGames->avg('rebounds');
-        $offensiveAvg = $recentGames->avg('offensive_rebounds');
-        $defensiveAvg = $recentGames->avg('defensive_rebounds');
-
-        // Adjust for pace and opponent rebounding
-        $paceAdjustment = $gameContext['pace_factor'];
-        $opponentReboundingRate = $this->getOpponentReboundingRate($gameContext['opponent_team_id']);
-
-        $adjustedRebounds = $seasonAvg * $paceAdjustment * (1 + $opponentReboundingRate);
-
-        return [
-            'predicted_value' => round($adjustedRebounds, 1),
-            'predicted_offensive' => round($offensiveAvg * $paceAdjustment, 1),
-            'predicted_defensive' => round($defensiveAvg * $paceAdjustment, 1),
-            'pace_factor' => $paceAdjustment,
-            'opponent_rebounding_rate' => $opponentReboundingRate,
-            'distribution_type' => 'poisson',
-            'lambda' => max(0.1, $adjustedRebounds)
-        ];
+        return $this->predictionEngine->predict('rebounds', $playerId, $gameId, $lineValue);
     }
 
-    public function predictAssists(int $playerId, int $gameId): array
+    /**
+     * Predict assists for a player in a game
+     */
+    public function predictAssists(int $playerId, int $gameId, float $lineValue = null): array
     {
-        $gameContext = $this->getGameContext($gameId, $playerId);
-
-        $recentGames = WnbaPlayerGame::where('player_id', $playerId)
-            ->whereHas('game', function($query) {
-                $query->orderBy('game_date', 'desc');
-            })
-            ->limit(15)
-            ->get();
-
-        if ($recentGames->isEmpty()) {
-            return $this->getEmptyPrediction('assists');
-        }
-
-        $seasonAvg = $recentGames->avg('assists');
-        $assistTurnoverRatio = $recentGames->avg('assists') / max(1, $recentGames->avg('turnovers'));
-
-        // Adjust for pace and team style
-        $paceAdjustment = $gameContext['pace_factor'];
-        $teamAssistRate = $this->getTeamAssistRate($gameContext['player_team_id']);
-
-        $adjustedAssists = $seasonAvg * $paceAdjustment * (1 + ($teamAssistRate - 0.5));
-
-        return [
-            'predicted_value' => round($adjustedAssists, 1),
-            'assist_turnover_ratio' => round($assistTurnoverRatio, 2),
-            'team_assist_rate' => $teamAssistRate,
-            'pace_factor' => $paceAdjustment,
-            'distribution_type' => 'poisson',
-            'lambda' => max(0.1, $adjustedAssists)
-        ];
+        return $this->predictionEngine->predict('assists', $playerId, $gameId, $lineValue);
     }
 
-    public function predictThreePointers(int $playerId, int $gameId): array
+    /**
+     * Predict steals for a player in a game
+     */
+    public function predictSteals(int $playerId, int $gameId, float $lineValue = null): array
     {
-        $gameContext = $this->getGameContext($gameId, $playerId);
-
-        $recentGames = WnbaPlayerGame::where('player_id', $playerId)
-            ->where('three_point_field_goals_attempted', '>', 0)
-            ->whereHas('game', function($query) {
-                $query->orderBy('game_date', 'desc');
-            })
-            ->limit(15)
-            ->get();
-
-        if ($recentGames->isEmpty()) {
-            return $this->getEmptyPrediction('three_point_field_goals_made');
-        }
-
-        $avgAttempts = $recentGames->avg('three_point_field_goals_attempted');
-        $avgMakes = $recentGames->avg('three_point_field_goals_made');
-        $shootingPct = $avgMakes / max(1, $avgAttempts);
-
-        // Adjust for opponent three-point defense
-        $opponentThreePointDefense = $this->getOpponentThreePointDefense($gameContext['opponent_team_id']);
-        $adjustedPct = $shootingPct * (1 - $opponentThreePointDefense);
-
-        $expectedMakes = $avgAttempts * $adjustedPct;
-
-        return [
-            'predicted_value' => round($expectedMakes, 1),
-            'expected_attempts' => round($avgAttempts, 1),
-            'shooting_percentage' => round($shootingPct * 100, 1),
-            'adjusted_percentage' => round($adjustedPct * 100, 1),
-            'opponent_defense_factor' => $opponentThreePointDefense,
-            'distribution_type' => 'binomial',
-            'n' => round($avgAttempts),
-            'p' => $adjustedPct
-        ];
+        return $this->predictionEngine->predict('steals', $playerId, $gameId, $lineValue);
     }
 
-    public function predictStealsBlocks(int $playerId, int $gameId): array
+    /**
+     * Predict blocks for a player in a game
+     */
+    public function predictBlocks(int $playerId, int $gameId, float $lineValue = null): array
     {
-        $gameContext = $this->getGameContext($gameId, $playerId);
-
-        $recentGames = WnbaPlayerGame::where('player_id', $playerId)
-            ->whereHas('game', function($query) {
-                $query->orderBy('game_date', 'desc');
-            })
-            ->limit(15)
-            ->get();
-
-        if ($recentGames->isEmpty()) {
-            return [
-                'steals' => $this->getEmptyPrediction('steals'),
-                'blocks' => $this->getEmptyPrediction('blocks')
-            ];
-        }
-
-        $stealsAvg = $recentGames->avg('steals');
-        $blocksAvg = $recentGames->avg('blocks');
-
-        // Adjust for pace and opponent style
-        $paceAdjustment = $gameContext['pace_factor'];
-        $opponentTurnoverRate = $this->getOpponentTurnoverRate($gameContext['opponent_team_id']);
-
-        $adjustedSteals = $stealsAvg * $paceAdjustment * (1 + $opponentTurnoverRate);
-        $adjustedBlocks = $blocksAvg * $paceAdjustment;
-
-        return [
-            'steals' => [
-                'predicted_value' => round($adjustedSteals, 1),
-                'pace_factor' => $paceAdjustment,
-                'opponent_turnover_rate' => $opponentTurnoverRate,
-                'distribution_type' => 'poisson',
-                'lambda' => max(0.1, $adjustedSteals)
-            ],
-            'blocks' => [
-                'predicted_value' => round($adjustedBlocks, 1),
-                'pace_factor' => $paceAdjustment,
-                'distribution_type' => 'poisson',
-                'lambda' => max(0.1, $adjustedBlocks)
-            ]
-        ];
+        return $this->predictionEngine->predict('blocks', $playerId, $gameId, $lineValue);
     }
 
-    public function predictMinutes(int $playerId, int $gameId): array
+    /**
+     * Predict turnovers for a player in a game
+     */
+    public function predictTurnovers(int $playerId, int $gameId, float $lineValue = null): array
     {
-        $gameContext = $this->getGameContext($gameId, $playerId);
+        return $this->predictionEngine->predict('turnovers', $playerId, $gameId, $lineValue);
+    }
 
-        $recentGames = WnbaPlayerGame::where('player_id', $playerId)
-            ->whereHas('game', function($query) {
-                $query->orderBy('game_date', 'desc');
-            })
-            ->limit(10)
-            ->get();
+    /**
+     * Predict field goals made for a player in a game
+     */
+    public function predictFieldGoalsMade(int $playerId, int $gameId, float $lineValue = null): array
+    {
+        return $this->predictionEngine->predict('field_goals_made', $playerId, $gameId, $lineValue);
+    }
 
-        if ($recentGames->isEmpty()) {
-            return $this->getEmptyPrediction('minutes');
-        }
+    /**
+     * Predict field goals attempted for a player in a game
+     */
+    public function predictFieldGoalsAttempted(int $playerId, int $gameId, float $lineValue = null): array
+    {
+        return $this->predictionEngine->predict('field_goals_attempted', $playerId, $gameId, $lineValue);
+    }
 
-        $seasonAvg = $recentGames->avg('minutes');
-        $recentForm = $recentGames->take(3)->avg('minutes');
+    /**
+     * Predict three pointers made for a player in a game
+     */
+    public function predictThreePointersMade(int $playerId, int $gameId, float $lineValue = null): array
+    {
+        return $this->predictionEngine->predict('three_pointers_made', $playerId, $gameId, $lineValue);
+    }
 
-        // Adjust for game context
-        $adjustments = [
-            'rest_factor' => $this->getRestAdjustment($gameContext['rest_days']),
-            'injury_factor' => $this->getInjuryAdjustment($playerId),
-            'game_importance' => $this->getGameImportance($gameId),
-            'foul_trouble_risk' => $this->getFoulTroubleRisk($playerId)
-        ];
+    /**
+     * Predict three pointers attempted for a player in a game
+     */
+    public function predictThreePointersAttempted(int $playerId, int $gameId, float $lineValue = null): array
+    {
+        return $this->predictionEngine->predict('three_pointers_attempted', $playerId, $gameId, $lineValue);
+    }
 
-        $adjustedMinutes = $seasonAvg;
-        foreach ($adjustments as $factor) {
-            $adjustedMinutes *= $factor;
-        }
+    /**
+     * Predict free throws made for a player in a game
+     */
+    public function predictFreeThrowsMade(int $playerId, int $gameId, float $lineValue = null): array
+    {
+        return $this->predictionEngine->predict('free_throws_made', $playerId, $gameId, $lineValue);
+    }
 
-        // Minutes are normally distributed
-        $stdDev = $this->calculateStandardDeviation($recentGames->pluck('minutes')->toArray());
+    /**
+     * Predict free throws attempted for a player in a game
+     */
+    public function predictFreeThrowsAttempted(int $playerId, int $gameId, float $lineValue = null): array
+    {
+        return $this->predictionEngine->predict('free_throws_attempted', $playerId, $gameId, $lineValue);
+    }
 
-        return [
-            'predicted_value' => round($adjustedMinutes, 1),
-            'season_average' => round($seasonAvg, 1),
-            'recent_form' => round($recentForm, 1),
-            'adjustments' => $adjustments,
-            'distribution_type' => 'normal',
-            'mean' => $adjustedMinutes,
-            'std_dev' => $stdDev,
-            'confidence_interval_68' => [
-                round($adjustedMinutes - $stdDev, 1),
-                round($adjustedMinutes + $stdDev, 1)
-            ]
-        ];
+    /**
+     * Predict minutes played for a player in a game
+     */
+    public function predictMinutesPlayed(int $playerId, int $gameId, float $lineValue = null): array
+    {
+        return $this->predictionEngine->predict('minutes_played', $playerId, $gameId, $lineValue);
+    }
+
+    /**
+     * Predict plus minus for a player in a game
+     */
+    public function predictPlusMinus(int $playerId, int $gameId, float $lineValue = null): array
+    {
+        return $this->predictionEngine->predict('plus_minus', $playerId, $gameId, $lineValue);
+    }
+
+    /**
+     * Predict personal fouls for a player in a game
+     */
+    public function predictPersonalFouls(int $playerId, int $gameId, float $lineValue = null): array
+    {
+        return $this->predictionEngine->predict('personal_fouls', $playerId, $gameId, $lineValue);
     }
 
     /**
@@ -545,18 +402,16 @@ class PropsPredictionService
                 $prediction = $this->predictAssists($playerId, $gameId);
                 break;
             case 'three_point_field_goals_made':
-                $prediction = $this->predictThreePointers($playerId, $gameId);
+                $prediction = $this->predictThreePointersMade($playerId, $gameId);
                 break;
             case 'steals':
-                $stealsBlocks = $this->predictStealsBlocks($playerId, $gameId);
-                $prediction = $stealsBlocks['steals'];
+                $prediction = $this->predictSteals($playerId, $gameId);
                 break;
             case 'blocks':
-                $stealsBlocks = $this->predictStealsBlocks($playerId, $gameId);
-                $prediction = $stealsBlocks['blocks'];
+                $prediction = $this->predictBlocks($playerId, $gameId);
                 break;
             case 'minutes':
-                $prediction = $this->predictMinutes($playerId, $gameId);
+                $prediction = $this->predictMinutesPlayed($playerId, $gameId);
                 break;
             default:
                 throw new \InvalidArgumentException("Unsupported prop type: {$propType}");
@@ -566,10 +421,10 @@ class PropsPredictionService
         $overProbability = $this->calculateOverProbability($prediction, $lineValue);
 
         return [
-            'predicted_value' => $prediction['predicted_value'],
+            'predicted_value' => $prediction['prediction']['adjusted_value'],
             'over_probability' => $overProbability,
-            'model_type' => $prediction['distribution_type'],
-            'factors' => $prediction,
+            'model_type' => $prediction['prediction']['distribution'],
+            'factors' => $prediction['factors'],
             'statistical_basis' => $playerProfile,
             'data_points' => $playerProfile['games_played'],
             'data_quality' => $this->assessDataQuality($playerProfile, $gameContext)
@@ -578,88 +433,36 @@ class PropsPredictionService
 
     private function calculateOverProbability(array $prediction, float $lineValue): float
     {
-        $distributionType = $prediction['distribution_type'];
-        $predictedValue = $prediction['predicted_value'];
+        $distributionType = $prediction['prediction']['distribution'];
+        $predictedValue = $prediction['prediction']['adjusted_value'];
 
         switch ($distributionType) {
             case 'poisson':
-                return $this->poissonCalculator->calculateOverProbability($prediction['lambda'], $lineValue);
+                return $this->statisticalEngine->calculatePoissonOverProbability(
+                    $prediction['prediction']['base_value'],
+                    $lineValue
+                );
 
             case 'binomial':
-                $n = $prediction['n'];
-                $p = $prediction['p'];
-                return $this->calculateBinomialOverProbability($n, $p, $lineValue);
+                $n = $prediction['prediction']['n'] ?? 10;
+                $p = $prediction['prediction']['p'] ?? 0.5;
+                return $this->statisticalEngine->calculateBinomialOverProbability(
+                    ['n' => $n, 'p' => $p],
+                    $lineValue
+                );
 
             case 'normal':
-                $mean = $prediction['mean'];
-                $stdDev = $prediction['std_dev'];
-                return $this->calculateNormalOverProbability($mean, $stdDev, $lineValue);
+                $mean = $prediction['prediction']['base_value'];
+                $stdDev = $prediction['prediction']['std_dev'] ?? 1;
+                return $this->statisticalEngine->calculateNormalOverProbability(
+                    ['mean' => $mean, 'std_dev' => $stdDev],
+                    $lineValue
+                );
 
             default:
                 // Fallback to simple comparison
                 return $predictedValue > $lineValue ? 0.6 : 0.4;
         }
-    }
-
-    private function calculateBinomialOverProbability(int $n, float $p, float $lineValue): float
-    {
-        $probability = 0;
-        for ($k = floor($lineValue) + 1; $k <= $n; $k++) {
-            $probability += $this->binomialProbability($n, $k, $p);
-        }
-        return $probability;
-    }
-
-    private function binomialProbability(int $n, int $k, float $p): float
-    {
-        if ($k > $n || $k < 0) return 0;
-
-        $combination = $this->combination($n, $k);
-        return $combination * pow($p, $k) * pow(1 - $p, $n - $k);
-    }
-
-    private function combination(int $n, int $k): int
-    {
-        if ($k > $n - $k) $k = $n - $k;
-
-        $result = 1;
-        for ($i = 0; $i < $k; $i++) {
-            $result = $result * ($n - $i) / ($i + 1);
-        }
-
-        return round($result);
-    }
-
-    private function calculateNormalOverProbability(float $mean, float $stdDev, float $lineValue): float
-    {
-        if ($stdDev <= 0) return $mean > $lineValue ? 1.0 : 0.0;
-
-        $zScore = ($lineValue - $mean) / $stdDev;
-        return 1 - $this->normalCDF($zScore);
-    }
-
-    private function normalCDF(float $x): float
-    {
-        return 0.5 * (1 + $this->erf($x / sqrt(2)));
-    }
-
-    private function erf(float $x): float
-    {
-        // Abramowitz and Stegun approximation
-        $a1 =  0.254829592;
-        $a2 = -0.284496736;
-        $a3 =  1.421413741;
-        $a4 = -1.453152027;
-        $a5 =  1.061405429;
-        $p  =  0.3275911;
-
-        $sign = $x < 0 ? -1 : 1;
-        $x = abs($x);
-
-        $t = 1.0 / (1.0 + $p * $x);
-        $y = 1.0 - ((((($a5 * $t + $a4) * $t) + $a3) * $t + $a2) * $t + $a1) * $t * exp(-$x * $x);
-
-        return $sign * $y;
     }
 
     private function applyContextualAdjustments(float $baseValue, array $gameContext, array $weights): float
@@ -844,107 +647,4 @@ class PropsPredictionService
     private function getGameImportance($gameId): float { return 1.0; }
     private function getFoulTroubleRisk($playerId): float { return 1.0; }
     private function getDaysSinceLastGame($gameDate): int { return 2; }
-
-    /**
-     * Get betting recommendation for a specific prop
-     */
-    public function getBettingRecommendation(
-        int $playerId,
-        string $statType,
-        float $line,
-        float $oddsOver,
-        float $oddsUnder,
-        ?int $gameId = null,
-        ?int $season = null
-    ): array {
-        try {
-            // Use a mock game ID if none provided
-            $gameId = $gameId ?? 1;
-
-            // Get prediction for the stat
-            $prediction = match($statType) {
-                'points' => $this->predictPoints($playerId, $gameId),
-                'rebounds' => $this->predictRebounds($playerId, $gameId),
-                'assists' => $this->predictAssists($playerId, $gameId),
-                'steals' => $this->predictStealsBlocks($playerId, $gameId)['steals'] ?? [],
-                'blocks' => $this->predictStealsBlocks($playerId, $gameId)['blocks'] ?? [],
-                'three_pointers' => $this->predictThreePointers($playerId, $gameId),
-                'minutes' => $this->predictMinutes($playerId, $gameId),
-                default => $this->getEmptyPrediction($statType)
-            };
-
-            $predictedValue = $prediction['predicted_value'] ?? $line;
-            $confidence = $prediction['confidence'] ?? 0.75;
-
-            // Calculate probabilities
-            $overProbability = $predictedValue > $line ?
-                0.5 + (($predictedValue - $line) / $predictedValue) * 0.3 :
-                0.5 - (($line - $predictedValue) / $line) * 0.3;
-            $overProbability = max(0.1, min(0.9, $overProbability));
-            $underProbability = 1 - $overProbability;
-
-            // Convert American odds to decimal
-            $decimalOddsOver = $oddsOver > 0 ? ($oddsOver / 100) + 1 : (100 / abs($oddsOver)) + 1;
-            $decimalOddsUnder = $oddsUnder > 0 ? ($oddsUnder / 100) + 1 : (100 / abs($oddsUnder)) + 1;
-
-            // Calculate expected values
-            $evOver = ($overProbability * ($decimalOddsOver - 1)) - ((1 - $overProbability) * 1);
-            $evUnder = ($underProbability * ($decimalOddsUnder - 1)) - ((1 - $underProbability) * 1);
-
-            // Determine recommendation
-            $recommendation = 'avoid';
-            $reasoning = 'No significant edge detected';
-
-            if ($confidence > 0.7) {
-                if ($evOver > 0.05) {
-                    $recommendation = 'over';
-                    $reasoning = "Strong edge on over: {$predictedValue} predicted vs {$line} line";
-                } elseif ($evUnder > 0.05) {
-                    $recommendation = 'under';
-                    $reasoning = "Strong edge on under: {$predictedValue} predicted vs {$line} line";
-                }
-            }
-
-            return [
-                'player_id' => $playerId,
-                'stat_type' => $statType,
-                'line' => $line,
-                'predicted_value' => round($predictedValue, 2),
-                'confidence' => round($confidence, 3),
-                'over_probability' => round($overProbability, 3),
-                'under_probability' => round($underProbability, 3),
-                'expected_value_over' => round($evOver, 3),
-                'expected_value_under' => round($evUnder, 3),
-                'recommendation' => $recommendation,
-                'reasoning' => $reasoning,
-                'odds' => [
-                    'over' => $oddsOver,
-                    'under' => $oddsUnder
-                ],
-                'generated_at' => now()->toISOString()
-            ];
-
-        } catch (\Exception $e) {
-            // Return fallback recommendation
-            return [
-                'player_id' => $playerId,
-                'stat_type' => $statType,
-                'line' => $line,
-                'predicted_value' => $line,
-                'confidence' => 0.5,
-                'over_probability' => 0.5,
-                'under_probability' => 0.5,
-                'expected_value_over' => 0,
-                'expected_value_under' => 0,
-                'recommendation' => 'avoid',
-                'reasoning' => 'Insufficient data for reliable prediction',
-                'odds' => [
-                    'over' => $oddsOver,
-                    'under' => $oddsUnder
-                ],
-                'error' => $e->getMessage(),
-                'generated_at' => now()->toISOString()
-            ];
-        }
-    }
 }

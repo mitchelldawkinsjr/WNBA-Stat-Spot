@@ -1,7 +1,6 @@
 <script lang="ts">
     import {onMount} from "svelte";
     import type {ApexOptions} from "apexcharts";
-    import {dataPointSelectionHandler} from "../../routes/charts/column/data";
 
     export let id: string
     export let customClass: string = ''
