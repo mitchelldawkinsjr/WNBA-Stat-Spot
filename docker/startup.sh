@@ -307,20 +307,6 @@ wait_for_database() {
                 echo "✅ Cache clearing completed"
             fi
 
-            # Debug what Laravel is actually reading for database config
-            echo "🔍 Debugging Laravel database configuration..."
-            echo "Environment variables:"
-            echo "  DB_HOST: ${DB_HOST:-'NOT SET'}"
-            echo "  DB_PORT: ${DB_PORT:-'NOT SET'}"
-            echo "  DB_DATABASE: ${DB_DATABASE:-'NOT SET'}"
-            echo "  DB_USERNAME: ${DB_USERNAME:-'NOT SET'}"
-            echo "  DATABASE_URL: ${DATABASE_URL:-'NOT SET'}"
-
-            echo "Laravel config values:"
-            php artisan tinker --execute="echo 'DB Host: ' . config('database.connections.pgsql.host') . PHP_EOL;" || echo "⚠️  Could not read Laravel DB config"
-            php artisan tinker --execute="echo 'DB Port: ' . config('database.connections.pgsql.port') . PHP_EOL;" || echo "⚠️  Could not read Laravel DB config"
-            php artisan tinker --execute="echo 'Full config: ' . json_encode(config('database.connections.pgsql')) . PHP_EOL;" || echo "⚠️  Could not read Laravel DB config"
-
             # Run database migrations first - CRITICAL FOR RAILWAY
             echo "📊 Running database migrations (FORCED)..."
             php artisan migrate --force || {
