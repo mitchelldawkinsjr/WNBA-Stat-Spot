@@ -1,0 +1,78 @@
+# Production stack (VPS): Laravel + SvelteKit Node server + Postgres.
+# App does NOT join `360ws-network`: NPM reaches you via published port on the host (e.g. 8010). Sharing that
+# network caused hostname `postgres` to resolve to another stack's Postgres (same DNS name on the shared net).
+#
+# Prerequisites on the host: `docker network create 360ws-network` (see scripts/vps-bootstrap.sh)
+# Copy deploy/env.production.example → .env next to this file, set secrets, then:
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# Publish port defaults to 8010 → map a Proxy Host in NPM to http://<host>:8010
+
+name: wnba-stat-spot
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: wnba-stat-spot-app
+    restart: unless-stopped
+    ports:
+      - "${APP_PUBLISH_PORT:-8010}:80"
+    env_file:
+      - .env
+    environment:
+      APP_ENV: production
+      APP_DEBUG: "false"
+      LOG_LEVEL: info
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: "5432"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - internal
+    volumes:
+      - app-public:/var/www/html/storage/app/public
+    labels:
+      - "com.360ws.app=wnba-stat-spot"
+      - "com.360ws.type=docker-app"
+      - "com.360ws.service=app"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: wnba-stat-spot-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:-wnba_stat_spot}
+      POSTGRES_USER: ${DB_USERNAME:-wnba}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - internal
+    labels:
+      - "com.360ws.app=wnba-stat-spot"
+      - "com.360ws.type=docker-app"
+      - "com.360ws.service=postgres"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+networks:
+  internal:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  app-public:
