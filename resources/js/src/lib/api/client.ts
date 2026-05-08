@@ -597,7 +597,7 @@ function setCache(key: string, data: any, ttl: number): void {
 }
 
 async function fetchApi<T>(endpoint: string, options?: RequestInit & { cacheTtl?: keyof typeof CACHE_TTL }): Promise<T> {
-    const url = `${API_URL}${endpoint}`;
+    const url = `${getApiUrl()}${endpoint}`;
     const cacheKey = getCacheKey(url, options);
     const cacheTtl = options?.cacheTtl ? CACHE_TTL[options.cacheTtl] : CACHE_TTL.short;
 
