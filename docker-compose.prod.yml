@@ -1,12 +1,13 @@
 # Production stack (VPS): Laravel + SvelteKit Node server + Postgres.
-# App does NOT join `360ws-network`: NPM reaches you via published port on the host (e.g. 8010). Sharing that
-# network caused hostname `postgres` to resolve to another stack's Postgres (same DNS name on the shared net).
+# App joins `360ws-network` so NPM can reach it by container name (wnba-stat-spot-app:80).
+# Postgres stays on the internal network only. DB_HOST uses the full container name
+# (wnba-stat-spot-postgres) to avoid ambiguous resolution across stacks on the shared network.
 #
 # Prerequisites on the host: `docker network create 360ws-network` (see scripts/vps-bootstrap.sh)
 # Copy deploy/env.production.example → .env next to this file, set secrets, then:
 #   docker compose -f docker-compose.prod.yml up -d --build
 #
-# Publish port defaults to 8010 → map a Proxy Host in NPM to http://<host>:8010
+# NPM Proxy Host: Forward to http://wnba-stat-spot-app:80
 
 name: wnba-stat-spot
 
@@ -26,13 +27,14 @@ services:
       APP_DEBUG: "false"
       LOG_LEVEL: info
       DB_CONNECTION: pgsql
-      DB_HOST: postgres
+      DB_HOST: wnba-stat-spot-postgres
       DB_PORT: "5432"
     depends_on:
       postgres:
         condition: service_healthy
     networks:
       - internal
+      - proxy
     volumes:
       - app-public:/var/www/html/storage/app/public
     labels:
@@ -72,6 +74,9 @@ services:
 networks:
   internal:
     driver: bridge
+  proxy:
+    external: true
+    name: 360ws-network
 
 volumes:
   postgres-data:
