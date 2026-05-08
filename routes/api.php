@@ -16,6 +16,7 @@ use App\Http\Controllers\Api\DataQualityController;
 use App\Http\Controllers\Api\PredictionTestingController;
 use App\Http\Controllers\Api\PredictionsController;
 use App\Http\Controllers\Api\OddsController;
+use App\Http\Controllers\Api\HealthController;
 
 Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
     return $request->user();
@@ -32,14 +33,12 @@ Route::get('/test', function () {
     ]);
 });
 
-// Health check endpoint for container debugging
-Route::get('/health', function () {
-    return response()->json([
-        'status' => 'ok',
-        'timestamp' => now()->toISOString(),
-        'message' => 'API is working'
-    ]);
-});
+// Health check endpoints for CI/CD monitoring
+Route::get('/health', [HealthController::class, 'health']);
+Route::get('/health/detailed', [HealthController::class, 'detailed']);
+Route::get('/health/database', [HealthController::class, 'database']);
+Route::get('/health/cache', [HealthController::class, 'cache']);
+Route::get('/health/queue', [HealthController::class, 'queue']);
 
 // Database setup status endpoint
 Route::get('/status', function () {

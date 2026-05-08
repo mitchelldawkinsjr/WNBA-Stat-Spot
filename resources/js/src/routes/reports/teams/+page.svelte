@@ -22,7 +22,7 @@
         try {
             loading = true;
             const response = await api.teams.getAll({ search: searchTerm || undefined });
-            teams = response.data;
+            teams = response.data.data;
         } catch (err) {
             error = err instanceof Error ? err.message : 'Failed to load teams';
         } finally {

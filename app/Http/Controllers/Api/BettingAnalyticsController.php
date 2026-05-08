@@ -14,8 +14,7 @@ use Illuminate\Support\Facades\Cache;
 class BettingAnalyticsController extends Controller
 {
     use ApiResponseTrait, CacheHelper;
-    
-    protected string $cachePrefix = 'betting_analytics';
+
     /**
      * Get comprehensive betting analytics
      */
@@ -35,7 +34,7 @@ class BettingAnalyticsController extends Controller
             $betType = $request->input('bet_type', 'all');
 
             $cacheKey = "analytics_{$timeframe}_{$betType}";
-            
+
             $analytics = $this->getCached($cacheKey, function () use ($timeframe, $betType) {
                 return $this->generateBettingAnalytics($timeframe, $betType);
             }, 900);

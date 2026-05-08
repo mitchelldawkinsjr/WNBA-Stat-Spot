@@ -53,8 +53,8 @@
                 api.teams.getAll()
             ]);
 
-            players = playersResponse.data;
-            teams = teamsResponse.data;
+            players = playersResponse.data.data;
+            teams = teamsResponse.data.data;
         } catch (err) {
             error = err instanceof Error ? err.message : 'Failed to load data';
         } finally {

@@ -15,8 +15,6 @@ use Illuminate\Support\Facades\Schema;
 class PlayerController extends Controller
 {
     use ApiResponseTrait, CacheHelper;
-    protected int $defaultCacheTtl = 1800; // 30 minutes
-    protected string $cachePrefix = 'wnba_players';
     private const PER_PAGE = 100;
 
     public function index(Request $request): JsonResponse
@@ -45,7 +43,7 @@ class PlayerController extends Controller
 
             $cacheKey = "players_list_{$page}_{$perPage}_{$search}_{$team}_{$position}";
 
-            $result = Cache::remember($cacheKey, self::CACHE_TTL, function () use ($perPage, $search, $team, $position) {
+            $result = Cache::remember($cacheKey, $this->defaultCacheTtl, function () use ($perPage, $search, $team, $position) {
                 $query = WnbaPlayer::select([
                     'id', 'athlete_id', 'athlete_display_name', 'athlete_position_abbreviation',
                     'athlete_jersey', 'athlete_headshot_href', 'athlete_position_name',
@@ -84,7 +82,7 @@ class PlayerController extends Controller
     {
         $cacheKey = "player_detail_{$id}";
 
-        $player = Cache::remember($cacheKey, self::CACHE_TTL, function () use ($id) {
+        $player = Cache::remember($cacheKey, $this->defaultCacheTtl, function () use ($id) {
             return WnbaPlayer::with([
                 'playerGames' => function ($query) {
                     $query->select([
@@ -131,7 +129,7 @@ class PlayerController extends Controller
 
             $cacheKey = "players_summary";
 
-            $players = Cache::remember($cacheKey, self::CACHE_TTL * 2, function () {
+            $players = Cache::remember($cacheKey, $this->defaultCacheTtl * 2, function () {
                 return WnbaPlayer::select([
                     'id', 'athlete_id', 'athlete_display_name', 'athlete_position_abbreviation',
                     'athlete_position_name'

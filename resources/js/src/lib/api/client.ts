@@ -3,10 +3,10 @@ import { env } from '$env/dynamic/public';
 
 // Development fallback URLs - these should be set via environment variables in production
 const API_URLS = {
-    service: env.PUBLIC_API_URL_SERVICE || 'http://laravel.test:80/api',
-    hostInternal: env.PUBLIC_API_URL_HOST_INTERNAL || 'http://host.docker.internal:80/api',
-    localhost: env.PUBLIC_API_URL_LOCALHOST || 'http://localhost:80/api',
-    localhostDefault: env.PUBLIC_API_URL_DEFAULT || 'http://localhost/api'
+    service: 'http://localhost:8080/api',
+    hostInternal: 'http://localhost:8080/api',
+    localhost: 'http://localhost:8080/api',
+    localhostDefault: 'http://localhost:8080/api'
 };
 
 // Get API URL from environment variables with fallbacks
@@ -25,11 +25,12 @@ const getApiUrl = () => {
         }
     }
 
-    // Development mode - use localhost for browser (host machine) and service name for server-side (container)
-    return browser ? API_URLS.localhost : API_URLS.service;
+    // Development mode - ALWAYS use localhost:8080 for both browser and server-side
+    // This ensures the frontend always connects to the correct port
+    return 'http://localhost:8080/api';
 };
 
-const API_URL = getApiUrl();
+const API_URL = 'http://localhost:8080/api';
 
 // Utility function to get user timezone information
 export function getUserTimezone() {

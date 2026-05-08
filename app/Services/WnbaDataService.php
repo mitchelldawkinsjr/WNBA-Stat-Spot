@@ -14,13 +14,18 @@ use League\Csv\Reader;
 
 class WnbaDataService
 {
-    private const WNBA_BOX_SCORE_URL = env('WNBA_BOX_SCORE_URL', 'https://github.com/sportsdataverse/sportsdataverse-data/releases/download/espn_wnba_player_boxscores/player_box_2025.csv');
+    private string $wnbaBoxScoreUrl;
+    private string $wnbaTeamUrl;
+    private string $wnbaPbpUrl;
+    private string $wnbaTeamScheduleUrl;
 
-    private const WNBA_TEAM_URL = env('WNBA_TEAM_URL', 'https://github.com/sportsdataverse/sportsdataverse-data/releases/download/espn_wnba_team_boxscores/team_box_2025.csv');
-
-    private const WNBA_PBP_URL = env('WNBA_PBP_URL', 'https://github.com/sportsdataverse/sportsdataverse-data/releases/download/espn_wnba_pbp/play_by_play_2025.csv');
-
-    private const WNBA_TEAM_SCHEDULE_URL = env('WNBA_TEAM_SCHEDULE_URL', 'https://github.com/sportsdataverse/sportsdataverse-data/releases/download/espn_wnba_schedules/wnba_schedule_2025.csv');
+    public function __construct()
+    {
+        $this->wnbaBoxScoreUrl = env('WNBA_BOX_SCORE_URL', 'https://github.com/sportsdataverse/sportsdataverse-data/releases/download/espn_wnba_player_boxscores/player_box_2025.csv');
+        $this->wnbaTeamUrl = env('WNBA_TEAM_URL', 'https://github.com/sportsdataverse/sportsdataverse-data/releases/download/espn_wnba_team_boxscores/team_box_2025.csv');
+        $this->wnbaPbpUrl = env('WNBA_PBP_URL', 'https://github.com/sportsdataverse/sportsdataverse-data/releases/download/espn_wnba_pbp/play_by_play_2025.csv');
+        $this->wnbaTeamScheduleUrl = env('WNBA_TEAM_SCHEDULE_URL', 'https://github.com/sportsdataverse/sportsdataverse-data/releases/download/espn_wnba_schedules/wnba_schedule_2025.csv');
+    }
 
     /**
      * Safely get a value from an array with an optional default
@@ -56,7 +61,7 @@ class WnbaDataService
 
     public function downloadBoxScoreData(): string
     {
-        $response = Http::get(self::WNBA_BOX_SCORE_URL);
+        $response = Http::get($this->wnbaBoxScoreUrl);
 
         if (!$response->successful()) {
             throw new \Exception('Failed to download WNBA box score data');
@@ -73,7 +78,7 @@ class WnbaDataService
 
     public function downloadTeamData(): string
     {
-        $response = Http::get(self::WNBA_TEAM_URL);
+        $response = Http::get($this->wnbaTeamUrl);
 
         if (!$response->successful()) {
             throw new \Exception('Failed to download WNBA team data');
@@ -90,7 +95,7 @@ class WnbaDataService
 
     public function downloadTeamScheduleData(): string
     {
-        $response = Http::get(self::WNBA_TEAM_SCHEDULE_URL);
+        $response = Http::get($this->wnbaTeamScheduleUrl);
 
         if (!$response->successful()) {
             throw new \Exception('Failed to download WNBA team schedule data');
@@ -107,7 +112,7 @@ class WnbaDataService
 
     public function downloadPbpData(): string
     {
-        $response = Http::get(self::WNBA_PBP_URL);
+        $response = Http::get($this->wnbaPbpUrl);
 
         if (!$response->successful()) {
             throw new \Exception('Failed to download WNBA PBP data');

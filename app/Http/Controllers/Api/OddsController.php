@@ -14,8 +14,7 @@ use Carbon\Carbon;
 class OddsController extends Controller
 {
     use ApiResponseTrait, CacheHelper;
-    
-    protected string $cachePrefix = 'odds_api';
+
     private OddsApiService $oddsApi;
 
     public function __construct(OddsApiService $oddsApi)
@@ -54,7 +53,7 @@ class OddsController extends Controller
                 'region' => 'nullable|string|in:us,uk,eu,au',
                 'odds_format' => 'nullable|string|in:american,decimal,fractional'
             ]);
-            
+
             $validated = $request->only(['markets', 'bookmakers', 'region', 'odds_format']);
 
             $markets = $validated['markets'] ?? ['h2h', 'spreads', 'totals'];

@@ -34,6 +34,9 @@
         free_throw_percentage: number;
         player_efficiency_rating: number;
         true_shooting_percentage: number;
+        avg_points: number;
+        avg_rebounds: number;
+        avg_assists: number;
     }
 
     let players: Player[] = [];
@@ -82,7 +85,7 @@
     async function loadAvailablePlayers() {
         try {
             const response = await api.players.getAll({ per_page: 200 });
-            availablePlayers = response.data;
+            availablePlayers = response.data.data;
         } catch (e) {
             console.error('Failed to load players:', e);
         }
@@ -95,7 +98,7 @@
         try {
             // Load player info and stats in parallel
             const playerPromises = ids.map(id => api.players.getById(id));
-            const statsPromises = ids.map(id => api.players.getStats(id));
+            const statsPromises = ids.map(id => api.wnba.analytics.getPlayer(id));
 
             const [playerResponses, statsResponses] = await Promise.all([
                 Promise.all(playerPromises),
@@ -105,7 +108,7 @@
             players = playerResponses.map(response => response.data);
             playerStats = statsResponses.map((response, index) => ({
                 playerId: ids[index],
-                ...response.data.season_stats || {}
+                ...response.data?.summary || {}
             }));
 
             selectedPlayers = [...players];
@@ -118,7 +121,7 @@
 
     function addPlayer(player: Player) {
         if (selectedPlayers.length >= maxPlayers) return;
-        
+
         selectedPlayers = [...selectedPlayers, player];
         const newPlayerIds = selectedPlayers.map(p => p.id);
         loadPlayerComparison(newPlayerIds);
@@ -146,9 +149,9 @@
             return {
                 label: player?.athlete_display_name || `Player ${index + 1}`,
                 data: [
-                    stats.points || 0,
-                    stats.rebounds || 0,
-                    stats.assists || 0,
+                    stats.avg_points || 0,
+                    stats.avg_rebounds || 0,
+                    stats.avg_assists || 0,
                     stats.steals || 0,
                     stats.blocks || 0,
                     stats.field_goal_percentage || 0,
@@ -195,7 +198,7 @@
 
     function formatStatValue(value: number | undefined, unit: string): string {
         if (value === undefined || value === null) return 'N/A';
-        
+
         if (unit === '%') {
             return `${value.toFixed(1)}%`;
         } else if (Number.isInteger(value)) {
@@ -229,7 +232,7 @@
                         placeholder="Search for players..."
                         bind:value={searchTerm}
                     />
-                    
+
                     {#if searchTerm && filteredAvailablePlayers.length > 0}
                         <div class="search-results mt-2">
                             {#each filteredAvailablePlayers.slice(0, 5) as player}
@@ -239,8 +242,8 @@
                                 >
                                     <div class="d-flex align-items-center">
                                         {#if player.athlete_headshot_href}
-                                            <img 
-                                                src={player.athlete_headshot_href} 
+                                            <img
+                                                src={player.athlete_headshot_href}
                                                 alt={player.athlete_display_name}
                                                 class="player-avatar me-2"
                                             />
@@ -252,7 +255,7 @@
                                         <div>
                                             <div class="fw-medium">{player.athlete_display_name}</div>
                                             <small class="text-muted">
-                                                {player.athlete_position_name || 'Player'} 
+                                                {player.athlete_position_name || 'Player'}
                                                 {player.team_name ? `• ${player.team_name}` : ''}
                                             </small>
                                         </div>
@@ -272,7 +275,7 @@
                         {#each selectedPlayers as player, index}
                             <div class="player-chip" style="border-color: {colors[index % colors.length]}">
                                 <span class="player-name">{player.athlete_display_name}</span>
-                                <button 
+                                <button
                                     class="btn-close btn-close-sm ms-1"
                                     on:click={() => removePlayer(player.id)}
                                 ></button>
@@ -296,8 +299,8 @@
                         <Card class="player-overview-card" style="border-top: 4px solid {colors[index % colors.length]}">
                             <CardBody class="text-center">
                                 {#if player.athlete_headshot_href}
-                                    <img 
-                                        src={player.athlete_headshot_href} 
+                                    <img
+                                        src={player.athlete_headshot_href}
                                         alt={player.athlete_display_name}
                                         class="player-headshot mb-2"
                                     />

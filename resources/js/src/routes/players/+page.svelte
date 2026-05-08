@@ -31,7 +31,7 @@
     onMount(async () => {
         try {
             const response = await api.players.getAll({ per_page: 200 });
-            players = response.data;
+            players = response.data.data;
         } catch (e) {
             error = e instanceof Error ? e.message : 'An error occurred';
         } finally {
@@ -98,9 +98,9 @@
             </div>
         </div>
 
-        <LoadingError 
-            {loading} 
-            {error} 
+        <LoadingError
+            {loading}
+            {error}
             loadingText="Loading players..."
             retryAction={() => {
                 loading = true;
@@ -108,7 +108,7 @@
                 onMount();
             }}
         />
-        
+
         {#if !loading && !error}
             {#if viewMode === 'table'}
             <!-- Table View -->
