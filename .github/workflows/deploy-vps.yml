@@ -1,0 +1,120 @@
+name: Deploy to mitch-cloud
+
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'app/**'
+      - 'bootstrap/**'
+      - 'config/**'
+      - 'database/**'
+      - 'docker/**'
+      - 'public/**'
+      - 'resources/**'
+      - 'routes/**'
+      - 'docker-compose.prod.yml'
+      - 'Dockerfile'
+      - '.github/workflows/deploy-vps.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy app to mitch-cloud
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    env:
+      SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.VPS_SSH_KEY }}
+
+      - name: Add server to known hosts
+        run: |
+          ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy to mitch-cloud
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          set -e
+
+          # Ensure deploy directory exists
+          ssh ${VPS_USER}@${VPS_HOST} << 'EOF'
+            set -e
+            mkdir -p /opt/360ws/clients/docker-app/wnba-stat-spot
+          EOF
+
+          # Sync files to server
+          rsync -avz --delete \
+            --exclude '.git' \
+            --exclude 'node_modules' \
+            --exclude 'vendor' \
+            --exclude 'storage/logs' \
+            --exclude 'storage/framework/cache' \
+            --exclude 'storage/framework/sessions' \
+            --exclude 'storage/framework/views' \
+            --exclude '.env' \
+            ./ ${VPS_USER}@${VPS_HOST}:/opt/360ws/clients/docker-app/wnba-stat-spot/
+
+          # SSH in and deploy
+          ssh ${VPS_USER}@${VPS_HOST} << 'EOF'
+            set -e
+            cd /opt/360ws/clients/docker-app/wnba-stat-spot
+
+            # Build and restart containers
+            docker compose -f docker-compose.prod.yml build --no-cache
+            docker compose -f docker-compose.prod.yml down || true
+            docker compose -f docker-compose.prod.yml up -d
+
+            # Wait for app container to come up
+            echo "Waiting for app container to be ready..."
+            sleep 15
+
+            # Run Laravel migrations
+            echo "Running database migrations..."
+            docker compose -f docker-compose.prod.yml exec -T app php artisan migrate --force || \
+            docker compose -f docker-compose.prod.yml run --rm app php artisan migrate --force || true
+
+            # Health check loop
+            echo "Performing health check..."
+            max_attempts=30
+            attempt=0
+            while [ $attempt -lt $max_attempts ]; do
+              if curl -f http://localhost:8010/health > /dev/null 2>&1; then
+                echo "Health check passed!"
+                break
+              fi
+              attempt=$((attempt + 1))
+              echo "Health check attempt $attempt/$max_attempts failed, retrying..."
+              sleep 2
+            done
+
+            if [ $attempt -eq $max_attempts ]; then
+              echo "Health check failed after $max_attempts attempts."
+              docker compose -f docker-compose.prod.yml logs app
+              exit 1
+            fi
+
+            echo "Deployment successful!"
+          EOF
+
+      - name: Notify Slack on success
+        if: success() && env.SLACK_WEBHOOK != ''
+        run: |
+          curl -X POST -H 'Content-type: application/json' \
+            --data "{\"text\":\"✅ WNBA-Stat-Spot deployed successfully to mitch-cloud\"}" \
+            "$SLACK_WEBHOOK"
+
+      - name: Notify Slack on failure
+        if: failure() && env.SLACK_WEBHOOK != ''
+        run: |
+          curl -X POST -H 'Content-type: application/json' \
+            --data "{\"text\":\"❌ WNBA-Stat-Spot deployment to mitch-cloud failed\"}" \
+            "$SLACK_WEBHOOK"
