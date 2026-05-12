@@ -2,15 +2,11 @@
 
 namespace App\Services\WNBA\Analytics;
 
-use App\Models\WnbaPlayerGame;
 use App\Models\WnbaGame;
-use App\Models\WnbaGameTeam;
-use App\Models\WnbaPlayer;
-use App\Models\WnbaTeam;
+use App\Models\WnbaPlayerGame;
 use App\Utils\StatisticsCalculator;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Cache;
 use Carbon\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 
 class PlayerAnalyticsService
@@ -22,7 +18,7 @@ class PlayerAnalyticsService
     {
         $recentGames = WnbaPlayerGame::with(['game', 'team'])
             ->where('player_id', $playerId)
-            ->whereHas('game', function($query) {
+            ->whereHas('game', function ($query) {
                 $query->orderBy('game_date', 'desc');
             })
             ->limit($games)
@@ -37,16 +33,21 @@ class PlayerAnalyticsService
         $stats = StatisticsCalculator::calculatePlayerAverages($recentGames);
         $trends = $this->calculateTrends($recentGames);
 
+        $first = $recentGames->first();
+        $last = $recentGames->last();
+        $from = $last?->game?->game_date?->format('Y-m-d');
+        $to = $first?->game?->game_date?->format('Y-m-d');
+
         return [
             'games_analyzed' => $recentGames->count(),
-            'date_range' => [
-                'from' => $recentGames->last()->game->game_date->format('Y-m-d'),
-                'to' => $recentGames->first()->game->game_date->format('Y-m-d')
-            ],
+            'date_range' => ($from && $to) ? [
+                'from' => $from,
+                'to' => $to,
+            ] : null,
             'averages' => $stats,
             'trends' => $trends,
             'consistency' => $this->calculateConsistency($recentGames),
-            'game_log' => $this->formatGameLog($recentGames)
+            'game_log' => $this->formatGameLog($recentGames),
         ];
     }
 
@@ -61,7 +62,7 @@ class PlayerAnalyticsService
         if ($dateRange) {
             $dates = explode(' to ', $dateRange);
             if (count($dates) === 2) {
-                $query->whereHas('game', function($q) use ($dates) {
+                $query->whereHas('game', function ($q) use ($dates) {
                     $q->whereBetween('game_date', [$dates[0], $dates[1]]);
                 });
             }
@@ -79,9 +80,38 @@ class PlayerAnalyticsService
         return [
             'games_played' => $games->count(),
             'avg_minutes' => round($totalMinutes / $games->count(), 1),
-            'per_36_stats' => $this->calculatePer36Stats($games, $per36Multiplier),
+            'per_36_stats' => $this->scaledPer36StatLine($games, $per36Multiplier),
             'efficiency_metrics' => StatisticsCalculator::calculateEfficiencyMetrics($games),
-            'shooting_percentages' => StatisticsCalculator::calculateShootingPercentages($games)
+            'shooting_percentages' => StatisticsCalculator::calculateShootingPercentages($games),
+        ];
+    }
+
+    /**
+     * Scale per-game averages toward per-36 using multiplier = 36 / avg_minutes.
+     */
+    private function scaledPer36StatLine(Collection $games, float $multiplier): array
+    {
+        if ($games->isEmpty()) {
+            return [];
+        }
+
+        $scale = static function (Collection $games, float $multiplier, string $attr): float {
+            return round(((float) ($games->avg($attr) ?? 0)) * $multiplier, 1);
+        };
+
+        return [
+            'points' => $scale($games, $multiplier, 'points'),
+            'rebounds' => $scale($games, $multiplier, 'rebounds'),
+            'assists' => $scale($games, $multiplier, 'assists'),
+            'steals' => $scale($games, $multiplier, 'steals'),
+            'blocks' => $scale($games, $multiplier, 'blocks'),
+            'turnovers' => $scale($games, $multiplier, 'turnovers'),
+            'field_goals_made' => $scale($games, $multiplier, 'field_goals_made'),
+            'field_goals_attempted' => $scale($games, $multiplier, 'field_goals_attempted'),
+            'three_point_field_goals_made' => $scale($games, $multiplier, 'three_point_field_goals_made'),
+            'three_point_field_goals_attempted' => $scale($games, $multiplier, 'three_point_field_goals_attempted'),
+            'free_throws_made' => $scale($games, $multiplier, 'free_throws_made'),
+            'free_throws_attempted' => $scale($games, $multiplier, 'free_throws_attempted'),
         ];
     }
 
@@ -92,14 +122,14 @@ class PlayerAnalyticsService
     {
         // Get all games against this opponent
         $vsOpponentGames = WnbaPlayerGame::where('player_id', $playerId)
-            ->whereHas('game.gameTeams', function($query) use ($opponentTeamId) {
+            ->whereHas('game.gameTeams', function ($query) use ($opponentTeamId) {
                 $query->where('team_id', $opponentTeamId);
             })
             ->get();
 
         // Get all other games for comparison
         $otherGames = WnbaPlayerGame::where('player_id', $playerId)
-            ->whereDoesntHave('game.gameTeams', function($query) use ($opponentTeamId) {
+            ->whereDoesntHave('game.gameTeams', function ($query) use ($opponentTeamId) {
                 $query->where('team_id', $opponentTeamId);
             })
             ->get();
@@ -107,17 +137,17 @@ class PlayerAnalyticsService
         return [
             'vs_opponent' => [
                 'games' => $vsOpponentGames->count(),
-                'stats' => $this->calculateAverageStats($vsOpponentGames)
+                'stats' => $this->calculateAverageStats($vsOpponentGames),
             ],
             'vs_others' => [
                 'games' => $otherGames->count(),
-                'stats' => $this->calculateAverageStats($otherGames)
+                'stats' => $this->calculateAverageStats($otherGames),
             ],
             'differential' => $this->calculateStatDifferential(
                 $this->calculateAverageStats($vsOpponentGames),
                 $this->calculateAverageStats($otherGames)
             ),
-            'opponent_defensive_rating' => $this->getTeamDefensiveRating($opponentTeamId)
+            'opponent_defensive_rating' => $this->getTeamDefensiveRating($opponentTeamId),
         ];
     }
 
@@ -132,8 +162,8 @@ class PlayerAnalyticsService
             $query->where('game_id', $gameId);
             $playerGames = $query->get();
         } else {
-            $playerGames = $query->whereHas('game', function($q) {
-                $q->where('season', 2025);
+            $playerGames = $query->whereHas('game', function ($q) {
+                $q->where('season', (int) config('wnba.seasons.current_season'));
             })->get();
         }
 
@@ -155,10 +185,10 @@ class PlayerAnalyticsService
             'rebounding_rate' => [
                 'offensive' => round(collect($metrics)->avg('offensive_rebounding_rate'), 2),
                 'defensive' => round(collect($metrics)->avg('defensive_rebounding_rate'), 2),
-                'total' => round(collect($metrics)->avg('total_rebounding_rate'), 2)
+                'total' => round(collect($metrics)->avg('total_rebounding_rate'), 2),
             ],
             'player_efficiency_rating' => round(collect($metrics)->avg('player_efficiency_rating'), 2),
-            'games_analyzed' => $playerGames->count()
+            'games_analyzed' => $playerGames->count(),
         ];
     }
 
@@ -175,7 +205,7 @@ class PlayerAnalyticsService
             'elite' => ['min' => 0, 'max' => 95, 'games' => [], 'label' => 'Elite Defense (< 95)'],
             'good' => ['min' => 95, 'max' => 105, 'games' => [], 'label' => 'Good Defense (95-105)'],
             'average' => ['min' => 105, 'max' => 115, 'games' => [], 'label' => 'Average Defense (105-115)'],
-            'poor' => ['min' => 115, 'max' => 999, 'games' => [], 'label' => 'Poor Defense (> 115)']
+            'poor' => ['min' => 115, 'max' => 999, 'games' => [], 'label' => 'Poor Defense (> 115)'],
         ];
 
         foreach ($games as $game) {
@@ -191,12 +221,12 @@ class PlayerAnalyticsService
 
         $analysis = [];
         foreach ($ratingBuckets as $key => $bucket) {
-            if (!empty($bucket['games'])) {
+            if (! empty($bucket['games'])) {
                 $analysis[$key] = [
                     'label' => $bucket['label'],
                     'games_count' => count($bucket['games']),
                     'stats' => $this->calculateAverageStats(collect($bucket['games'])),
-                    'performance_rating' => $this->calculatePerformanceRating(collect($bucket['games']))
+                    'performance_rating' => $this->calculatePerformanceRating(collect($bucket['games'])),
                 ];
             }
         }
@@ -209,45 +239,37 @@ class PlayerAnalyticsService
      */
     public function getHomeAwayPerformance(int $playerId): array
     {
-        $homeGames = WnbaPlayerGame::where('player_id', $playerId)
-            ->whereHas('game.gameTeams', function($query) use ($playerId) {
-                $query->where('home_away', 'home')
-                      ->where('team_id', function($subQuery) use ($playerId) {
-                          $subQuery->select('team_id')
-                                   ->from('wnba_player_games')
-                                   ->where('player_id', $playerId)
-                                   ->limit(1);
-                      });
-            })
+        $playerGames = WnbaPlayerGame::with(['game.gameTeams'])
+            ->where('player_id', $playerId)
             ->get();
 
-        $awayGames = WnbaPlayerGame::where('player_id', $playerId)
-            ->whereHas('game.gameTeams', function($query) use ($playerId) {
-                $query->where('home_away', 'away')
-                      ->where('team_id', function($subQuery) use ($playerId) {
-                          $subQuery->select('team_id')
-                                   ->from('wnba_player_games')
-                                   ->where('player_id', $playerId)
-                                   ->limit(1);
-                      });
-            })
-            ->get();
+        $homeGames = $playerGames->filter(function (WnbaPlayerGame $pg) {
+            $row = $pg->game?->gameTeams?->firstWhere('team_id', $pg->team_id);
+
+            return $row && $row->home_away === 'home';
+        })->values();
+
+        $awayGames = $playerGames->filter(function (WnbaPlayerGame $pg) {
+            $row = $pg->game?->gameTeams?->firstWhere('team_id', $pg->team_id);
+
+            return $row && $row->home_away === 'away';
+        })->values();
 
         return [
             'home' => [
                 'games' => $homeGames->count(),
                 'stats' => $this->calculateAverageStats($homeGames),
-                'win_percentage' => $this->calculateWinPercentage($homeGames)
+                'win_percentage' => $this->calculateWinPercentage($homeGames),
             ],
             'away' => [
                 'games' => $awayGames->count(),
                 'stats' => $this->calculateAverageStats($awayGames),
-                'win_percentage' => $this->calculateWinPercentage($awayGames)
+                'win_percentage' => $this->calculateWinPercentage($awayGames),
             ],
             'differential' => $this->calculateStatDifferential(
                 $this->calculateAverageStats($homeGames),
                 $this->calculateAverageStats($awayGames)
-            )
+            ),
         ];
     }
 
@@ -265,7 +287,7 @@ class PlayerAnalyticsService
             'back_to_back' => [],
             'one_day_rest' => [],
             'two_days_rest' => [],
-            'three_plus_days_rest' => []
+            'three_plus_days_rest' => [],
         ];
 
         $previousGameDate = null;
@@ -289,11 +311,11 @@ class PlayerAnalyticsService
 
         $analysis = [];
         foreach ($restAnalysis as $restType => $gamesList) {
-            if (!empty($gamesList)) {
+            if (! empty($gamesList)) {
                 $analysis[$restType] = [
                     'games_count' => count($gamesList),
                     'stats' => $this->calculateAverageStats(collect($gamesList)),
-                    'fatigue_impact' => $this->calculateFatigueImpact(collect($gamesList))
+                    'fatigue_impact' => $this->calculateFatigueImpact(collect($gamesList)),
                 ];
             }
         }
@@ -309,13 +331,13 @@ class PlayerAnalyticsService
         // This would require play-by-play data analysis
         // For now, we'll use game-level data and approximate clutch performance
         $closeGames = WnbaPlayerGame::where('player_id', $playerId)
-            ->whereHas('game.gameTeams', function($query) {
+            ->whereHas('game.gameTeams', function ($query) {
                 $query->whereRaw('ABS(team_score - opponent_team_score) <= 5');
             })
             ->get();
 
         $blowoutGames = WnbaPlayerGame::where('player_id', $playerId)
-            ->whereHas('game.gameTeams', function($query) {
+            ->whereHas('game.gameTeams', function ($query) {
                 $query->whereRaw('ABS(team_score - opponent_team_score) > 15');
             })
             ->get();
@@ -324,14 +346,14 @@ class PlayerAnalyticsService
             'close_games' => [
                 'games_count' => $closeGames->count(),
                 'stats' => $this->calculateAverageStats($closeGames),
-                'definition' => 'Games decided by 5 points or less'
+                'definition' => 'Games decided by 5 points or less',
             ],
             'blowout_games' => [
                 'games_count' => $blowoutGames->count(),
                 'stats' => $this->calculateAverageStats($blowoutGames),
-                'definition' => 'Games decided by more than 15 points'
+                'definition' => 'Games decided by more than 15 points',
             ],
-            'clutch_factor' => $this->calculateClutchFactor($closeGames, $blowoutGames)
+            'clutch_factor' => $this->calculateClutchFactor($closeGames, $blowoutGames),
         ];
     }
 
@@ -364,9 +386,9 @@ class PlayerAnalyticsService
                 'two_point_attempts_per_game' => round($games->avg('field_goals_attempted') - $games->avg('three_point_field_goals_attempted'), 1),
                 'three_point_attempts_per_game' => round($games->avg('three_point_field_goals_attempted'), 1),
                 'free_throw_attempts_per_game' => round($games->avg('free_throws_attempted'), 1),
-                'three_point_rate' => round(($games->sum('three_point_field_goals_attempted') / $games->sum('field_goals_attempted')) * 100, 1)
+                'three_point_rate' => round(($games->sum('three_point_field_goals_attempted') / $games->sum('field_goals_attempted')) * 100, 1),
             ],
-            'shooting_consistency' => $this->calculateShootingConsistency($games)
+            'shooting_consistency' => $this->calculateShootingConsistency($games),
         ];
     }
 
@@ -393,7 +415,7 @@ class PlayerAnalyticsService
             'offensive_rebounding_rate' => round(($offensiveRebounds / max($totalMinutes, 1)) * 36, 2),
             'defensive_rebounding_rate' => round(($defensiveRebounds / max($totalMinutes, 1)) * 36, 2),
             'rebounding_percentage' => round(($totalRebounds / max($games->count(), 1)), 2),
-            'games_analyzed' => $games->count()
+            'games_analyzed' => $games->count(),
         ];
     }
 
@@ -407,7 +429,7 @@ class PlayerAnalyticsService
             ->where('player_id', $playerId)
             ->first();
 
-        if (!$game || !$playerGame) {
+        if (! $game || ! $playerGame) {
             // Return default context if game/player game not found
             return [
                 'game_id' => $gameId,
@@ -419,7 +441,7 @@ class PlayerAnalyticsService
                 'rest_days' => 2,
                 'pace_factor' => 1.0,
                 'opponent_defense_rating' => 100.0,
-                'projected_minutes' => 30.0
+                'projected_minutes' => 30.0,
             ];
         }
 
@@ -436,14 +458,14 @@ class PlayerAnalyticsService
             'rest_days' => $this->calculateRestDays($playerId, $game->game_date),
             'pace_factor' => $this->calculatePaceFactor($playerTeam, $opponentTeam->team_id ?? null),
             'opponent_defense_rating' => $this->getTeamDefensiveRating($opponentTeam->team_id ?? null),
-            'projected_minutes' => $this->projectMinutes($playerId, $gameId)
+            'projected_minutes' => $this->projectMinutes($playerId, $gameId),
         ];
     }
 
     /**
      * Get comprehensive analytics for a player
      */
-        public function getAnalytics(int $playerId): array
+    public function getAnalytics(int $playerId): array
     {
         try {
             return [
@@ -462,19 +484,19 @@ class PlayerAnalyticsService
                     'avg_assists' => 0,
                     'field_goal_percentage' => 0,
                     'three_point_percentage' => 0,
-                    'free_throw_percentage' => 0
-                ]
+                    'free_throw_percentage' => 0,
+                ],
             ];
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Failed to get player analytics', [
                 'player_id' => $playerId,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
                 'player_id' => $playerId,
                 'error' => 'Failed to retrieve analytics',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ];
         }
     }
@@ -489,7 +511,7 @@ class PlayerAnalyticsService
             'averages' => [],
             'trends' => [],
             'consistency' => 0,
-            'game_log' => []
+            'game_log' => [],
         ];
     }
 
@@ -505,25 +527,28 @@ class PlayerAnalyticsService
             'minutes' => round($games->avg('minutes'), 1),
             'field_goal_pct' => round(($games->sum('field_goals_made') / max(1, $games->sum('field_goals_attempted'))) * 100, 1),
             'three_point_pct' => round(($games->sum('three_point_field_goals_made') / max(1, $games->sum('three_point_field_goals_attempted'))) * 100, 1),
-            'free_throw_pct' => round(($games->sum('free_throws_made') / max(1, $games->sum('free_throws_attempted'))) * 100, 1)
+            'free_throw_pct' => round(($games->sum('free_throws_made') / max(1, $games->sum('free_throws_attempted'))) * 100, 1),
         ];
     }
 
     private function calculateTrends($games): array
     {
         $gameArray = $games->toArray();
+
         return [
             'points_trend' => $this->calculateLinearTrend(array_column($gameArray, 'points')),
             'rebounds_trend' => $this->calculateLinearTrend(array_column($gameArray, 'rebounds')),
             'assists_trend' => $this->calculateLinearTrend(array_column($gameArray, 'assists')),
-            'minutes_trend' => $this->calculateLinearTrend(array_column($gameArray, 'minutes'))
+            'minutes_trend' => $this->calculateLinearTrend(array_column($gameArray, 'minutes')),
         ];
     }
 
     private function calculateLinearTrend(array $values): float
     {
         $n = count($values);
-        if ($n < 2) return 0;
+        if ($n < 2) {
+            return 0;
+        }
 
         $x = range(1, $n);
         $sumX = array_sum($x);
@@ -537,26 +562,30 @@ class PlayerAnalyticsService
         }
 
         $slope = ($n * $sumXY - $sumX * $sumY) / ($n * $sumX2 - $sumX * $sumX);
+
         return round($slope, 3);
     }
 
     private function calculateConsistency($games): float
     {
         $points = $games->pluck('points')->toArray();
-        if (empty($points)) return 0;
+        if (empty($points)) {
+            return 0;
+        }
 
         $mean = array_sum($points) / count($points);
-        $variance = array_sum(array_map(function($x) use ($mean) {
+        $variance = array_sum(array_map(function ($x) use ($mean) {
             return pow($x - $mean, 2);
         }, $points)) / count($points);
 
         $coefficientOfVariation = $mean > 0 ? sqrt($variance) / $mean : 0;
+
         return round((1 - min(1, $coefficientOfVariation)) * 100, 1);
     }
 
     private function formatGameLog($games): array
     {
-        return $games->map(function($game) {
+        return $games->map(function ($game) {
             return [
                 'date' => $game->game->game_date->format('Y-m-d'),
                 'opponent' => $this->getOpponentName($game),
@@ -567,9 +596,9 @@ class PlayerAnalyticsService
                 'steals' => $game->steals,
                 'blocks' => $game->blocks,
                 'turnovers' => $game->turnovers,
-                'fg_made_attempted' => $game->field_goals_made . '/' . $game->field_goals_attempted,
-                'three_pt_made_attempted' => $game->three_point_field_goals_made . '/' . $game->three_point_field_goals_attempted,
-                'ft_made_attempted' => $game->free_throws_made . '/' . $game->free_throws_attempted
+                'fg_made_attempted' => $game->field_goals_made.'/'.$game->field_goals_attempted,
+                'three_pt_made_attempted' => $game->three_point_field_goals_made.'/'.$game->three_point_field_goals_attempted,
+                'ft_made_attempted' => $game->free_throws_made.'/'.$game->free_throws_attempted,
             ];
         })->toArray();
     }
@@ -586,7 +615,7 @@ class PlayerAnalyticsService
             'games_played' => 0,
             'avg_minutes' => 0,
             'per_36_stats' => [],
-            'efficiency_metrics' => []
+            'efficiency_metrics' => [],
         ];
     }
 
@@ -595,7 +624,7 @@ class PlayerAnalyticsService
         return [
             'true_shooting_pct' => $this->calculateTrueShootingPercentage($games),
             'effective_fg_pct' => $this->calculateEffectiveFieldGoalPercentage($games),
-            'usage_rate' => $this->calculateUsageRate($games)
+            'usage_rate' => $this->calculateUsageRate($games),
         ];
     }
 
@@ -605,7 +634,9 @@ class PlayerAnalyticsService
         $totalFGA = $games->sum('field_goals_attempted');
         $totalFTA = $games->sum('free_throws_attempted');
 
-        if ($totalFGA + (0.44 * $totalFTA) == 0) return 0;
+        if ($totalFGA + (0.44 * $totalFTA) == 0) {
+            return 0;
+        }
 
         return round(($totalPoints / (2 * ($totalFGA + (0.44 * $totalFTA)))) * 100, 1);
     }
@@ -616,7 +647,9 @@ class PlayerAnalyticsService
         $total3PM = $games->sum('three_point_field_goals_made');
         $totalFGA = $games->sum('field_goals_attempted');
 
-        if ($totalFGA == 0) return 0;
+        if ($totalFGA == 0) {
+            return 0;
+        }
 
         return round((($totalFGM + (0.5 * $total3PM)) / $totalFGA) * 100, 1);
     }
@@ -660,16 +693,16 @@ class PlayerAnalyticsService
         }
 
         return [
-            'points' => round($games->avg('points'), 1),
-            'rebounds' => round($games->avg('rebounds'), 1),
-            'assists' => round($games->avg('assists'), 1),
-            'steals' => round($games->avg('steals'), 1),
-            'blocks' => round($games->avg('blocks'), 1),
-            'turnovers' => round($games->avg('turnovers'), 1),
-            'minutes' => round($games->avg('minutes'), 1),
+            'points' => round((float) ($games->avg('points') ?? 0), 1),
+            'rebounds' => round((float) ($games->avg('rebounds') ?? 0), 1),
+            'assists' => round((float) ($games->avg('assists') ?? 0), 1),
+            'steals' => round((float) ($games->avg('steals') ?? 0), 1),
+            'blocks' => round((float) ($games->avg('blocks') ?? 0), 1),
+            'turnovers' => round((float) ($games->avg('turnovers') ?? 0), 1),
+            'minutes' => round((float) ($games->avg('minutes') ?? 0), 1),
             'field_goal_pct' => round(($games->sum('field_goals_made') / max(1, $games->sum('field_goals_attempted'))) * 100, 1),
             'three_point_pct' => round(($games->sum('three_point_field_goals_made') / max(1, $games->sum('three_point_field_goals_attempted'))) * 100, 1),
-            'free_throw_pct' => round(($games->sum('free_throws_made') / max(1, $games->sum('free_throws_attempted'))) * 100, 1)
+            'free_throw_pct' => round(($games->sum('free_throws_made') / max(1, $games->sum('free_throws_attempted'))) * 100, 1),
         ];
     }
 
@@ -681,6 +714,7 @@ class PlayerAnalyticsService
                 $differential[$key] = round($value - $stats2[$key], 1);
             }
         }
+
         return $differential;
     }
 
@@ -699,7 +733,7 @@ class PlayerAnalyticsService
             'assist_turnover_ratio' => 0,
             'rebounding_rate' => ['offensive' => 0, 'defensive' => 0, 'total' => 0],
             'player_efficiency_rating' => 0,
-            'games_analyzed' => 0
+            'games_analyzed' => 0,
         ];
     }
 
@@ -713,13 +747,14 @@ class PlayerAnalyticsService
             'offensive_rebounding_rate' => 0, // Placeholder
             'defensive_rebounding_rate' => 0, // Placeholder
             'total_rebounding_rate' => 0, // Placeholder
-            'player_efficiency_rating' => $this->calculatePER($game)
+            'player_efficiency_rating' => $this->calculatePER($game),
         ];
     }
 
     private function calculateGameTrueShootingPct($game): float
     {
         $denominator = 2 * ($game->field_goals_attempted + (0.44 * $game->free_throws_attempted));
+
         return $denominator > 0 ? ($game->points / $denominator) * 100 : 0;
     }
 
@@ -747,16 +782,20 @@ class PlayerAnalyticsService
 
     private function calculatePerformanceRating($games): float
     {
-        if ($games->isEmpty()) return 0;
+        if ($games->isEmpty()) {
+            return 0;
+        }
 
         return round($games->avg('points') + $games->avg('rebounds') + $games->avg('assists'), 1);
     }
 
     private function calculateWinPercentage($games): float
     {
-        if ($games->isEmpty()) return 0;
+        if ($games->isEmpty()) {
+            return 0;
+        }
 
-        $wins = $games->filter(function($game) {
+        $wins = $games->filter(function ($game) {
             return $this->isWinningGame($game);
         })->count();
 
@@ -773,13 +812,15 @@ class PlayerAnalyticsService
     {
         return [
             'minutes_impact' => round($games->avg('minutes'), 1),
-            'efficiency_impact' => round($games->avg('points') / max(1, $games->avg('minutes')), 2)
+            'efficiency_impact' => round($games->avg('points') / max(1, $games->avg('minutes')), 2),
         ];
     }
 
     private function calculateClutchFactor($closeGames, $blowoutGames): float
     {
-        if ($closeGames->isEmpty() || $blowoutGames->isEmpty()) return 0;
+        if ($closeGames->isEmpty() || $blowoutGames->isEmpty()) {
+            return 0;
+        }
 
         $closeAvg = $closeGames->avg('points');
         $blowoutAvg = $blowoutGames->avg('points');
@@ -796,27 +837,30 @@ class PlayerAnalyticsService
             'true_shooting_percentage' => 0,
             'effective_field_goal_percentage' => 0,
             'shot_distribution' => [],
-            'shooting_consistency' => 0
+            'shooting_consistency' => 0,
         ];
     }
 
     private function calculateShootingConsistency($games): float
     {
-        $fgPercentages = $games->map(function($game) {
+        $fgPercentages = $games->map(function ($game) {
             return $game->field_goals_attempted > 0 ?
                 ($game->field_goals_made / $game->field_goals_attempted) * 100 : 0;
-        })->filter(function($pct) {
+        })->filter(function ($pct) {
             return $pct > 0;
         });
 
-        if ($fgPercentages->isEmpty()) return 0;
+        if ($fgPercentages->isEmpty()) {
+            return 0;
+        }
 
         $mean = $fgPercentages->avg();
-        $variance = $fgPercentages->map(function($pct) use ($mean) {
+        $variance = $fgPercentages->map(function ($pct) use ($mean) {
             return pow($pct - $mean, 2);
         })->avg();
 
         $coefficientOfVariation = $mean > 0 ? sqrt($variance) / $mean : 0;
+
         return round((1 - min(1, $coefficientOfVariation)) * 100, 1);
     }
 
@@ -827,7 +871,7 @@ class PlayerAnalyticsService
             'offensive_rebounding_rate' => 0,
             'defensive_rebounding_rate' => 0,
             'rebounding_percentage' => 0,
-            'games_analyzed' => 0
+            'games_analyzed' => 0,
         ];
     }
 

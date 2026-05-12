@@ -161,13 +161,29 @@
                                                     <td>
                                                         <small class="text-muted">{player.athlete_id}</small>
                                                     </td>
-                                                    <td class="text-center">
-                                                        <a href="/players/{player.athlete_id}/analytics" class="btn btn-success btn-sm me-1">
-                                                            <i class="fas fa-chart-line"></i>
-                                                        </a>
-                                                        <a href="/players/{player.athlete_id}" class="btn btn-outline-success btn-sm">
-                                                            <i class="fas fa-eye"></i>
-                                                        </a>
+                                                    <td class="text-center align-middle">
+                                                        <div
+                                                            class="d-inline-flex flex-wrap gap-2 justify-content-center player-table-actions"
+                                                        >
+                                                            <a
+                                                                href="/players/{player.athlete_id}/data"
+                                                                class="btn btn-outline-success btn-sm"
+                                                                title="Data"
+                                                                ><i class="fas fa-database"></i></a
+                                                            >
+                                                            <a
+                                                                href="/players/{player.athlete_id}/analytics"
+                                                                class="btn btn-success btn-sm"
+                                                                title="Analytics"
+                                                                ><i class="fas fa-chart-line"></i></a
+                                                            >
+                                                            <a
+                                                                href="/players/{player.athlete_id}"
+                                                                class="btn btn-outline-secondary btn-sm"
+                                                                title="Profile"
+                                                                ><i class="fas fa-eye"></i></a
+                                                            >
+                                                        </div>
                                                     </td>
                                                 </tr>
                                             {/each}
@@ -223,23 +239,19 @@
                                     </div>
                                 </div>
 
-                                <div class="row g-2 mb-3">
-                                    <div class="col-4">
-                                        <a href="/players/{player.athlete_id}/data" class="btn btn-success btn-sm">
-                                            <i class="fas fa-chart-line me-1"></i>
-                                            Data
-                                        </a>
-                                    </div>
-                                    <div class="col-4">
-                                        <a href="/players/{player.athlete_id}/analytics" class="btn btn-success btn-sm">
-                                            <i class="fas fa-chart-line me-1"></i>Advanced Analytics
-                                        </a>
-                                    </div>
-                                    <div class="col-4">
-                                        <a href="/players/{player.athlete_id}" class="btn btn-success btn-sm">
-                                            View Details
-                                        </a>
-                                    </div>
+                                <div class="player-card-actions d-flex flex-column flex-lg-row flex-wrap gap-2 mt-3">
+                                    <a href="/players/{player.athlete_id}/data" class="btn btn-success btn-sm flex-fill text-center text-nowrap">
+                                        <i class="fas fa-database me-1"></i>Data
+                                    </a>
+                                    <a
+                                        href="/players/{player.athlete_id}/analytics"
+                                        class="btn btn-outline-success btn-sm flex-fill text-center text-nowrap"
+                                    >
+                                        <i class="fas fa-chart-line me-1"></i>Analytics
+                                    </a>
+                                    <a href="/players/{player.athlete_id}" class="btn btn-outline-secondary btn-sm flex-fill text-center text-nowrap">
+                                        <i class="fas fa-eye me-1"></i>Profile
+                                    </a>
                                 </div>
                             </div>
                         </div>
