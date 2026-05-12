@@ -356,28 +356,39 @@ class PredictionsController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => Cache::remember($cacheKey, now()->addMinutes(30), function() use ($timezone) {
-                    $props = $this->generateTodaysBestProps($timezone);
+                'data' => Cache::remember($cacheKey, now()->addMinutes(30), function () use ($timezone) {
+                    try {
+                        $props = $this->generateTodaysBestProps($timezone);
 
-                    if (empty($props)) {
-                        Log::info('No games scheduled for today in user timezone - returning empty props list', [
-                            'timezone' => $timezone
+                        if (empty($props)) {
+                            Log::info('No games scheduled for today in user timezone - returning empty props list', [
+                                'timezone' => $timezone,
+                            ]);
+
+                            return [];
+                        }
+
+                        return $props;
+                    } catch (\Throwable $e) {
+                        Log::warning('generateTodaysBestProps failed; returning empty props list', [
+                            'timezone' => $timezone,
+                            'error' => $e->getMessage(),
                         ]);
+
                         return [];
                     }
-
-                    return $props;
-                })
+                }),
             ]);
         } catch (\Exception $e) {
             Log::error('Failed to get today\'s best props', [
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return response()->json([
-                'success' => false,
-                'message' => 'Failed to get today\'s best props'
-            ], 500);
+                'success' => true,
+                'data' => [],
+                'message' => 'Props unavailable; check logs or configuration.',
+            ]);
         }
     }
 

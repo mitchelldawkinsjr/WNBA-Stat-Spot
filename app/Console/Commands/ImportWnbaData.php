@@ -17,7 +17,8 @@ class ImportWnbaData extends Command
      */
     protected $signature = 'app:import-wnba-data
                             {--force : Clear existing WNBA rows and reimport from scratch}
-                            {--if-empty : Skip import when wnba_players already has data (unless --force)}';
+                            {--if-empty : Skip import when wnba_players already has data (unless --force)}
+                            {--with-pbp : Include play-by-play CSV (very large; needs high PHP memory_limit)}';
 
     /**
      * The console command description.
@@ -77,13 +78,18 @@ class ImportWnbaData extends Command
             $this->info('✅ Game schedule data imported successfully.');
             $this->newLine();
 
-            // Step 3: Import play-by-play/box score data (contains player stats)
-            $this->info('🏀 Step 3: Downloading and importing player statistics...');
-            $pbpPath = $service->downloadPbpData();
-            $pbpData = $service->parsePbpData($pbpPath);
-            $service->savePbpData($pbpData);
-            $this->info('✅ Play-by-play data imported successfully.');
-            $this->newLine();
+            // Step 3: Play-by-play (optional — full-season PBP CSV is huge and often exceeds default PHP memory)
+            if ($this->option('with-pbp')) {
+                $this->info('🏀 Step 3: Downloading and importing play-by-play data...');
+                $pbpPath = $service->downloadPbpData();
+                $pbpData = $service->parsePbpData($pbpPath);
+                $service->savePbpData($pbpData);
+                $this->info('✅ Play-by-play data imported successfully.');
+                $this->newLine();
+            } else {
+                $this->info('⏭️  Step 3: Skipping play-by-play import (use --with-pbp to enable; requires more memory).');
+                $this->newLine();
+            }
 
             // Step 4: Import player/box score data (contains player stats)
             $this->info('🏀 Step 4: Downloading player boxscore data...');
