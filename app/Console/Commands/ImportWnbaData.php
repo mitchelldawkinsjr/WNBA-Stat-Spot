@@ -2,9 +2,11 @@
 
 namespace App\Console\Commands;
 
-use Illuminate\Console\Command;
-use Illuminate\Support\Facades\DB;
 use App\Services\WnbaDataService;
+use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class ImportWnbaData extends Command
 {
@@ -13,7 +15,9 @@ class ImportWnbaData extends Command
      *
      * @var string
      */
-    protected $signature = 'app:import-wnba-data {--force : Force reimport even if data exists}';
+    protected $signature = 'app:import-wnba-data
+                            {--force : Clear existing WNBA rows and reimport from scratch}
+                            {--if-empty : Skip import when wnba_players already has data (unless --force)}';
 
     /**
      * The console command description.
@@ -34,6 +38,15 @@ class ImportWnbaData extends Command
         $force = $this->option('force');
 
         try {
+            if ($this->option('if-empty') && ! $force && Schema::hasTable('wnba_players')) {
+                $existing = DB::table('wnba_players')->count();
+                if ($existing > 0) {
+                    $this->info("⏭️  Skipping import: {$existing} players already in database (use --force to reimport).");
+
+                    return 0;
+                }
+            }
+
             // Step 0: Ensure database tables exist
             $this->info('🗄️  Step 0: Ensuring database tables exist...');
             $this->call('migrate', ['--force' => true]);
@@ -68,8 +81,8 @@ class ImportWnbaData extends Command
             $this->info('🏀 Step 3: Downloading and importing player statistics...');
             $pbpPath = $service->downloadPbpData();
             $pbpData = $service->parsePbpData($pbpPath);
-            $service->saveBoxScoreData($pbpData);
-            $this->info('✅ Player statistics imported successfully.');
+            $service->savePbpData($pbpData);
+            $this->info('✅ Play-by-play data imported successfully.');
             $this->newLine();
 
             // Step 4: Import player/box score data (contains player stats)
@@ -82,6 +95,13 @@ class ImportWnbaData extends Command
 
             // Display summary
             $this->displayImportSummary();
+
+            try {
+                Artisan::call('cache:clear');
+                $this->info('🧹 Application cache cleared so API lists reflect new data.');
+            } catch (\Throwable $e) {
+                $this->warn('Could not clear cache: '.$e->getMessage());
+            }
 
         } catch (\Exception $e) {
             $this->error('❌ Import failed: ' . $e->getMessage());
@@ -97,45 +117,44 @@ class ImportWnbaData extends Command
     /**
      * Clear all existing WNBA data from the database
      */
-    private function clearExistingData()
+    private function clearExistingData(): void
     {
-        // Disable foreign key checks temporarily
-        DB::statement('SET FOREIGN_KEY_CHECKS=0');
-
         $tables = [
-            'wnba_player_games',  // Clear this first due to foreign key constraints
-            'wnba_plays',         // Clear plays that might reference games and teams
-            'wnba_game_teams',    // Clear this before games - team associations
-            'wnba_games',         // Clear games before teams (if there are direct FK constraints)
-            'wnba_players',       // Clear players
-            'wnba_teams'          // Clear teams last
+            'wnba_player_games',
+            'wnba_plays',
+            'wnba_game_teams',
+            'wnba_games',
+            'wnba_players',
+            'wnba_teams',
         ];
 
-        foreach ($tables as $table) {
-            try {
-                $count = DB::table($table)->count();
-                if ($count > 0) {
-                    DB::table($table)->truncate();
-                    $this->line("   🗑️  Cleared {$count} records from {$table}");
-                } else {
-                    $this->line("   ✓ {$table} was already empty");
+        Schema::disableForeignKeyConstraints();
+
+        try {
+            foreach ($tables as $table) {
+                if (! Schema::hasTable($table)) {
+                    continue;
                 }
-            } catch (\Exception $e) {
-                // If truncate fails due to foreign keys, try delete
                 try {
                     $count = DB::table($table)->count();
                     if ($count > 0) {
-                        DB::table($table)->delete();
-                        $this->line("   🗑️  Cleared {$count} records from {$table} (using DELETE)");
+                        DB::table($table)->truncate();
+                        $this->line("   🗑️  Cleared {$count} records from {$table}");
+                    } else {
+                        $this->line("   ✓ {$table} was already empty");
                     }
-                } catch (\Exception $deleteError) {
-                    $this->warn("   ⚠️  Could not clear {$table}: " . $deleteError->getMessage());
+                } catch (\Exception $e) {
+                    try {
+                        $deleted = DB::table($table)->delete();
+                        $this->line("   🗑️  Cleared {$deleted} records from {$table} (delete fallback)");
+                    } catch (\Exception $deleteError) {
+                        $this->warn("   ⚠️  Could not clear {$table}: ".$deleteError->getMessage());
+                    }
                 }
             }
+        } finally {
+            Schema::enableForeignKeyConstraints();
         }
-
-        // Re-enable foreign key checks
-        DB::statement('SET FOREIGN_KEY_CHECKS=1');
     }
 
     private function displayImportSummary()
