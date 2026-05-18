@@ -644,6 +644,21 @@ async function fetchApi<T>(endpoint: string, options?: RequestInit & { cacheTtl?
     }
 }
 
+/** DataAggregator aggregated player stats (players/{id}/data page). Shared by api.players & api.wnba.data. */
+function fetchAggregatedPlayerDataApi(
+    playerId: string,
+    options?: { season?: number; last_n_games?: number }
+) {
+    const params = new URLSearchParams();
+    if (options?.season != null) params.append('season', String(options.season));
+    if (options?.last_n_games != null) params.append('last_n_games', String(options.last_n_games));
+    const qs = params.toString();
+    return fetchApi<{ success: boolean; data: AggregatedPlayerData; message?: string }>(
+        `/wnba/data/players/${playerId}${qs ? `?${qs}` : ''}`,
+        { cacheTtl: 'medium' }
+    );
+}
+
 export const api = {
     // Connection testing for Docker debugging
     test: {
@@ -709,6 +724,12 @@ export const api = {
         },
         getSummary: () => fetchApi<ApiResponse<Player[]>>('/players/summary', { cacheTtl: 'long' }),
         getById: (id: string) => fetchApi<ApiResponse<Player>>(`/players/${id}`, { cacheTtl: 'medium' }),
+        /**
+         * Aggregated box-score + trends from DataAggregator (/wnba/data/players/:id).
+         * Use this instead of api.wnba.data.getPlayerData — some deployments had `api.wnba.data` stripped/missing at runtime.
+         */
+        getAggregatedData: (playerId: string, options?: { season?: number; last_n_games?: number }) =>
+            fetchAggregatedPlayerDataApi(playerId, options),
         clearCache: () => fetchApi<ApiResponse<any>>('/players/clear-cache', { method: 'POST' }),
     },
     games: {
@@ -797,6 +818,21 @@ export const api = {
             getAnalytics: (params?: { timeframe?: string; bet_type?: string }) => {
                 const query = params ? `?${new URLSearchParams(params as any).toString()}` : '';
                 return fetchApi<{ success: boolean; data: any }>(`/wnba/betting/analytics${query}`, { cacheTtl: 'medium' });
+            },
+        },
+        /** @deprecated Prefer `api.players.getAggregatedData` — some builds dropped nested `api.wnba.data`. */
+        data: {
+            getPlayerData: (playerId: string, options?: { season?: number; last_n_games?: number }) =>
+                fetchAggregatedPlayerDataApi(playerId, options),
+            getTeamData: (teamId: string, options?: { season?: number; last_n_games?: number }) => {
+                const params = new URLSearchParams();
+                if (options?.season != null) params.append('season', String(options.season));
+                if (options?.last_n_games != null) params.append('last_n_games', String(options.last_n_games));
+                const qs = params.toString();
+                return fetchApi<{ success: boolean; data: AggregatedTeamData; message?: string }>(
+                    `/wnba/data/teams/${teamId}${qs ? `?${qs}` : ''}`,
+                    { cacheTtl: 'medium' }
+                );
             },
         },
         dataQuality: {

@@ -23,22 +23,21 @@ class DataAggregatorService
      */
     public function aggregatePlayerData(int $playerId, ?int $season = null, ?int $lastNGames = null): array
     {
-        $cacheKey = "player_data_{$playerId}_{$season}_{$lastNGames}";
+        $cacheKey = "player_data_v2_{$playerId}_{$season}_{$lastNGames}";
 
-        return Cache::remember($cacheKey, self::CACHE_TTL, function() use ($playerId, $season, $lastNGames) {
+        return Cache::remember($cacheKey, self::CACHE_TTL, function () use ($playerId, $season, $lastNGames) {
             try {
-                $query = WnbaPlayerGame::with(['game', 'team', 'player'])
-                    ->where('player_id', $playerId);
+                $query = WnbaPlayerGame::query()
+                    ->with(['game', 'team', 'player'])
+                    ->select('wnba_player_games.*')
+                    ->where('wnba_player_games.player_id', $playerId)
+                    ->join('wnba_games', 'wnba_games.id', '=', 'wnba_player_games.game_id');
 
                 if ($season) {
-                    $query->whereHas('game', function($q) use ($season) {
-                        $q->where('season', $season);
-                    });
+                    $query->where('wnba_games.season', $season);
                 }
 
-                $query->whereHas('game', function($q) {
-                    $q->orderBy('game_date', 'desc');
-                });
+                $query->orderBy('wnba_games.game_date', 'desc');
 
                 if ($lastNGames) {
                     $query->limit($lastNGames);
@@ -58,14 +57,15 @@ class DataAggregatorService
                     'situational_stats' => $this->calculateSituationalStats($games),
                     'advanced_metrics' => $this->calculateAdvancedPlayerMetrics($games),
                     'consistency_metrics' => $this->calculateConsistencyMetrics($games),
-                    'data_quality' => $this->assessDataQuality($games)
+                    'data_quality' => $this->assessDataQuality($games),
                 ];
 
             } catch (\Exception $e) {
                 Log::error('Player data aggregation failed', [
                     'player_id' => $playerId,
-                    'error' => $e->getMessage()
+                    'error' => $e->getMessage(),
                 ]);
+
                 return $this->getEmptyPlayerData();
             }
         });
@@ -306,22 +306,26 @@ class DataAggregatorService
 
     private function calculateSeasonStats($games): array
     {
+        $avg = static function ($collection, string $attr, int $precision = 1): float {
+            return round((float) ($collection->avg($attr) ?? 0), $precision);
+        };
+
         return [
             'games_played' => $games->count(),
             'averages' => [
-                'points' => round($games->avg('points'), 1),
-                'rebounds' => round($games->avg('rebounds'), 1),
-                'assists' => round($games->avg('assists'), 1),
-                'steals' => round($games->avg('steals'), 1),
-                'blocks' => round($games->avg('blocks'), 1),
-                'turnovers' => round($games->avg('turnovers'), 1),
-                'minutes' => round($games->avg('minutes'), 1),
-                'field_goals_made' => round($games->avg('field_goals_made'), 1),
-                'field_goals_attempted' => round($games->avg('field_goals_attempted'), 1),
-                'three_point_made' => round($games->avg('three_point_field_goals_made'), 1),
-                'three_point_attempted' => round($games->avg('three_point_field_goals_attempted'), 1),
-                'free_throws_made' => round($games->avg('free_throws_made'), 1),
-                'free_throws_attempted' => round($games->avg('free_throws_attempted'), 1)
+                'points' => $avg($games, 'points'),
+                'rebounds' => $avg($games, 'rebounds'),
+                'assists' => $avg($games, 'assists'),
+                'steals' => $avg($games, 'steals'),
+                'blocks' => $avg($games, 'blocks'),
+                'turnovers' => $avg($games, 'turnovers'),
+                'minutes' => $avg($games, 'minutes'),
+                'field_goals_made' => $avg($games, 'field_goals_made'),
+                'field_goals_attempted' => $avg($games, 'field_goals_attempted'),
+                'three_point_made' => $avg($games, 'three_point_field_goals_made'),
+                'three_point_attempted' => $avg($games, 'three_point_field_goals_attempted'),
+                'free_throws_made' => $avg($games, 'free_throws_made'),
+                'free_throws_attempted' => $avg($games, 'free_throws_attempted'),
             ],
             'totals' => [
                 'points' => $games->sum('points'),
@@ -342,10 +346,12 @@ class DataAggregatorService
 
     private function formatGameLog($games): array
     {
-        return $games->map(function($game) {
+        return $games->map(function ($game) {
+            $date = optional(optional($game->game)->game_date)->format('Y-m-d') ?? '';
+
             return [
                 'game_id' => $game->game_id,
-                'date' => $game->game->game_date->format('Y-m-d'),
+                'date' => $date,
                 'opponent' => $this->getOpponentName($game),
                 'home_away' => $this->getHomeAway($game),
                 'minutes' => $game->minutes,
@@ -967,14 +973,82 @@ class DataAggregatorService
     private function getEmptyPlayerData(): array
     {
         return [
-            'player_info' => [],
-            'season_stats' => [],
+            'player_info' => [
+                'player_id' => 0,
+                'athlete_id' => '',
+                'name' => '',
+                'position' => '',
+                'team_id' => 0,
+                'team_name' => '',
+            ],
+            'season_stats' => [
+                'games_played' => 0,
+                'averages' => [
+                    'points' => 0,
+                    'rebounds' => 0,
+                    'assists' => 0,
+                    'steals' => 0,
+                    'blocks' => 0,
+                    'turnovers' => 0,
+                    'minutes' => 0,
+                    'field_goals_made' => 0,
+                    'field_goals_attempted' => 0,
+                    'three_point_made' => 0,
+                    'three_point_attempted' => 0,
+                    'free_throws_made' => 0,
+                    'free_throws_attempted' => 0,
+                ],
+                'totals' => [
+                    'points' => 0,
+                    'rebounds' => 0,
+                    'assists' => 0,
+                    'steals' => 0,
+                    'blocks' => 0,
+                    'turnovers' => 0,
+                    'minutes' => 0,
+                ],
+                'percentages' => [
+                    'field_goal_pct' => 0,
+                    'three_point_pct' => 0,
+                    'free_throw_pct' => 0,
+                ],
+            ],
             'game_log' => [],
-            'performance_trends' => [],
-            'situational_stats' => [],
-            'advanced_metrics' => [],
-            'consistency_metrics' => [],
-            'data_quality' => ['quality_score' => 0]
+            'performance_trends' => [
+                'points_trend' => 0,
+                'rebounds_trend' => 0,
+                'assists_trend' => 0,
+                'minutes_trend' => 0,
+                'efficiency_trend' => 0,
+            ],
+            'situational_stats' => [
+                'home' => [],
+                'away' => [],
+                'vs_strong_defense' => [],
+                'vs_weak_defense' => [],
+                'back_to_back' => [],
+                'rest_days' => [],
+            ],
+            'advanced_metrics' => [
+                'usage_rate' => 0,
+                'true_shooting_pct' => 0,
+                'effective_fg_pct' => 0,
+                'assist_turnover_ratio' => 0,
+                'per_36_stats' => [],
+                'player_efficiency_rating' => 0,
+            ],
+            'consistency_metrics' => [
+                'points_consistency' => 0,
+                'rebounds_consistency' => 0,
+                'assists_consistency' => 0,
+                'overall_consistency' => 0,
+            ],
+            'data_quality' => [
+                'sample_size' => 0,
+                'data_completeness' => 0,
+                'recency_score' => 0,
+                'quality_score' => 0,
+            ],
         ];
     }
 
