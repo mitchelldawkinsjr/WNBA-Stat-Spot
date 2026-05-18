@@ -94,9 +94,9 @@
                 sharpe_ratio: 1.42
             },
             monthly_performance: [
-                { month: 'Jan 2025', bets: Math.floor(89 * timeframeMultiplier / 12), profit: Math.floor(890 * timeframeMultiplier / 12), roi: 0.095 },
-                { month: 'Dec 2024', bets: Math.floor(76 * timeframeMultiplier / 12), profit: Math.floor(456 * timeframeMultiplier / 12), roi: 0.062 },
-                { month: 'Nov 2024', bets: Math.floor(82 * timeframeMultiplier / 12), profit: Math.floor(799 * timeframeMultiplier / 12), roi: 0.098 }
+                { month: 'Mar 2026', bets: Math.floor(89 * timeframeMultiplier / 12), profit: Math.floor(890 * timeframeMultiplier / 12), roi: 0.095 },
+                { month: 'Feb 2026', bets: Math.floor(76 * timeframeMultiplier / 12), profit: Math.floor(456 * timeframeMultiplier / 12), roi: 0.062 },
+                { month: 'Jan 2026', bets: Math.floor(82 * timeframeMultiplier / 12), profit: Math.floor(799 * timeframeMultiplier / 12), roi: 0.098 }
             ],
             bet_type_performance: {
                 player_props: {

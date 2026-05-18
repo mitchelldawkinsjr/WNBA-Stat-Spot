@@ -34,7 +34,7 @@
 
         "WNBA_CACHE_ENABLED": "true",
         "WNBA_CACHE_TTL": "3600",
-        "WNBA_CURRENT_SEASON": "2025",
+        "WNBA_CURRENT_SEASON": "2026",
         "WNBA_LOGGING_ENABLED": "true",
         "WNBA_LOG_LEVEL": "info"
       }

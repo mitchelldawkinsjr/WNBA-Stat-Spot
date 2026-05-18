@@ -26,9 +26,9 @@ vi.mock('$app/navigation', () => ({
     invalidateAll: vi.fn()
 }));
 
-// Mock Chart.js
-vi.mock('chart.js/auto', () => ({
-    default: vi.fn(() => ({
+// Mock Chart.js (must match `$lib/chart/register` import path)
+vi.mock('$lib/chart/register', () => ({
+    Chart: vi.fn(() => ({
         destroy: vi.fn(),
         update: vi.fn(),
         resize: vi.fn(),

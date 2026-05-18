@@ -1,0 +1,365 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_type:
+        description: 'Version type'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+      prerelease:
+        description: 'Is this a prerelease?'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  PHP_VERSION: 8.2
+  NODE_VERSION: 20
+
+jobs:
+  prepare-release:
+    name: Prepare Release
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      changelog: ${{ steps.changelog.outputs.changelog }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install release tools
+        run: |
+          npm install -g semantic-release @semantic-release/changelog @semantic-release/git
+
+      - name: Generate version
+        id: version
+        run: |
+          # Get current version from package.json or create initial version
+          CURRENT_VERSION=$(git tag --list --sort=-v:refname | head -1 | sed 's/^v//' || echo "0.0.0")
+
+          # Calculate new version based on input
+          case "${{ github.event.inputs.version_type }}" in
+            major)
+              NEW_VERSION=$(echo $CURRENT_VERSION | awk -F. '{print ($1+1)".0.0"}')
+              ;;
+            minor)
+              NEW_VERSION=$(echo $CURRENT_VERSION | awk -F. '{print $1".".($2+1)".0"}')
+              ;;
+            patch)
+              NEW_VERSION=$(echo $CURRENT_VERSION | awk -F. '{print $1"."$2".".($3+1)}')
+              ;;
+          esac
+
+          if [ "${{ github.event.inputs.prerelease }}" = "true" ]; then
+            NEW_VERSION="${NEW_VERSION}-rc.$(date +%Y%m%d%H%M%S)"
+          fi
+
+          echo "Current version: $CURRENT_VERSION"
+          echo "New version: $NEW_VERSION"
+          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "tag=v$NEW_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # Generate changelog since last release
+          LAST_TAG=$(git tag --list --sort=-v:refname | head -1 || echo "")
+
+          if [ -z "$LAST_TAG" ]; then
+            CHANGELOG="## Initial Release\n\nFirst release of WNBA Stat Spot"
+          else
+            CHANGELOG="## Changes since $LAST_TAG\n\n"
+
+            # Get commits since last tag
+            git log ${LAST_TAG}..HEAD --oneline --no-merges --pretty=format:"- %s (%an)" | while read line; do
+              CHANGELOG="${CHANGELOG}${line}\n"
+            done
+          fi
+
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          echo -e "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+  build-and-test:
+    name: Build and Test for Release
+    runs-on: ubuntu-latest
+    needs: prepare-release
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: wnba_test
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: wnba_test
+        options: >-
+          --health-cmd "pg_isready -U wnba_test -d wnba_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: pdo, pdo_pgsql, mbstring, exif, pcntl, bcmath, gd, redis
+          tools: composer:v2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: resources/js/package-lock.json
+
+      - name: Install Dependencies
+        run: |
+          composer install --no-interaction --prefer-dist
+          cd resources/js && npm ci
+
+      - name: Run Full Test Suite
+        env:
+          DB_CONNECTION: pgsql
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_DATABASE: wnba_test
+          DB_USERNAME: wnba_test
+          DB_PASSWORD: test_password
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+        run: |
+          cp .env.example .env.testing
+          php artisan key:generate --env=testing
+          php artisan migrate --env=testing --force
+          php artisan test --env=testing
+
+      - name: Build Production Assets
+        working-directory: ./resources/js
+        run: npm run build
+
+      - name: Create Release Build
+        run: |
+          # Create optimized production build
+          composer install --no-dev --optimize-autoloader --no-interaction
+          php artisan config:cache
+          php artisan route:cache
+          php artisan view:cache
+
+          # Create release archive
+          tar -czf wnba-stat-spot-${{ needs.prepare-release.outputs.version }}.tar.gz \
+            --exclude=node_modules \
+            --exclude=.git \
+            --exclude=tests \
+            --exclude=.env.testing \
+            --exclude=storage/logs \
+            .
+
+      - name: Upload Release Build
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-build-${{ needs.prepare-release.outputs.version }}
+          path: wnba-stat-spot-${{ needs.prepare-release.outputs.version }}.tar.gz
+          retention-days: 90
+
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [prepare-release, build-and-test]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download Release Build
+        uses: actions/download-artifact@v4
+        with:
+          name: release-build-${{ needs.prepare-release.outputs.version }}
+
+      - name: Create Release Notes
+        id: release_notes
+        run: |
+          cat > release_notes.md << 'EOF'
+          # WNBA Stat Spot ${{ needs.prepare-release.outputs.version }}
+
+          ${{ needs.prepare-release.outputs.changelog }}
+
+          ## 🚀 Features
+          - Comprehensive WNBA statistics and analytics
+          - Real-time player and team performance tracking
+          - Advanced prediction algorithms
+          - Modern responsive web interface
+
+          ## 🔧 Installation
+
+          ### Using Docker (Recommended)
+          ```bash
+          docker run -d -p 80:80 ghcr.io/${{ github.repository }}:${{ needs.prepare-release.outputs.version }}
+          ```
+
+          ### Manual Installation
+          1. Download and extract the release archive
+          2. Follow the deployment guide in DEPLOYMENT_STEPS.md
+          3. Configure your environment variables
+          4. Run database migrations
+
+          ## 📋 Requirements
+          - PHP 8.2+
+          - PostgreSQL 15+
+          - Redis 6+
+          - Node.js 20+ (for frontend builds)
+
+          ## 🆕 What's New
+
+          See the full changelog above for detailed changes in this release.
+
+          ## 🐛 Known Issues
+
+          - None at this time
+
+          ## 📚 Documentation
+
+          - [Deployment Guide](DEPLOYMENT_STEPS.md)
+          - [Analytics Documentation](README_WNBA_ANALYTICS.md)
+          - [API Documentation](docs/api.md)
+
+          ## 🤝 Support
+
+          If you encounter any issues, please:
+          1. Check the [troubleshooting guide](RENDER_DATABASE_TROUBLESHOOTING.md)
+          2. Search existing issues
+          3. Create a new issue with detailed information
+          EOF
+
+      - name: Create Git Tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a ${{ needs.prepare-release.outputs.tag }} -m "Release ${{ needs.prepare-release.outputs.version }}"
+          git push origin ${{ needs.prepare-release.outputs.tag }}
+
+      - name: Create GitHub Release
+        uses: actions/create-release@v1
+        id: create_release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ needs.prepare-release.outputs.tag }}
+          release_name: WNBA Stat Spot ${{ needs.prepare-release.outputs.version }}
+          body_path: release_notes.md
+          draft: false
+          prerelease: ${{ github.event.inputs.prerelease }}
+
+      - name: Upload Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./wnba-stat-spot-${{ needs.prepare-release.outputs.version }}.tar.gz
+          asset_name: wnba-stat-spot-${{ needs.prepare-release.outputs.version }}.tar.gz
+          asset_content_type: application/gzip
+
+  docker-release:
+    name: Build and Push Release Docker Image
+    runs-on: ubuntu-latest
+    needs: [prepare-release, build-and-test]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=raw,value=${{ needs.prepare-release.outputs.version }}
+            type=raw,value=latest,enable=${{ github.event.inputs.prerelease != 'true' }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64,linux/arm64
+
+  notify-release:
+    name: Notify Release
+    runs-on: ubuntu-latest
+    needs: [prepare-release, create-release, docker-release]
+    if: always()
+
+    steps:
+      - name: Notify Success
+        if: needs.create-release.result == 'success' && needs.docker-release.result == 'success'
+        uses: 8398a7/action-slack@v3
+        with:
+          status: success
+          channel: '#releases'
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+          text: |
+            🎉 WNBA Stat Spot ${{ needs.prepare-release.outputs.version }} has been released!
+
+            📦 Release: https://github.com/${{ github.repository }}/releases/tag/${{ needs.prepare-release.outputs.tag }}
+            🐳 Docker: `ghcr.io/${{ github.repository }}:${{ needs.prepare-release.outputs.version }}`
+
+      - name: Notify Failure
+        if: needs.create-release.result == 'failure' || needs.docker-release.result == 'failure'
+        uses: 8398a7/action-slack@v3
+        with:
+          status: failure
+          channel: '#releases'
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+          text: |
+            ❌ Failed to release WNBA Stat Spot ${{ needs.prepare-release.outputs.version }}
+
+            Please check the workflow logs for details.

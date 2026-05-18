@@ -1,0 +1,293 @@
+name: PR Quality Check
+
+on:
+  pull_request:
+    branches: [main, develop]
+  pull_request_review:
+    types: [submitted]
+
+env:
+  PHP_VERSION: 8.2
+  NODE_VERSION: 20
+
+jobs:
+  quality-gates:
+    name: Quality Gates
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: pdo, mbstring, exif, pcntl, bcmath, gd
+          tools: composer:v2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: resources/js/package-lock.json
+
+      - name: Install Dependencies
+        run: |
+          composer install --no-interaction --prefer-dist
+          cd resources/js && npm ci
+
+      - name: Check PR Title Format
+        run: |
+          PR_TITLE="${{ github.event.pull_request.title }}"
+
+          # Check if PR title follows conventional commit format
+          if ! echo "$PR_TITLE" | grep -qE "^(feat|fix|docs|style|refactor|test|chore|perf|ci|build)(\(.+\))?: .+"; then
+            echo "❌ PR title should follow conventional commit format:"
+            echo "   feat(scope): description"
+            echo "   fix(scope): description"
+            echo "   docs: description"
+            echo "   etc."
+            echo ""
+            echo "Current title: $PR_TITLE"
+            exit 1
+          fi
+
+          echo "✅ PR title format is valid"
+
+      - name: Check for Breaking Changes
+        run: |
+          # Check if breaking changes are documented
+          if git diff origin/main...HEAD --name-only | grep -qE "(migrations|config|routes)"; then
+            echo "⚠️ Potential breaking changes detected"
+            echo "Please ensure breaking changes are documented in PR description"
+          fi
+
+      - name: File Size Check
+        run: |
+          # Check for large files that shouldn't be committed
+          find . -type f -size +5M -not -path "./.git/*" -not -path "./node_modules/*" -not -path "./vendor/*" | while read file; do
+            echo "❌ Large file detected: $file"
+            echo "Files over 5MB should not be committed to the repository"
+            exit 1
+          done
+
+          echo "✅ No large files detected"
+
+      - name: Security Scan for PR
+        run: |
+          # Scan only changed files for potential security issues
+          git diff origin/main...HEAD --name-only | grep -E "\.(php|js|ts|svelte)$" | head -20 | while read file; do
+            if [ -f "$file" ]; then
+              echo "Scanning $file for potential issues..."
+
+              # Check for common security issues
+              if grep -qE "(eval\(|system\(|exec\(|shell_exec\()" "$file"; then
+                echo "⚠️ Potential dangerous function found in $file"
+              fi
+
+              if grep -qE "(password|secret|key|token).*=.*['\"].*['\"]" "$file"; then
+                echo "⚠️ Potential hardcoded credential found in $file"
+              fi
+            fi
+          done
+
+      - name: Code Coverage Check
+        run: |
+          # Run tests and check coverage
+          php artisan test --coverage-clover=coverage.xml
+
+          # Extract coverage percentage
+          COVERAGE=$(php -r "
+            \$xml = simplexml_load_file('coverage.xml');
+            \$metrics = \$xml->project->metrics;
+            \$covered = (float)\$metrics['coveredstatements'];
+            \$total = (float)\$metrics['statements'];
+            echo \$total > 0 ? round((\$covered / \$total) * 100, 2) : 0;
+          ")
+
+          echo "Code coverage: ${COVERAGE}%"
+
+          if (( $(echo "$COVERAGE < 70" | bc -l) )); then
+            echo "❌ Code coverage is below 70%"
+            exit 1
+          fi
+
+          echo "✅ Code coverage meets requirements"
+
+  code-review-checklist:
+    name: Code Review Checklist
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate PR Analysis
+        id: analysis
+        run: |
+          # Analyze changes
+          ADDED_LINES=$(git diff origin/main...HEAD --numstat | awk '{sum += $1} END {print sum}')
+          REMOVED_LINES=$(git diff origin/main...HEAD --numstat | awk '{sum += $2} END {print sum}')
+          CHANGED_FILES=$(git diff origin/main...HEAD --name-only | wc -l)
+
+          echo "added_lines=$ADDED_LINES" >> $GITHUB_OUTPUT
+          echo "removed_lines=$REMOVED_LINES" >> $GITHUB_OUTPUT
+          echo "changed_files=$CHANGED_FILES" >> $GITHUB_OUTPUT
+
+      - name: Check PR Size
+        run: |
+          ADDED_LINES=${{ steps.analysis.outputs.added_lines }}
+          CHANGED_FILES=${{ steps.analysis.outputs.changed_files }}
+
+          if [ "$ADDED_LINES" -gt 500 ]; then
+            echo "⚠️ Large PR detected ($ADDED_LINES lines added)"
+            echo "Consider breaking this into smaller PRs for easier review"
+          fi
+
+          if [ "$CHANGED_FILES" -gt 20 ]; then
+            echo "⚠️ Many files changed ($CHANGED_FILES files)"
+            echo "Consider breaking this into smaller, focused PRs"
+          fi
+
+      - name: Create Review Checklist Comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const botComment = comments.find(comment =>
+              comment.user.login === 'github-actions[bot]' &&
+              comment.body.includes('Code Review Checklist')
+            );
+
+            const checklist = `## 📋 Code Review Checklist
+
+            ### Reviewer Guidelines
+            - [ ] **Code Quality**: Is the code clean, readable, and well-structured?
+            - [ ] **Functionality**: Does the code do what it's supposed to do?
+            - [ ] **Tests**: Are there adequate tests for new functionality?
+            - [ ] **Performance**: Are there any performance concerns?
+            - [ ] **Security**: Are there any security vulnerabilities?
+            - [ ] **Documentation**: Is the code properly documented?
+            - [ ] **Breaking Changes**: Are breaking changes properly documented?
+
+            ### PR Statistics
+            - 📊 **Lines Added**: ${{ steps.analysis.outputs.added_lines }}
+            - 📉 **Lines Removed**: ${{ steps.analysis.outputs.removed_lines }}
+            - 📁 **Files Changed**: ${{ steps.analysis.outputs.changed_files }}
+
+            ### Pre-merge Requirements
+            - [ ] All CI checks passing
+            - [ ] At least one approval from code owner
+            - [ ] All review comments addressed
+            - [ ] Branch is up to date with target branch
+            `;
+
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: checklist
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: checklist
+              });
+            }
+
+  auto-labels:
+    name: Auto Label PR
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Auto-assign labels based on changes
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: files } = await github.rest.pulls.listFiles({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+            });
+
+            const labels = [];
+
+            // Analyze changed files and suggest labels
+            const changedFiles = files.map(f => f.filename);
+
+            if (changedFiles.some(f => f.includes('database/migrations'))) {
+              labels.push('database');
+            }
+
+            if (changedFiles.some(f => f.includes('app/Http/Controllers'))) {
+              labels.push('backend');
+            }
+
+            if (changedFiles.some(f => f.includes('resources/js'))) {
+              labels.push('frontend');
+            }
+
+            if (changedFiles.some(f => f.includes('tests/'))) {
+              labels.push('testing');
+            }
+
+            if (changedFiles.some(f => f.includes('docker') || f.includes('Dockerfile') || f.includes('.github'))) {
+              labels.push('infrastructure');
+            }
+
+            if (changedFiles.some(f => f.includes('docs/') || f.includes('README'))) {
+              labels.push('documentation');
+            }
+
+            // Determine PR type from title
+            const title = context.payload.pull_request.title.toLowerCase();
+
+            if (title.includes('feat') || title.includes('feature')) {
+              labels.push('enhancement');
+            } else if (title.includes('fix') || title.includes('bug')) {
+              labels.push('bug');
+            } else if (title.includes('refactor')) {
+              labels.push('refactoring');
+            } else if (title.includes('perf')) {
+              labels.push('performance');
+            }
+
+            // Calculate PR size
+            const additions = files.reduce((sum, f) => sum + f.additions, 0);
+
+            if (additions < 50) {
+              labels.push('size/small');
+            } else if (additions < 200) {
+              labels.push('size/medium');
+            } else {
+              labels.push('size/large');
+            }
+
+            // Add labels
+            if (labels.length > 0) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                labels: labels
+              });
+            }

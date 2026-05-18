@@ -2,17 +2,17 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
-use Illuminate\Http\JsonResponse;
-use App\Services\WNBA\Predictions\PropsPredictionService;
+use App\Services\WNBA\Analytics\GameAnalyticsService;
 use App\Services\WNBA\Analytics\PlayerAnalyticsService;
 use App\Services\WNBA\Analytics\TeamAnalyticsService;
-use App\Services\WNBA\Analytics\GameAnalyticsService;
-use App\Services\WNBA\Predictions\ModelValidationService;
 use App\Services\WNBA\Data\CacheManagerService;
+use App\Services\WNBA\Predictions\ModelValidationService;
+use App\Services\WNBA\Predictions\PropsPredictionService;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
-use Illuminate\Support\Facades\Cache;
 
 class WnbaPredictionsController extends Controller
 {
@@ -35,13 +35,13 @@ class WnbaPredictionsController extends Controller
             'stat_type' => 'required|string|in:points,rebounds,assists,steals,blocks,three_pointers,minutes',
             'game_id' => 'nullable|integer',
             'season' => 'nullable|integer',
-            'simulation_runs' => 'nullable|integer|min:1000|max:100000'
+            'simulation_runs' => 'nullable|integer|min:1000|max:100000',
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
-                'errors' => $validator->errors()
+                'errors' => $validator->errors(),
             ], 422);
         }
 
@@ -53,7 +53,7 @@ class WnbaPredictionsController extends Controller
             $simulationRuns = $request->input('simulation_runs', 10000);
 
             // Get prediction based on stat type
-            $prediction = match($statType) {
+            $prediction = match ($statType) {
                 'points' => $this->predictionService->predictPoints($playerId, $gameId ?? 1),
                 'rebounds' => $this->predictionService->predictRebounds($playerId, $gameId ?? 1),
                 'assists' => $this->predictionService->predictAssists($playerId, $gameId ?? 1),
@@ -70,21 +70,21 @@ class WnbaPredictionsController extends Controller
                     'player_id' => $playerId,
                     'stat_type' => $statType,
                     'prediction' => $prediction,
-                    'generated_at' => now()->toISOString()
-                ]
+                    'generated_at' => now()->toISOString(),
+                ],
             ]);
 
         } catch (\Exception $e) {
             Log::error('Player prop prediction failed', [
                 'player_id' => $request->input('player_id'),
                 'stat_type' => $request->input('stat_type'),
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to generate prediction',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
@@ -96,13 +96,13 @@ class WnbaPredictionsController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'season' => 'nullable|integer',
-            'last_n_games' => 'nullable|integer|min:1|max:50'
+            'last_n_games' => 'nullable|integer|min:1|max:50',
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
-                'errors' => $validator->errors()
+                'errors' => $validator->errors(),
             ], 422);
         }
 
@@ -110,10 +110,10 @@ class WnbaPredictionsController extends Controller
             // Convert athlete_id to internal player_id
             $player = \App\Models\WnbaPlayer::where('athlete_id', $playerId)->first();
 
-            if (!$player) {
+            if (! $player) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Player not found'
+                    'message' => 'Player not found',
                 ], 404);
             }
 
@@ -159,15 +159,15 @@ class WnbaPredictionsController extends Controller
                 'data' => [
                     'player_id' => $playerId, // Return the original athlete_id
                     'analytics' => $analytics,
-                    'generated_at' => now()->toISOString()
-                ]
+                    'generated_at' => now()->toISOString(),
+                ],
             ]);
 
         } catch (\Exception $e) {
             Log::error('Player analytics failed', [
                 'player_id' => $playerId,
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
 
             return response()->json([
@@ -175,7 +175,7 @@ class WnbaPredictionsController extends Controller
                 'message' => 'Failed to retrieve player analytics',
                 'error' => $e->getMessage(),
                 'file' => $e->getFile(),
-                'line' => $e->getLine()
+                'line' => $e->getLine(),
             ], 500);
         }
     }
@@ -187,18 +187,18 @@ class WnbaPredictionsController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'season' => 'nullable|integer',
-            'last_n_games' => 'nullable|integer|min:1|max:50'
+            'last_n_games' => 'nullable|integer|min:1|max:50',
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
-                'errors' => $validator->errors()
+                'errors' => $validator->errors(),
             ], 422);
         }
 
         try {
-            $season = $request->input('season', 2025);
+            $season = $request->input('season', (int) config('wnba.seasons.current_season'));
             $lastNGames = $request->input('last_n_games');
 
             $analytics = [];
@@ -238,20 +238,20 @@ class WnbaPredictionsController extends Controller
                 'data' => [
                     'team_id' => $teamId,
                     'analytics' => $analytics,
-                    'generated_at' => now()->toISOString()
-                ]
+                    'generated_at' => now()->toISOString(),
+                ],
             ]);
 
         } catch (\Exception $e) {
             Log::error('Team analytics failed', [
                 'team_id' => $teamId,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to retrieve team analytics',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
@@ -293,20 +293,20 @@ class WnbaPredictionsController extends Controller
                 'data' => [
                     'game_id' => $gameId,
                     'analytics' => $analytics,
-                    'generated_at' => now()->toISOString()
-                ]
+                    'generated_at' => now()->toISOString(),
+                ],
             ]);
 
         } catch (\Exception $e) {
             Log::error('Game analytics failed', [
                 'game_id' => $gameId,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to retrieve game analytics',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
@@ -323,13 +323,13 @@ class WnbaPredictionsController extends Controller
             'odds_over' => 'required|numeric',
             'odds_under' => 'required|numeric',
             'game_id' => 'nullable|integer',
-            'season' => 'nullable|integer'
+            'season' => 'nullable|integer',
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
-                'errors' => $validator->errors()
+                'errors' => $validator->errors(),
             ], 422);
         }
 
@@ -359,21 +359,21 @@ class WnbaPredictionsController extends Controller
                     'stat_type' => $statType,
                     'line' => $line,
                     'recommendation' => $recommendation,
-                    'generated_at' => now()->toISOString()
-                ]
+                    'generated_at' => now()->toISOString(),
+                ],
             ]);
 
         } catch (\Exception $e) {
             Log::error('Betting recommendation failed', [
                 'player_id' => $request->input('player_id'),
                 'stat_type' => $request->input('stat_type'),
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to generate betting recommendation',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
@@ -387,13 +387,13 @@ class WnbaPredictionsController extends Controller
             'stat_type' => 'nullable|string',
             'player_category' => 'nullable|string',
             'season' => 'nullable|integer',
-            'validation_type' => 'nullable|string|in:accuracy,calibration,bias,performance'
+            'validation_type' => 'nullable|string|in:accuracy,calibration,bias,performance',
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
-                'errors' => $validator->errors()
+                'errors' => $validator->errors(),
             ], 422);
         }
 
@@ -403,7 +403,7 @@ class WnbaPredictionsController extends Controller
             $season = $request->input('season');
             $validationType = $request->input('validation_type');
 
-            $validation = match($validationType) {
+            $validation = match ($validationType) {
                 'accuracy' => $this->validationService->validateAccuracy($statType, $playerCategory, $season),
                 'calibration' => $this->validationService->validateCalibration($statType, $playerCategory, $season),
                 'bias' => $this->validationService->analyzeBias($statType, $playerCategory, $season),
@@ -418,23 +418,23 @@ class WnbaPredictionsController extends Controller
                     'filters' => [
                         'stat_type' => $statType,
                         'player_category' => $playerCategory,
-                        'season' => $season
+                        'season' => $season,
                     ],
                     'results' => $validation,
-                    'generated_at' => now()->toISOString()
-                ]
+                    'generated_at' => now()->toISOString(),
+                ],
             ]);
 
         } catch (\Exception $e) {
             Log::error('Model validation failed', [
                 'validation_type' => $request->input('validation_type'),
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to retrieve model validation',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
@@ -451,19 +451,19 @@ class WnbaPredictionsController extends Controller
                 'success' => true,
                 'data' => [
                     'cache_stats' => $stats,
-                    'generated_at' => now()->toISOString()
-                ]
+                    'generated_at' => now()->toISOString(),
+                ],
             ]);
 
         } catch (\Exception $e) {
             Log::error('Cache stats retrieval failed', [
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to retrieve cache statistics',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
@@ -475,13 +475,13 @@ class WnbaPredictionsController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'type' => 'required|string|in:player,team,game,all',
-            'id' => 'required_unless:type,all|integer'
+            'id' => 'required_unless:type,all|integer',
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
-                'errors' => $validator->errors()
+                'errors' => $validator->errors(),
             ], 422);
         }
 
@@ -489,7 +489,7 @@ class WnbaPredictionsController extends Controller
             $type = $request->input('type');
             $id = $request->input('id');
 
-            $result = match($type) {
+            $result = match ($type) {
                 'player' => $this->cacheManager->invalidatePlayer($id),
                 'team' => $this->cacheManager->invalidateTeam($id),
                 'game' => $this->cacheManager->invalidateGame($id),
@@ -503,21 +503,21 @@ class WnbaPredictionsController extends Controller
                     'type' => $type,
                     'id' => $id,
                     'cleared' => $result,
-                    'timestamp' => now()->toISOString()
-                ]
+                    'timestamp' => now()->toISOString(),
+                ],
             ]);
 
         } catch (\Exception $e) {
             Log::error('Cache clearing failed', [
                 'type' => $request->input('type'),
                 'id' => $request->input('id'),
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to clear cache',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
@@ -529,13 +529,13 @@ class WnbaPredictionsController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'game_ids' => 'required|array',
-            'game_ids.*' => 'integer'
+            'game_ids.*' => 'integer',
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
-                'errors' => $validator->errors()
+                'errors' => $validator->errors(),
             ], 422);
         }
 
@@ -548,20 +548,20 @@ class WnbaPredictionsController extends Controller
                 'data' => [
                     'game_ids' => $gameIds,
                     'results' => $results,
-                    'timestamp' => now()->toISOString()
-                ]
+                    'timestamp' => now()->toISOString(),
+                ],
             ]);
 
         } catch (\Exception $e) {
             Log::error('Cache warming failed', [
                 'game_ids' => $request->input('game_ids'),
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to warm cache',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
@@ -575,10 +575,10 @@ class WnbaPredictionsController extends Controller
             // Convert athlete_id to internal player_id
             $player = \App\Models\WnbaPlayer::where('athlete_id', $playerId)->first();
 
-            if (!$player) {
+            if (! $player) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Player not found'
+                    'message' => 'Player not found',
                 ], 404);
             }
 
@@ -588,15 +588,15 @@ class WnbaPredictionsController extends Controller
                     'player_id' => $playerId, // Return the original athlete_id
                     'internal_id' => $player->id,
                     'player_name' => $player->athlete_display_name,
-                    'message' => 'Test endpoint working'
-                ]
+                    'message' => 'Test endpoint working',
+                ],
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Test failed',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
@@ -619,7 +619,7 @@ class WnbaPredictionsController extends Controller
                     'over_odds' => -110,
                     'under_odds' => -110,
                     'sportsbook' => 'DraftKings',
-                    'game_date' => now()->addDays(1)->format('Y-m-d')
+                    'game_date' => now()->addDays(1)->format('Y-m-d'),
                 ],
                 [
                     'id' => 2,
@@ -631,7 +631,7 @@ class WnbaPredictionsController extends Controller
                     'over_odds' => -105,
                     'under_odds' => -115,
                     'sportsbook' => 'FanDuel',
-                    'game_date' => now()->addDays(1)->format('Y-m-d')
+                    'game_date' => now()->addDays(1)->format('Y-m-d'),
                 ],
                 [
                     'id' => 3,
@@ -643,24 +643,24 @@ class WnbaPredictionsController extends Controller
                     'over_odds' => +100,
                     'under_odds' => -120,
                     'sportsbook' => 'BetMGM',
-                    'game_date' => now()->addDays(1)->format('Y-m-d')
-                ]
+                    'game_date' => now()->addDays(1)->format('Y-m-d'),
+                ],
             ];
 
             return response()->json([
                 'success' => true,
-                'data' => $propBets
+                'data' => $propBets,
             ]);
 
         } catch (\Exception $e) {
             Log::error('Failed to get prop bets', [
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to retrieve prop bets',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
@@ -673,13 +673,13 @@ class WnbaPredictionsController extends Controller
         $validator = Validator::make($request->all(), [
             'player_id' => 'required|string',
             'stat' => 'required|string|in:points,rebounds,assists,steals,blocks,three_pointers_made,field_goals_made,free_throws_made,turnovers,minutes',
-            'line' => 'required|numeric|min:0'
+            'line' => 'required|numeric|min:0',
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
-                'errors' => $validator->errors()
+                'errors' => $validator->errors(),
             ], 422);
         }
 
@@ -691,10 +691,10 @@ class WnbaPredictionsController extends Controller
             // Get player info
             $player = \App\Models\WnbaPlayer::where('athlete_id', $playerId)->first();
 
-            if (!$player) {
+            if (! $player) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Player not found'
+                    'message' => 'Player not found',
                 ], 404);
             }
 
@@ -712,7 +712,7 @@ class WnbaPredictionsController extends Controller
             $mockGameId = 1; // Using a mock game ID
 
             try {
-                $prediction = match($statType) {
+                $prediction = match ($statType) {
                     'points' => $this->predictionService->predictPoints($player->id, $mockGameId, $line),
                     'rebounds' => $this->predictionService->predictRebounds($player->id, $mockGameId, $line),
                     'assists' => $this->predictionService->predictAssists($player->id, $mockGameId, $line),
@@ -793,12 +793,12 @@ class WnbaPredictionsController extends Controller
                 'probability_under' => round($underProbability, 3),
                 'recommendation' => $recommendation,
                 'expected_value' => round($expectedValue, 3),
-                'created_at' => now()->toISOString()
+                'created_at' => now()->toISOString(),
             ];
 
             return response()->json([
                 'success' => true,
-                'data' => $result
+                'data' => $result,
             ]);
 
         } catch (\Exception $e) {
@@ -806,13 +806,13 @@ class WnbaPredictionsController extends Controller
                 'player_id' => $request->input('player_id'),
                 'stat' => $request->input('stat'),
                 'line' => $request->input('line'),
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to generate prediction',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
@@ -827,13 +827,13 @@ class WnbaPredictionsController extends Controller
             'stat_type' => 'required|string|in:points,rebounds,assists,steals,blocks',
             'simulations' => 'required|integer|min:1000|max:100000',
             'confidence_level' => 'required|numeric|min:0.8|max:0.99',
-            'scenario' => 'required|string|in:normal,blowout,close,overtime,back_to_back'
+            'scenario' => 'required|string|in:normal,blowout,close,overtime,back_to_back',
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
-                'errors' => $validator->errors()
+                'errors' => $validator->errors(),
             ], 422);
         }
 
@@ -847,10 +847,10 @@ class WnbaPredictionsController extends Controller
             // Get player info
             $player = \App\Models\WnbaPlayer::where('athlete_id', $playerId)->first();
 
-            if (!$player) {
+            if (! $player) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Player not found'
+                    'message' => 'Player not found',
                 ], 404);
             }
 
@@ -863,7 +863,7 @@ class WnbaPredictionsController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => $simulationData
+                'data' => $simulationData,
             ]);
 
         } catch (\Exception $e) {
@@ -871,13 +871,13 @@ class WnbaPredictionsController extends Controller
                 'player_id' => $request->input('player_id'),
                 'stat_type' => $request->input('stat_type'),
                 'simulations' => $request->input('simulations'),
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to run Monte Carlo simulation',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
@@ -895,7 +895,7 @@ class WnbaPredictionsController extends Controller
 
         if ($playerGames->isEmpty()) {
             // Fallback to league averages if no data
-            $mean = match($statType) {
+            $mean = match ($statType) {
                 'points' => 12.0,
                 'rebounds' => 5.0,
                 'assists' => 3.0,
@@ -907,7 +907,7 @@ class WnbaPredictionsController extends Controller
             $gameCount = 0;
         } else {
             // Calculate actual player statistics
-            $statColumn = match($statType) {
+            $statColumn = match ($statType) {
                 'points' => 'points',
                 'rebounds' => 'rebounds',
                 'assists' => 'assists',
@@ -921,7 +921,7 @@ class WnbaPredictionsController extends Controller
 
             // Calculate real mean and standard deviation
             $mean = array_sum($values) / $gameCount;
-            $variance = array_sum(array_map(function($x) use ($mean) {
+            $variance = array_sum(array_map(function ($x) use ($mean) {
                 return pow($x - $mean, 2);
             }, $values)) / $gameCount;
             $std = sqrt($variance);
@@ -931,7 +931,7 @@ class WnbaPredictionsController extends Controller
         }
 
         // Adjust for game scenario
-        $scenarioMultiplier = match($scenario) {
+        $scenarioMultiplier = match ($scenario) {
             'blowout' => 0.85,      // Less playing time in blowouts
             'close' => 1.05,        // Slightly more opportunities in close games
             'overtime' => 1.15,     // More playing time in OT
@@ -977,7 +977,7 @@ class WnbaPredictionsController extends Controller
             'p50' => $simulatedMedian,
             'p75' => $simulationResults[intval(count($simulationResults) * 0.75)],
             'p90' => $simulationResults[intval(count($simulationResults) * 0.90)],
-            'p95' => $simulationResults[intval(count($simulationResults) * 0.95)]
+            'p95' => $simulationResults[intval(count($simulationResults) * 0.95)],
         ];
 
         // Generate distribution data from simulation results
@@ -1000,7 +1000,7 @@ class WnbaPredictionsController extends Controller
             $probability = ($count / count($simulationResults)) * 100;
             $distribution[] = [
                 'value' => round($binStart, 1),
-                'probability' => round($probability, 2)
+                'probability' => round($probability, 2),
             ];
         }
 
@@ -1009,9 +1009,9 @@ class WnbaPredictionsController extends Controller
         foreach ([0.90, 0.95, 0.99] as $level) {
             $lowerIndex = intval(count($simulationResults) * (1 - $level) / 2);
             $upperIndex = intval(count($simulationResults) * (1 + $level) / 2);
-            $confidenceIntervals[($level * 100) . '%'] = [
+            $confidenceIntervals[($level * 100).'%'] = [
                 round($simulationResults[$lowerIndex], 2),
-                round($simulationResults[$upperIndex], 2)
+                round($simulationResults[$upperIndex], 2),
             ];
         }
 
@@ -1022,7 +1022,7 @@ class WnbaPredictionsController extends Controller
             $simulatedMean - 1,
             $simulatedMean,
             $simulatedMean + 1,
-            $simulatedMean + 2
+            $simulatedMean + 2,
         ];
 
         foreach ($testLines as $line) {
@@ -1045,7 +1045,7 @@ class WnbaPredictionsController extends Controller
                 'over_prob' => round($overProb, 3),
                 'under_prob' => round($underProb, 3),
                 'ev_over' => round($evOver, 3),
-                'ev_under' => round($evUnder, 3)
+                'ev_under' => round($evUnder, 3),
             ];
         }
 
@@ -1056,20 +1056,20 @@ class WnbaPredictionsController extends Controller
         $executionTime = microtime(true) - $startTime;
 
         return [
-            'simulation_id' => 'sim_' . time() . '_' . $player->athlete_id,
+            'simulation_id' => 'sim_'.time().'_'.$player->athlete_id,
             'parameters' => [
                 'player_id' => $player->athlete_id,
                 'stat_type' => $statType,
                 'simulations' => $simulations,
                 'confidence_level' => $confidenceLevel,
-                'scenario' => $scenario
+                'scenario' => $scenario,
             ],
             'player' => [
                 'id' => $player->athlete_id,
                 'name' => $player->athlete_display_name,
                 'position' => $player->athlete_position_abbreviation,
                 'games_played' => $gameCount,
-                'season_average' => round($mean, 2)
+                'season_average' => round($mean, 2),
             ],
             'results' => [
                 'mean' => round($simulatedMean, 2),
@@ -1079,33 +1079,35 @@ class WnbaPredictionsController extends Controller
                 'min' => round(min($simulationResults), 2),
                 'max' => round(max($simulationResults), 2),
                 'skewness' => $this->calculateSkewness($simulationResults),
-                'kurtosis' => $this->calculateKurtosis($simulationResults)
+                'kurtosis' => $this->calculateKurtosis($simulationResults),
             ],
             'confidence_intervals' => $confidenceIntervals,
-            'percentiles' => array_map(function($val) { return round($val, 2); }, $percentiles),
+            'percentiles' => array_map(function ($val) {
+                return round($val, 2);
+            }, $percentiles),
             'distribution' => $distribution,
             'over_under_analysis' => $overUnderAnalysis,
             'scenario_analysis' => [
                 'best_case' => [
                     'value' => round($percentiles['p95'], 2),
-                    'probability' => 0.05
+                    'probability' => 0.05,
                 ],
                 'worst_case' => [
                     'value' => round($percentiles['p5'], 2),
-                    'probability' => 0.05
+                    'probability' => 0.05,
                 ],
                 'most_likely' => [
                     'value' => round($mode, 2),
-                    'probability' => round(max($bins) / count($simulationResults), 3)
-                ]
+                    'probability' => round(max($bins) / count($simulationResults), 3),
+                ],
             ],
             'data_quality' => [
                 'games_analyzed' => $gameCount,
                 'data_source' => $gameCount > 0 ? 'player_history' : 'league_average',
-                'confidence_score' => $gameCount > 10 ? 0.9 : ($gameCount > 5 ? 0.7 : 0.5)
+                'confidence_score' => $gameCount > 10 ? 0.9 : ($gameCount > 5 ? 0.7 : 0.5),
             ],
             'execution_time' => round($executionTime, 3),
-            'timestamp' => now()->toISOString()
+            'timestamp' => now()->toISOString(),
         ];
     }
 
@@ -1115,6 +1117,7 @@ class WnbaPredictionsController extends Controller
     private function normalCDF(float $x, float $mean, float $std): float
     {
         $z = ($x - $mean) / $std;
+
         return 0.5 * (1 + $this->erf($z / sqrt(2)));
     }
 
@@ -1123,12 +1126,12 @@ class WnbaPredictionsController extends Controller
      */
     private function erf(float $x): float
     {
-        $a1 =  0.254829592;
+        $a1 = 0.254829592;
         $a2 = -0.284496736;
-        $a3 =  1.421413741;
+        $a3 = 1.421413741;
         $a4 = -1.453152027;
-        $a5 =  1.061405429;
-        $p  =  0.3275911;
+        $a5 = 1.061405429;
+        $p = 0.3275911;
 
         $sign = $x < 0 ? -1 : 1;
         $x = abs($x);
@@ -1148,7 +1151,7 @@ class WnbaPredictionsController extends Controller
 
         if ($playerGames->isEmpty()) {
             // If no game data, use conservative estimates
-            $seasonAverage = match($statType) {
+            $seasonAverage = match ($statType) {
                 'points' => 12.0,
                 'rebounds' => 5.0,
                 'assists' => 3.0,
@@ -1159,7 +1162,7 @@ class WnbaPredictionsController extends Controller
             $confidence = 0.5; // Low confidence without data
         } else {
             // Calculate actual season average for this stat
-            $seasonAverage = match($statType) {
+            $seasonAverage = match ($statType) {
                 'points' => $playerGames->avg('points'),
                 'rebounds' => $playerGames->avg('rebounds'),
                 'assists' => $playerGames->avg('assists'),
@@ -1169,7 +1172,7 @@ class WnbaPredictionsController extends Controller
             };
 
             // Calculate confidence based on consistency (lower standard deviation = higher confidence)
-            $statColumn = match($statType) {
+            $statColumn = match ($statType) {
                 'points' => 'points',
                 'rebounds' => 'rebounds',
                 'assists' => 'assists',
@@ -1181,7 +1184,9 @@ class WnbaPredictionsController extends Controller
             $values = $playerGames->pluck($statColumn)->toArray();
 
             $mean = array_sum($values) / count($values);
-            $variance = array_sum(array_map(function($x) use ($mean) { return pow($x - $mean, 2); }, $values)) / count($values);
+            $variance = array_sum(array_map(function ($x) use ($mean) {
+                return pow($x - $mean, 2);
+            }, $values)) / count($values);
             $stdDev = sqrt($variance);
 
             // Higher consistency (lower std dev relative to mean) = higher confidence
@@ -1210,7 +1215,7 @@ class WnbaPredictionsController extends Controller
             'predicted_value' => round($predictedValue, 2),
             'confidence' => round($confidence, 3),
             'over_probability' => round($overProbability, 3),
-            'under_probability' => round($underProbability, 3)
+            'under_probability' => round($underProbability, 3),
         ];
     }
 
@@ -1220,17 +1225,21 @@ class WnbaPredictionsController extends Controller
     private function calculateSkewness(array $values): float
     {
         $n = count($values);
-        if ($n < 3) return 0;
+        if ($n < 3) {
+            return 0;
+        }
 
         $mean = array_sum($values) / $n;
-        $variance = array_sum(array_map(function($x) use ($mean) {
+        $variance = array_sum(array_map(function ($x) use ($mean) {
             return pow($x - $mean, 2);
         }, $values)) / $n;
         $stdDev = sqrt($variance);
 
-        if ($stdDev == 0) return 0;
+        if ($stdDev == 0) {
+            return 0;
+        }
 
-        $skewness = array_sum(array_map(function($x) use ($mean, $stdDev) {
+        $skewness = array_sum(array_map(function ($x) use ($mean, $stdDev) {
             return pow(($x - $mean) / $stdDev, 3);
         }, $values)) / $n;
 
@@ -1243,17 +1252,21 @@ class WnbaPredictionsController extends Controller
     private function calculateKurtosis(array $values): float
     {
         $n = count($values);
-        if ($n < 4) return 3; // Normal distribution kurtosis
+        if ($n < 4) {
+            return 3;
+        } // Normal distribution kurtosis
 
         $mean = array_sum($values) / $n;
-        $variance = array_sum(array_map(function($x) use ($mean) {
+        $variance = array_sum(array_map(function ($x) use ($mean) {
             return pow($x - $mean, 2);
         }, $values)) / $n;
         $stdDev = sqrt($variance);
 
-        if ($stdDev == 0) return 3;
+        if ($stdDev == 0) {
+            return 3;
+        }
 
-        $kurtosis = array_sum(array_map(function($x) use ($mean, $stdDev) {
+        $kurtosis = array_sum(array_map(function ($x) use ($mean, $stdDev) {
             return pow(($x - $mean) / $stdDev, 4);
         }, $values)) / $n;
 

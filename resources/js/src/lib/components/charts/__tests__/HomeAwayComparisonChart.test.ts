@@ -2,9 +2,9 @@ import { render, screen } from '@testing-library/svelte';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import HomeAwayComparisonChart from '../HomeAwayComparisonChart.svelte';
 
-// Mock Chart.js
-vi.mock('chart.js/auto', () => ({
-    default: vi.fn().mockImplementation(() => ({
+// Mock Chart.js (must match `$lib/chart/register` import path)
+vi.mock('$lib/chart/register', () => ({
+    Chart: vi.fn().mockImplementation(() => ({
         destroy: vi.fn(),
         update: vi.fn()
     }))

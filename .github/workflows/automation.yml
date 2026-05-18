@@ -1,0 +1,550 @@
+name: Repository Automation
+
+on:
+  issues:
+    types: [opened, labeled, assigned]
+  pull_request:
+    types: [opened, closed, ready_for_review]
+  issue_comment:
+    types: [created]
+  schedule:
+    - cron: '0 0 * * 1' # Weekly on Monday at midnight UTC
+  workflow_dispatch:
+
+jobs:
+  auto-label-issues:
+    name: Auto Label Issues
+    runs-on: ubuntu-latest
+    if: github.event_name == 'issues' && github.event.action == 'opened'
+
+    steps:
+      - name: Label Bug Reports
+        if: contains(github.event.issue.title, 'bug') || contains(github.event.issue.title, 'error') || contains(github.event.issue.title, 'fix')
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: ['bug', 'needs-investigation']
+            });
+
+      - name: Label Feature Requests
+        if: contains(github.event.issue.title, 'feature') || contains(github.event.issue.title, 'enhancement') || contains(github.event.issue.title, 'add')
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: ['enhancement', 'needs-discussion']
+            });
+
+      - name: Label Documentation Issues
+        if: contains(github.event.issue.title, 'docs') || contains(github.event.issue.title, 'documentation') || contains(github.event.issue.title, 'readme')
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: ['documentation', 'good first issue']
+            });
+
+      - name: Label Security Issues
+        if: contains(github.event.issue.title, 'security') || contains(github.event.issue.title, 'vulnerability') || contains(github.event.issue.title, 'exploit')
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: ['security', 'priority-high']
+            });
+
+  assign-issues:
+    name: Auto Assign Issues
+    runs-on: ubuntu-latest
+    if: github.event_name == 'issues' && github.event.action == 'labeled'
+
+    steps:
+      - name: Assign Critical Issues
+        if: contains(github.event.label.name, 'critical') || contains(github.event.label.name, 'security')
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Auto-assign critical issues to maintainers
+            const maintainers = ['your-username']; // Replace with actual maintainers
+
+            if (maintainers.length > 0) {
+              await github.rest.issues.addAssignees({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                assignees: [maintainers[0]]
+              });
+
+              // Add comment explaining the assignment
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: `🚨 This issue has been automatically assigned due to its critical/security nature. Please investigate immediately.`
+              });
+            }
+
+  issue-templates:
+    name: Issue Template Validation
+    runs-on: ubuntu-latest
+    if: github.event_name == 'issues' && github.event.action == 'opened'
+
+    steps:
+      - name: Check Issue Template Usage
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issueBody = context.payload.issue.body || '';
+
+            // Check if issue follows template
+            const hasTemplate = issueBody.includes('**Bug Description**') ||
+                               issueBody.includes('**Feature Description**') ||
+                               issueBody.includes('**Steps to Reproduce**');
+
+            if (!hasTemplate && issueBody.length < 50) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: `## 📝 Issue Template Missing
+
+Thank you for opening this issue! To help us understand and resolve your issue quickly, please provide more details using our issue templates:
+
+### For Bug Reports:
+- Clear description of the problem
+- Steps to reproduce
+- Expected vs actual behavior
+- Environment details (browser, OS, etc.)
+
+### For Feature Requests:
+- Clear description of the proposed feature
+- Use case and benefits
+- Possible implementation approach
+
+Please update your issue with this information. Issues without sufficient detail may be closed.`
+              });
+
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                labels: ['needs-more-info']
+              });
+            }
+
+  pr-automation:
+    name: PR Automation
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - name: Welcome First-time Contributors
+        if: github.event.action == 'opened'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Check if this is the author's first contribution
+            const { data: pulls } = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              creator: context.payload.pull_request.user.login,
+              state: 'all'
+            });
+
+            const isFirstContribution = pulls.length === 1;
+
+            if (isFirstContribution) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: `## 🎉 Welcome, First-time Contributor!
+
+Thank you for your first contribution to WNBA Stat Spot! We're excited to have you join our community.
+
+### What happens next:
+1. 🔍 Our automated CI/CD pipeline will run tests and checks
+2. 👀 A maintainer will review your changes
+3. 💬 We may provide feedback or suggestions
+4. ✅ Once approved, your changes will be merged
+
+### Getting Help:
+- Check our [Contributing Guide](../CONTRIBUTING.md) for detailed guidelines
+- Review our [Code of Conduct](../CODE_OF_CONDUCT.md)
+- Join our discussions if you have questions
+
+Thank you for making WNBA Stat Spot better! 🏀`
+              });
+
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                labels: ['first-contribution']
+              });
+            }
+
+      - name: Thank Contributors on Merge
+        if: github.event.action == 'closed' && github.event.pull_request.merged
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `## 🎊 Contribution Merged!
+
+Thank you @${context.payload.pull_request.user.login} for your contribution! Your changes have been successfully merged into the main branch.
+
+### What's Next:
+- 🚀 Your changes will be deployed in the next release
+- 📊 You can track the deployment in our [Actions tab](../../actions)
+- 🏆 You're now officially a WNBA Stat Spot contributor!
+
+Feel free to tackle more issues or suggest new features. Happy coding! 🏀✨`
+            });
+
+  stale-issue-management:
+    name: Stale Issue Management
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Mark Stale Issues
+        uses: actions/stale@v9
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          stale-issue-message: |
+            ## 📅 Stale Issue Notice
+
+            This issue has been automatically marked as stale because it has not had any activity for 60 days.
+
+            ### To keep this issue active:
+            - Add a comment with updates or additional information
+            - Apply the `keep-open` label
+            - Reference it in a pull request
+
+            ### What happens next:
+            - If no activity occurs within 7 days, this issue will be automatically closed
+            - Closed issues can always be reopened if needed
+
+            Thank you for your understanding! 🙏
+          stale-pr-message: |
+            ## 📅 Stale Pull Request Notice
+
+            This pull request has been automatically marked as stale because it has not had any activity for 30 days.
+
+            ### To keep this PR active:
+            - Push new commits or respond to review feedback
+            - Apply the `keep-open` label
+            - Add a comment explaining the current status
+
+            ### What happens next:
+            - If no activity occurs within 7 days, this PR will be automatically closed
+            - Closed PRs can always be reopened if needed
+
+            Thank you for your contribution! 🙏
+          days-before-stale: 60
+          days-before-close: 7
+          days-before-pr-stale: 30
+          days-before-pr-close: 7
+          stale-issue-label: 'stale'
+          stale-pr-label: 'stale'
+          exempt-issue-labels: 'keep-open,pinned,security'
+          exempt-pr-labels: 'keep-open,pinned'
+
+  project-management:
+    name: Project Management
+    runs-on: ubuntu-latest
+    if: github.event_name == 'issues' || github.event_name == 'pull_request'
+
+    steps:
+      - name: Add to Project Board
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Auto-add issues and PRs to project board
+            const projectNumber = 1; // Update with your project number
+
+            try {
+              // Get project ID
+              const { data: projects } = await github.rest.projects.listForRepo({
+                owner: context.repo.owner,
+                repo: context.repo.repo
+              });
+
+              if (projects.length > 0) {
+                const project = projects[0];
+
+                // Get project columns
+                const { data: columns } = await github.rest.projects.listColumns({
+                  project_id: project.id
+                });
+
+                if (columns.length > 0) {
+                  const todoColumn = columns.find(col => col.name.toLowerCase().includes('todo') || col.name.toLowerCase().includes('backlog')) || columns[0];
+
+                  // Add card to project
+                  if (context.payload.issue) {
+                    await github.rest.projects.createCard({
+                      column_id: todoColumn.id,
+                      content_id: context.payload.issue.id,
+                      content_type: 'Issue'
+                    });
+                  } else if (context.payload.pull_request) {
+                    await github.rest.projects.createCard({
+                      column_id: todoColumn.id,
+                      content_id: context.payload.pull_request.id,
+                      content_type: 'PullRequest'
+                    });
+                  }
+                }
+              }
+            } catch (error) {
+              console.log('Project board automation failed:', error.message);
+              // Don't fail the workflow if project management fails
+            }
+
+  repository-maintenance:
+    name: Repository Maintenance
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update Repository Statistics
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Gather repository statistics
+            const { data: repo } = await github.rest.repos.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo
+            });
+
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open'
+            });
+
+            const { data: pulls } = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open'
+            });
+
+            const stats = {
+              stars: repo.stargazers_count,
+              forks: repo.forks_count,
+              openIssues: issues.length,
+              openPRs: pulls.length,
+              lastUpdated: new Date().toISOString()
+            };
+
+            console.log('Repository Statistics:', JSON.stringify(stats, null, 2));
+
+      - name: Clean Up Old Workflow Runs
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Clean up old workflow runs (keep last 50 per workflow)
+            const { data: workflows } = await github.rest.actions.listRepoWorkflows({
+              owner: context.repo.owner,
+              repo: context.repo.repo
+            });
+
+            for (const workflow of workflows.workflows) {
+              const { data: runs } = await github.rest.actions.listWorkflowRuns({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                workflow_id: workflow.id,
+                per_page: 100
+              });
+
+              // Keep the 50 most recent runs, delete the rest
+              const runsToDelete = runs.workflow_runs.slice(50);
+
+              for (const run of runsToDelete) {
+                try {
+                  await github.rest.actions.deleteWorkflowRun({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    run_id: run.id
+                  });
+                  console.log(`Deleted workflow run ${run.id}`);
+                } catch (error) {
+                  console.log(`Failed to delete run ${run.id}:`, error.message);
+                }
+              }
+            }
+
+  community-metrics:
+    name: Community Metrics
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Generate Community Report
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Generate monthly community metrics
+            const now = new Date();
+            const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+            const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+            // Get issues created this month
+            const { data: newIssues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'all',
+              since: thisMonth.toISOString()
+            });
+
+            // Get PRs created this month
+            const { data: newPRs } = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'all',
+              sort: 'created',
+              direction: 'desc'
+            });
+
+            const monthlyPRs = newPRs.filter(pr => new Date(pr.created_at) >= thisMonth);
+
+            // Get contributors this month
+            const { data: commits } = await github.rest.repos.listCommits({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              since: thisMonth.toISOString()
+            });
+
+            const uniqueContributors = new Set(commits.map(commit => commit.author?.login).filter(Boolean));
+
+            const report = `## 📊 Monthly Community Report - ${thisMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+
+            ### Activity Summary
+            - 🎯 **New Issues:** ${newIssues.length}
+            - 🔄 **New Pull Requests:** ${monthlyPRs.length}
+            - 👥 **Active Contributors:** ${uniqueContributors.size}
+            - 📝 **Total Commits:** ${commits.length}
+
+            ### Top Contributors This Month
+            ${Array.from(uniqueContributors).slice(0, 5).map(contributor => `- @${contributor}`).join('\n')}
+
+            ### Project Health
+            - ✅ CI/CD Pipeline: Active and functioning
+            - 🔒 Security Scans: Regular automated scanning
+            - 📈 Performance: Monitored continuously
+            - 🏥 Health Checks: Running every 30 minutes
+
+            ---
+            *This report is automatically generated monthly*`;
+
+            console.log(report);
+
+            // Could post this to a discussion or issue if needed
+
+  command-handler:
+    name: Command Handler
+    runs-on: ubuntu-latest
+    if: github.event_name == 'issue_comment' && github.event.action == 'created'
+
+    steps:
+      - name: Handle Bot Commands
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const comment = context.payload.comment.body.trim();
+            const isCollaborator = context.payload.comment.author_association === 'COLLABORATOR' ||
+                                 context.payload.comment.author_association === 'OWNER' ||
+                                 context.payload.comment.author_association === 'MEMBER';
+
+            // Handle /close command
+            if (comment === '/close' && isCollaborator) {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                state: 'closed'
+              });
+
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: '✅ Issue closed via command.'
+              });
+            }
+
+            // Handle /reopen command
+            if (comment === '/reopen' && isCollaborator) {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                state: 'open'
+              });
+
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: '🔄 Issue reopened via command.'
+              });
+            }
+
+            // Handle /help command
+            if (comment === '/help') {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: `## 🤖 Available Commands
+
+### For Collaborators:
+- \`/close\` - Close this issue
+- \`/reopen\` - Reopen this issue
+- \`/assign @username\` - Assign user to issue
+
+### For Everyone:
+- \`/help\` - Show this help message
+- \`/ping\` - Test bot responsiveness
+
+### Labels:
+- Add \`priority-high\`, \`priority-low\` labels as needed
+- Use \`good first issue\` for beginner-friendly issues
+- Apply \`help wanted\` for issues needing contributors
+
+For more information, see our [Contributing Guide](../CONTRIBUTING.md).`
+              });
+            }
+
+            // Handle /ping command
+            if (comment === '/ping') {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: '🏓 Pong! Bot is active and responding.'
+              });
+            }

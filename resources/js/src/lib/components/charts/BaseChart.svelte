@@ -1,9 +1,8 @@
 <script lang="ts">
     import { onMount, onDestroy } from 'svelte';
-    import { Chart, registerables, type ChartConfiguration, type ChartData, type ChartOptions } from 'chart.js';
     import { Card, CardBody, CardHeader, CardTitle } from '@sveltestrap/sveltestrap';
-
-    Chart.register(...registerables);
+    import { Chart } from '$lib/chart/register';
+    import type { ChartConfiguration, ChartData, ChartOptions } from 'chart.js';
 
     export let title: string = '';
     export let chartType: 'line' | 'bar' | 'doughnut' | 'pie' | 'radar' = 'bar';

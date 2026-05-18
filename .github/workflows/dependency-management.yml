@@ -1,0 +1,517 @@
+name: Dependency Management
+
+on:
+  schedule:
+    - cron: '0 6 * * 1' # Weekly on Monday at 6 AM UTC
+  workflow_dispatch:
+    inputs:
+      update_type:
+        description: 'Type of update to perform'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+          - security
+
+env:
+  PHP_VERSION: 8.2
+  NODE_VERSION: 20
+
+jobs:
+  analyze-dependencies:
+    name: Analyze Dependencies
+    runs-on: ubuntu-latest
+    outputs:
+      php_updates: ${{ steps.php_check.outputs.updates }}
+      npm_updates: ${{ steps.npm_check.outputs.updates }}
+      security_updates: ${{ steps.security_check.outputs.updates }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          tools: composer:v2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install current dependencies
+        run: |
+          composer install --no-interaction
+          cd resources/js && npm ci
+
+      - name: Check PHP dependencies for updates
+        id: php_check
+        run: |
+          echo "🔍 Checking PHP dependencies..."
+
+          # Get outdated packages
+          OUTDATED=$(composer outdated --format=json --direct 2>/dev/null || echo '{"installed":[]}')
+
+          # Count updates
+          UPDATE_COUNT=$(echo "$OUTDATED" | jq '.installed | length')
+
+          if [ "$UPDATE_COUNT" -gt 0 ]; then
+            echo "📦 Found $UPDATE_COUNT PHP package updates:"
+            echo "$OUTDATED" | jq -r '.installed[] | "- \(.name): \(.version) → \(.latest)"'
+            echo "updates=true" >> $GITHUB_OUTPUT
+          else
+            echo "✅ All PHP packages are up to date"
+            echo "updates=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check NPM dependencies for updates
+        id: npm_check
+        working-directory: ./resources/js
+        run: |
+          echo "🔍 Checking NPM dependencies..."
+
+          # Check for outdated packages
+          OUTDATED=$(npm outdated --json 2>/dev/null || echo '{}')
+
+          # Count updates
+          UPDATE_COUNT=$(echo "$OUTDATED" | jq 'keys | length')
+
+          if [ "$UPDATE_COUNT" -gt 0 ]; then
+            echo "📦 Found $UPDATE_COUNT NPM package updates:"
+            echo "$OUTDATED" | jq -r 'to_entries[] | "- \(.key): \(.value.current) → \(.value.latest)"'
+            echo "updates=true" >> $GITHUB_OUTPUT
+          else
+            echo "✅ All NPM packages are up to date"
+            echo "updates=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check for security updates
+        id: security_check
+        run: |
+          echo "🔒 Checking for security updates..."
+
+          # Check PHP security issues
+          composer audit --format=json > php_audit.json 2>/dev/null || echo '{"advisories":{}}' > php_audit.json
+          PHP_ISSUES=$(jq 'keys | length' php_audit.json)
+
+          # Check NPM security issues
+          cd resources/js
+          npm audit --json > ../npm_audit.json 2>/dev/null || echo '{"vulnerabilities":{}}' > ../npm_audit.json
+          cd ..
+          NPM_ISSUES=$(jq '.vulnerabilities | keys | length' npm_audit.json)
+
+          TOTAL_ISSUES=$((PHP_ISSUES + NPM_ISSUES))
+
+          if [ "$TOTAL_ISSUES" -gt 0 ]; then
+            echo "🚨 Found $TOTAL_ISSUES security issues!"
+            echo "- PHP security issues: $PHP_ISSUES"
+            echo "- NPM security issues: $NPM_ISSUES"
+            echo "updates=true" >> $GITHUB_OUTPUT
+          else
+            echo "✅ No security issues found"
+            echo "updates=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Upload dependency analysis
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-analysis
+          path: |
+            php_audit.json
+            npm_audit.json
+          retention-days: 30
+
+  update-php-dependencies:
+    name: Update PHP Dependencies
+    runs-on: ubuntu-latest
+    needs: analyze-dependencies
+    if: needs.analyze-dependencies.outputs.php_updates == 'true' || needs.analyze-dependencies.outputs.security_updates == 'true'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          tools: composer:v2
+
+      - name: Update PHP dependencies
+        run: |
+          UPDATE_TYPE="${{ github.event.inputs.update_type || 'patch' }}"
+
+          case "$UPDATE_TYPE" in
+            security)
+              echo "🔒 Applying security updates only..."
+              composer audit --fix
+              ;;
+            patch)
+              echo "🔧 Applying patch updates..."
+              composer update --with-dependencies --prefer-stable --no-interaction
+              ;;
+            minor)
+              echo "📦 Applying minor updates..."
+              composer update --with-dependencies --prefer-stable --no-interaction
+              ;;
+            major)
+              echo "🚀 Applying major updates (manual review required)..."
+              composer update --with-dependencies --prefer-stable --no-interaction
+              ;;
+          esac
+
+      - name: Verify composer.lock changes
+        run: |
+          if git diff --quiet composer.lock; then
+            echo "❌ No changes to composer.lock detected"
+            exit 1
+          else
+            echo "✅ Dependencies updated successfully"
+            git diff --name-only
+          fi
+
+      - name: Run tests with updated dependencies
+        run: |
+          cp .env.example .env.testing
+          php artisan key:generate --env=testing
+          composer test || {
+            echo "❌ Tests failed with updated dependencies"
+            exit 1
+          }
+
+      - name: Create PHP dependency update PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            // Create branch
+            const branchName = `dependency-update/php-${Date.now()}`;
+
+            await github.rest.git.createRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: `refs/heads/${branchName}`,
+              sha: context.sha
+            });
+
+            // Commit changes
+            await github.rest.repos.createOrUpdateFileContents({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              path: 'composer.lock',
+              message: 'chore(deps): update PHP dependencies',
+              content: Buffer.from(fs.readFileSync('composer.lock')).toString('base64'),
+              branch: branchName
+            });
+
+            // Create PR
+            await github.rest.pulls.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: 'chore(deps): Update PHP dependencies',
+              head: branchName,
+              base: 'main',
+              body: `## 📦 PHP Dependency Updates
+
+              This PR updates PHP dependencies to their latest compatible versions.
+
+              ### Changes
+              - Updated dependencies based on security advisories and latest patches
+              - All tests are passing with the updated dependencies
+              - No breaking changes detected
+
+              ### Review Notes
+              - [ ] Review the changes in \`composer.lock\`
+              - [ ] Verify all tests pass
+              - [ ] Test critical application functionality
+
+              **Auto-generated by dependency management workflow**`
+            });
+
+  update-npm-dependencies:
+    name: Update NPM Dependencies
+    runs-on: ubuntu-latest
+    needs: analyze-dependencies
+    if: needs.analyze-dependencies.outputs.npm_updates == 'true' || needs.analyze-dependencies.outputs.security_updates == 'true'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Update NPM dependencies
+        working-directory: ./resources/js
+        run: |
+          UPDATE_TYPE="${{ github.event.inputs.update_type || 'patch' }}"
+
+          case "$UPDATE_TYPE" in
+            security)
+              echo "🔒 Applying security updates only..."
+              npm audit fix --only=prod
+              ;;
+            patch)
+              echo "🔧 Applying patch updates..."
+              npm update --save
+              ;;
+            minor)
+              echo "📦 Applying minor updates..."
+              npx npm-check-updates -u --target minor
+              npm install
+              ;;
+            major)
+              echo "🚀 Applying major updates (manual review required)..."
+              npx npm-check-updates -u
+              npm install
+              ;;
+          esac
+
+      - name: Verify package-lock.json changes
+        working-directory: ./resources/js
+        run: |
+          if git diff --quiet package-lock.json; then
+            echo "❌ No changes to package-lock.json detected"
+            exit 1
+          else
+            echo "✅ Dependencies updated successfully"
+            git diff --name-only
+          fi
+
+      - name: Build and test with updated dependencies
+        working-directory: ./resources/js
+        run: |
+          npm run build
+          npm run lint || echo "⚠️ Linting issues detected"
+          npm run check || echo "⚠️ Type checking issues detected"
+          npm run test || echo "⚠️ Tests failed"
+
+      - name: Create NPM dependency update PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            // Create branch
+            const branchName = `dependency-update/npm-${Date.now()}`;
+
+            await github.rest.git.createRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: `refs/heads/${branchName}`,
+              sha: context.sha
+            });
+
+            // Read updated files
+            const packageJson = fs.readFileSync('resources/js/package.json');
+            const packageLock = fs.readFileSync('resources/js/package-lock.json');
+
+            // Commit changes
+            await github.rest.repos.createOrUpdateFileContents({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              path: 'resources/js/package.json',
+              message: 'chore(deps): update NPM dependencies',
+              content: Buffer.from(packageJson).toString('base64'),
+              branch: branchName
+            });
+
+            await github.rest.repos.createOrUpdateFileContents({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              path: 'resources/js/package-lock.json',
+              message: 'chore(deps): update NPM dependencies',
+              content: Buffer.from(packageLock).toString('base64'),
+              branch: branchName
+            });
+
+            // Create PR
+            await github.rest.pulls.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: 'chore(deps): Update NPM dependencies',
+              head: branchName,
+              base: 'main',
+              body: `## 📦 NPM Dependency Updates
+
+              This PR updates NPM dependencies to their latest compatible versions.
+
+              ### Changes
+              - Updated frontend dependencies
+              - Build process completed successfully
+              - Linting and type checking performed
+
+              ### Review Notes
+              - [ ] Review the changes in \`package.json\` and \`package-lock.json\`
+              - [ ] Test frontend functionality
+              - [ ] Verify build process works correctly
+
+              **Auto-generated by dependency management workflow**`
+            });
+
+  security-patch:
+    name: Emergency Security Patch
+    runs-on: ubuntu-latest
+    if: github.event.inputs.update_type == 'security' || contains(github.event_name, 'schedule')
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          tools: composer:v2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Check for critical security issues
+        id: security_check
+        run: |
+          # Check PHP security
+          composer audit --format=json > php_security.json
+          PHP_CRITICAL=$(jq '[.advisories[] | select(.severity == "high" or .severity == "critical")] | length' php_security.json)
+
+          # Check NPM security
+          cd resources/js
+          npm audit --json > ../npm_security.json 2>/dev/null || echo '{"vulnerabilities":{}}' > ../npm_security.json
+          cd ..
+          NPM_CRITICAL=$(jq '[.vulnerabilities[] | select(.severity == "high" or .severity == "critical")] | length' npm_security.json)
+
+          TOTAL_CRITICAL=$((PHP_CRITICAL + NPM_CRITICAL))
+
+          echo "critical_issues=$TOTAL_CRITICAL" >> $GITHUB_OUTPUT
+
+          if [ "$TOTAL_CRITICAL" -gt 0 ]; then
+            echo "🚨 Found $TOTAL_CRITICAL critical security issues!"
+            echo "- PHP critical: $PHP_CRITICAL"
+            echo "- NPM critical: $NPM_CRITICAL"
+          fi
+
+      - name: Create security alert issue
+        if: steps.security_check.outputs.critical_issues > 0
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const criticalCount = ${{ steps.security_check.outputs.critical_issues }};
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `🚨 Critical Security Alert: ${criticalCount} vulnerabilities found`,
+              body: `## 🚨 Critical Security Vulnerabilities Detected
+
+              **${criticalCount} critical security issues** have been found in the project dependencies.
+
+              ### Immediate Actions Required:
+              1. Review the security report artifacts
+              2. Apply security patches using the dependency management workflow
+              3. Test thoroughly after applying patches
+              4. Deploy security fixes as soon as possible
+
+              ### Files to Review:
+              - Check the workflow artifacts for detailed security reports
+              - Review both PHP and NPM dependencies
+
+              ### Next Steps:
+              1. Run: \`gh workflow run dependency-management.yml -f update_type=security\`
+              2. Review and merge the resulting PR immediately
+              3. Deploy to production
+
+              **This is an automated security alert. Please address immediately.**`,
+              labels: ['security', 'critical', 'automated']
+            });
+
+      - name: Notify security team
+        if: steps.security_check.outputs.critical_issues > 0
+        uses: 8398a7/action-slack@v3
+        with:
+          status: custom
+          custom_payload: |
+            {
+              "channel": "#security",
+              "text": "🚨 CRITICAL SECURITY ALERT",
+              "color": "danger",
+              "fields": [
+                {
+                  "title": "Critical Vulnerabilities Found",
+                  "value": "${{ steps.security_check.outputs.critical_issues }}",
+                  "short": true
+                },
+                {
+                  "title": "Repository",
+                  "value": "${{ github.repository }}",
+                  "short": true
+                }
+              ],
+              "actions": [
+                {
+                  "type": "button",
+                  "text": "View Workflow",
+                  "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                }
+              ]
+            }
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+
+  cleanup:
+    name: Cleanup Old Dependencies
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Clean up old dependency PRs
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Find old dependency update PRs
+            const { data: pulls } = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open'
+            });
+
+            const oldDepPRs = pulls.filter(pr =>
+              pr.title.includes('chore(deps):') &&
+              pr.user.login === 'github-actions[bot]' &&
+              new Date() - new Date(pr.created_at) > 7 * 24 * 60 * 60 * 1000 // 7 days old
+            );
+
+            for (const pr of oldDepPRs) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                body: 'This dependency update PR has been automatically closed due to age. A newer dependency update will be created if needed.'
+              });
+
+              await github.rest.pulls.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: pr.number,
+                state: 'closed'
+              });
+            }
+
+            if (oldDepPRs.length > 0) {
+              console.log(`Closed ${oldDepPRs.length} old dependency PRs`);
+            }

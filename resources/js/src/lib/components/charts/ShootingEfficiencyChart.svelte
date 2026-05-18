@@ -1,6 +1,6 @@
 <script lang="ts">
     import { onMount } from 'svelte';
-    import Chart from 'chart.js/auto';
+    import { Chart } from '$lib/chart/register';
     import type { ChartConfiguration } from 'chart.js';
 
     export let data: {

@@ -330,10 +330,8 @@ wait_for_database() {
                 php artisan migrate --force --verbose || echo "⚠️  Migrations still failed, but continuing..."
             }
 
-            # Create queue tables explicitly if they don't exist
-            echo "📋 Ensuring queue tables exist..."
-            php artisan queue:table --create || echo "Queue table migration already exists"
-            php artisan migrate --force || echo "⚠️  Queue table migration failed"
+            # Queue tables (jobs, failed_jobs, job_batches) ship with default Laravel migrations.
+            echo "📋 Queue tables: using migrations (0001_01_01_000002_create_jobs_table)."
 
             # Laravel optimizations (with error handling)
             echo "⚡ Optimizing Laravel application..."

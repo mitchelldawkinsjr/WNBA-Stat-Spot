@@ -4,9 +4,9 @@ namespace App\Services;
 
 use App\Models\WnbaGame;
 use App\Models\WnbaGameTeam;
+use App\Models\WnbaPlay;
 use App\Models\WnbaPlayer;
 use App\Models\WnbaPlayerGame;
-use App\Models\WnbaPlay;
 use App\Models\WnbaTeam;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
@@ -15,16 +15,37 @@ use League\Csv\Reader;
 class WnbaDataService
 {
     private string $wnbaBoxScoreUrl;
+
     private string $wnbaTeamUrl;
+
     private string $wnbaPbpUrl;
+
     private string $wnbaTeamScheduleUrl;
+
+    /** @var int Season year used in default GitHub CSV URLs and local cache filenames (see WNBA_CURRENT_SEASON). */
+    private int $dataSeasonYear;
 
     public function __construct()
     {
-        $this->wnbaBoxScoreUrl = env('WNBA_BOX_SCORE_URL', 'https://github.com/sportsdataverse/sportsdataverse-data/releases/download/espn_wnba_player_boxscores/player_box_2025.csv');
-        $this->wnbaTeamUrl = env('WNBA_TEAM_URL', 'https://github.com/sportsdataverse/sportsdataverse-data/releases/download/espn_wnba_team_boxscores/team_box_2025.csv');
-        $this->wnbaPbpUrl = env('WNBA_PBP_URL', 'https://github.com/sportsdataverse/sportsdataverse-data/releases/download/espn_wnba_pbp/play_by_play_2025.csv');
-        $this->wnbaTeamScheduleUrl = env('WNBA_TEAM_SCHEDULE_URL', 'https://github.com/sportsdataverse/sportsdataverse-data/releases/download/espn_wnba_schedules/wnba_schedule_2025.csv');
+        $this->dataSeasonYear = (int) config('wnba.seasons.current_season');
+        $y = $this->dataSeasonYear;
+
+        $this->wnbaBoxScoreUrl = env(
+            'WNBA_BOX_SCORE_URL',
+            "https://github.com/sportsdataverse/sportsdataverse-data/releases/download/espn_wnba_player_boxscores/player_box_{$y}.csv"
+        );
+        $this->wnbaTeamUrl = env(
+            'WNBA_TEAM_URL',
+            "https://github.com/sportsdataverse/sportsdataverse-data/releases/download/espn_wnba_team_boxscores/team_box_{$y}.csv"
+        );
+        $this->wnbaPbpUrl = env(
+            'WNBA_PBP_URL',
+            "https://github.com/sportsdataverse/sportsdataverse-data/releases/download/espn_wnba_pbp/play_by_play_{$y}.csv"
+        );
+        $this->wnbaTeamScheduleUrl = env(
+            'WNBA_TEAM_SCHEDULE_URL',
+            "https://github.com/sportsdataverse/sportsdataverse-data/releases/download/espn_wnba_schedules/wnba_schedule_{$y}.csv"
+        );
     }
 
     /**
@@ -44,6 +65,7 @@ class WnbaDataService
         if ($value === null) {
             return $default;
         }
+
         return $value === 'TRUE' || $value === true || $value === '1' || $value === 1;
     }
 
@@ -56,6 +78,7 @@ class WnbaDataService
         if ($value === null || $value === '') {
             return $default;
         }
+
         return (int) $value;
     }
 
@@ -63,14 +86,14 @@ class WnbaDataService
     {
         $response = Http::get($this->wnbaBoxScoreUrl);
 
-        if (!$response->successful()) {
+        if (! $response->successful()) {
             throw new \Exception('Failed to download WNBA box score data');
         }
 
         $csvContent = $response->body();
 
         // Save to storage
-        $path = 'wnba/player_box_2025.csv';
+        $path = "wnba/player_box_{$this->dataSeasonYear}.csv";
         Storage::put($path, $csvContent);
 
         return $path;
@@ -80,14 +103,14 @@ class WnbaDataService
     {
         $response = Http::get($this->wnbaTeamUrl);
 
-        if (!$response->successful()) {
+        if (! $response->successful()) {
             throw new \Exception('Failed to download WNBA team data');
         }
 
         $csvContent = $response->body();
 
         // Save to storage
-        $path = 'wnba/team_box_2025.csv';
+        $path = "wnba/team_box_{$this->dataSeasonYear}.csv";
         Storage::put($path, $csvContent);
 
         return $path;
@@ -97,14 +120,14 @@ class WnbaDataService
     {
         $response = Http::get($this->wnbaTeamScheduleUrl);
 
-        if (!$response->successful()) {
+        if (! $response->successful()) {
             throw new \Exception('Failed to download WNBA team schedule data');
         }
 
         $csvContent = $response->body();
 
         // Save to storage
-        $path = 'wnba/team_schedule_2025.csv';
+        $path = "wnba/team_schedule_{$this->dataSeasonYear}.csv";
         Storage::put($path, $csvContent);
 
         return $path;
@@ -114,14 +137,14 @@ class WnbaDataService
     {
         $response = Http::get($this->wnbaPbpUrl);
 
-        if (!$response->successful()) {
+        if (! $response->successful()) {
             throw new \Exception('Failed to download WNBA PBP data');
         }
 
         $csvContent = $response->body();
 
         // Save to storage
-        $path = 'wnba/play_by_play_2025.csv';
+        $path = "wnba/play_by_play_{$this->dataSeasonYear}.csv";
         Storage::put($path, $csvContent);
 
         return $path;
@@ -416,7 +439,7 @@ class WnbaDataService
 
             // Create or update opponent team (only if opponent_team_id exists)
             $opponentTeam = null;
-            if (!empty($record['opponent_team_id'])) {
+            if (! empty($record['opponent_team_id'])) {
                 $opponentTeam = WnbaTeam::updateOrCreate(
                     ['team_id' => $record['opponent_team_id']],
                     [
@@ -490,7 +513,7 @@ class WnbaDataService
             }
 
             // Skip records with invalid home_away values
-            if (empty($record['home_away']) || !in_array($record['home_away'], ['home', 'away'])) {
+            if (empty($record['home_away']) || ! in_array($record['home_away'], ['home', 'away'])) {
                 continue;
             }
 
@@ -598,7 +621,7 @@ class WnbaDataService
             $awayTeam = null;
 
             // Create or update home team (only if home_team_id is not null)
-            if (!empty($record['home_team_id'])) {
+            if (! empty($record['home_team_id'])) {
                 $homeTeam = WnbaTeam::updateOrCreate(
                     ['team_id' => $record['home_team_id']],
                     [
@@ -616,7 +639,7 @@ class WnbaDataService
             }
 
             // Create or update away team (only if away_team_id is not null)
-            if (!empty($record['away_team_id'])) {
+            if (! empty($record['away_team_id'])) {
                 $awayTeam = WnbaTeam::updateOrCreate(
                     ['team_id' => $record['away_team_id']],
                     [
@@ -728,7 +751,7 @@ class WnbaDataService
 
             // Create or update player if exists
             $player = null;
-            if (!empty($record['athlete_id'])) {
+            if (! empty($record['athlete_id'])) {
                 $player = WnbaPlayer::updateOrCreate(
                     ['athlete_id' => $record['athlete_id']],
                     [
@@ -744,7 +767,7 @@ class WnbaDataService
 
             // Create or update score team if exists
             $scoreTeam = null;
-            if (!empty($record['score_team_id'])) {
+            if (! empty($record['score_team_id'])) {
                 $scoreTeam = WnbaTeam::updateOrCreate(
                     ['team_id' => $record['score_team_id']],
                     [

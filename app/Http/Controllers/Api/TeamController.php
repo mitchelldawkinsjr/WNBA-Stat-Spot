@@ -5,9 +5,9 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Traits\ApiResponseTrait;
 use App\Http\Traits\CacheHelper;
-use App\Models\WnbaTeam;
 use App\Models\WnbaPlayer;
 use App\Models\WnbaPlayerGame;
+use App\Models\WnbaTeam;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -21,10 +21,10 @@ class TeamController extends Controller
     {
         try {
             // Check if the table exists
-            if (!Schema::hasTable('wnba_teams')) {
+            if (! Schema::hasTable('wnba_teams')) {
                 return $this->successResponse([
                     'data' => [],
-                    'meta' => ['total' => 0]
+                    'meta' => ['total' => 0],
                 ], 'Database is still being set up. Please try again in a few minutes.');
             }
 
@@ -34,8 +34,8 @@ class TeamController extends Controller
                 $search = $request->get('search');
                 $query->where(function ($q) use ($search) {
                     $q->where('team_display_name', 'like', "%{$search}%")
-                      ->orWhere('team_location', 'like', "%{$search}%")
-                      ->orWhere('team_abbreviation', 'like', "%{$search}%");
+                        ->orWhere('team_location', 'like', "%{$search}%")
+                        ->orWhere('team_abbreviation', 'like', "%{$search}%");
                 });
             }
 
@@ -44,8 +44,8 @@ class TeamController extends Controller
             return $this->successResponse([
                 'data' => $teams,
                 'meta' => [
-                    'total' => $teams->count()
-                ]
+                    'total' => $teams->count(),
+                ],
             ], 'Teams retrieved successfully');
         } catch (\Exception $e) {
             return $this->handleException($e, 'Retrieving teams');
@@ -56,28 +56,25 @@ class TeamController extends Controller
     {
         $team = WnbaTeam::where('team_id', $teamId)->first();
 
-        if (!$team) {
+        if (! $team) {
             return $this->notFoundResponse('Team');
         }
 
-        return $this->successResponse([
-            'data' => $team
-        ]);
+        return $this->successResponse($team);
     }
 
     public function players(string $teamId): JsonResponse
     {
         $team = WnbaTeam::where('team_id', $teamId)->first();
 
-        if (!$team) {
+        if (! $team) {
             return response()->json([
-                'error' => 'Team not found'
+                'error' => 'Team not found',
             ], 404);
         }
 
-        // Get players who have played for this team by analyzing game data
-        // Use the internal team ID (not team_id) to match with player games
-        $playerIds = WnbaPlayerGame::where('team_id', $team->id)
+        // Match wnba_player_games.team_id / wnba_game_teams.team_id — ESPN team_id string on wnba_teams, not internal id.
+        $playerIds = WnbaPlayerGame::where('team_id', $team->team_id)
             ->where('did_not_play', false)
             ->distinct()
             ->pluck('player_id');
@@ -94,8 +91,9 @@ class TeamController extends Controller
                 'team_id' => $team->team_id,
                 'team_display_name' => $team->team_display_name,
                 'team_abbreviation' => $team->team_abbreviation,
-                'team_logo' => $team->team_logo
+                'team_logo' => $team->team_logo,
             ];
+
             return $playerArray;
         });
 
@@ -103,8 +101,8 @@ class TeamController extends Controller
             'data' => $playersWithTeam,
             'meta' => [
                 'total' => $playersWithTeam->count(),
-                'team' => $team
-            ]
+                'team' => $team,
+            ],
         ]);
     }
 
@@ -113,19 +111,19 @@ class TeamController extends Controller
      */
     public function summary(): JsonResponse
     {
-        $cacheKey = "teams_summary";
+        $cacheKey = 'teams_summary';
 
         $teams = Cache::remember($cacheKey, $this->defaultCacheTtl * 2, function () {
             return WnbaTeam::select([
-                'id', 'team_id', 'team_abbreviation', 'team_display_name', 'team_logo'
+                'id', 'team_id', 'team_abbreviation', 'team_display_name', 'team_logo',
             ])
-            ->orderBy('team_display_name')
-            ->get();
+                ->orderBy('team_display_name')
+                ->get();
         });
 
         return response()->json([
             'data' => $teams,
-            'message' => 'Teams summary retrieved successfully'
+            'message' => 'Teams summary retrieved successfully',
         ]);
     }
 
@@ -141,7 +139,7 @@ class TeamController extends Controller
         }
 
         return response()->json([
-            'message' => 'Team cache cleared successfully'
+            'message' => 'Team cache cleared successfully',
         ]);
     }
 }

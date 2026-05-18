@@ -155,7 +155,7 @@ return [
     ],
 
     'seasons' => [
-        'current_season' => env('WNBA_CURRENT_SEASON', 2024),
+        'current_season' => (int) env('WNBA_CURRENT_SEASON', 2026),
         'season_start_month' => 5, // May
         'season_end_month' => 10, // October
         'playoff_start_month' => 9, // September
