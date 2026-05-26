@@ -60,7 +60,7 @@ jobs:
           
       - name: Upload NPM Audit Results
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: npm-audit-results
           path: resources/js/npm-audit.json
@@ -206,7 +206,7 @@ jobs:
           npx license-checker --summary || true
           
       - name: Upload License Reports
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: license-reports
           path: |

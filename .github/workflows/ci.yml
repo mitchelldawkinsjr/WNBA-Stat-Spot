@@ -134,7 +134,7 @@ jobs:
           
       - name: Archive Test Results
         if: failure()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: test-results
           path: |
@@ -190,7 +190,7 @@ jobs:
             .
             
       - name: Upload Build Artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: application-build
           path: application-build.tar.gz
