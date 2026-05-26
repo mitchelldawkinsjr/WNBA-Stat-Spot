@@ -1,5 +1,6 @@
 <script lang="ts">
     import {onMount} from "svelte";
+    import {page} from '$app/stores';
 
     const favicon = '/favicon.ico';
 
@@ -29,4 +30,6 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
 </svelte:head>
 
-<slot/>
+{#key $page.url.pathname}
+    <slot/>
+{/key}

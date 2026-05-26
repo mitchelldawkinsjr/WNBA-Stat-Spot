@@ -7,6 +7,16 @@ use Illuminate\Support\Collection;
 class StatisticsCalculator
 {
     /**
+     * WNBA player-game rows store 3PA/3PM as three_point_field_goals_* — keep outgoing keys as three_pointers_* for callers.
+     */
+    private static function avgRounded(Collection $games, string $column, int $precision = 1): float
+    {
+        $value = $games->avg($column);
+
+        return round((float) ($value ?? 0), $precision);
+    }
+
+    /**
      * Calculate basic statistical averages for player stats
      */
     public static function calculatePlayerAverages(Collection $games): array
@@ -16,19 +26,19 @@ class StatisticsCalculator
         }
 
         return [
-            'points' => round($games->avg('points'), 1),
-            'rebounds' => round($games->avg('rebounds'), 1),
-            'assists' => round($games->avg('assists'), 1),
-            'steals' => round($games->avg('steals'), 1),
-            'blocks' => round($games->avg('blocks'), 1),
-            'turnovers' => round($games->avg('turnovers'), 1),
-            'minutes' => round($games->avg('minutes'), 1),
-            'field_goals_made' => round($games->avg('field_goals_made'), 1),
-            'field_goals_attempted' => round($games->avg('field_goals_attempted'), 1),
-            'three_pointers_made' => round($games->avg('three_pointers_made'), 1),
-            'three_pointers_attempted' => round($games->avg('three_pointers_attempted'), 1),
-            'free_throws_made' => round($games->avg('free_throws_made'), 1),
-            'free_throws_attempted' => round($games->avg('free_throws_attempted'), 1),
+            'points' => self::avgRounded($games, 'points'),
+            'rebounds' => self::avgRounded($games, 'rebounds'),
+            'assists' => self::avgRounded($games, 'assists'),
+            'steals' => self::avgRounded($games, 'steals'),
+            'blocks' => self::avgRounded($games, 'blocks'),
+            'turnovers' => self::avgRounded($games, 'turnovers'),
+            'minutes' => self::avgRounded($games, 'minutes'),
+            'field_goals_made' => self::avgRounded($games, 'field_goals_made'),
+            'field_goals_attempted' => self::avgRounded($games, 'field_goals_attempted'),
+            'three_pointers_made' => self::avgRounded($games, 'three_point_field_goals_made'),
+            'three_pointers_attempted' => self::avgRounded($games, 'three_point_field_goals_attempted'),
+            'free_throws_made' => self::avgRounded($games, 'free_throws_made'),
+            'free_throws_attempted' => self::avgRounded($games, 'free_throws_attempted'),
         ];
     }
 
@@ -47,8 +57,8 @@ class StatisticsCalculator
 
         $totalFgMade = $games->sum('field_goals_made');
         $totalFgAttempted = $games->sum('field_goals_attempted');
-        $total3pMade = $games->sum('three_pointers_made');
-        $total3pAttempted = $games->sum('three_pointers_attempted');
+        $total3pMade = $games->sum('three_point_field_goals_made');
+        $total3pAttempted = $games->sum('three_point_field_goals_attempted');
         $totalFtMade = $games->sum('free_throws_made');
         $totalFtAttempted = $games->sum('free_throws_attempted');
 
@@ -172,7 +182,7 @@ class StatisticsCalculator
 
         // Effective Field Goal Percentage = (FGM + 0.5 * 3PM) / FGA
         $fgm = $games->sum('field_goals_made');
-        $threePm = $games->sum('three_pointers_made');
+        $threePm = $games->sum('three_point_field_goals_made');
         
         $effectiveFgPercentage = $fga > 0 ? round((($fgm + (0.5 * $threePm)) / $fga) * 100, 1) : 0;
 

@@ -35,7 +35,7 @@
                 api.wnba.predictions.getPropBets()
             ]);
 
-            players = playersResponse.data;
+            players = playersResponse.data.data;
             propBets = propBetsResponse.data || [];
         } catch (err) {
             error = err instanceof Error ? err.message : 'Failed to load data';

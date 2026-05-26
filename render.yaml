@@ -203,7 +203,7 @@ services:
 
       # WNBA Season Settings
       - key: WNBA_CURRENT_SEASON
-        value: "2025"
+        value: "2026"
 
       # WNBA Advanced Metrics
       - key: WNBA_ENABLE_PLAYER_TRACKING

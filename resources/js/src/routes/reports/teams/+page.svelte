@@ -9,6 +9,8 @@
     let loading = true;
     let error = '';
 
+    const activeSeasonYear = new Date().getFullYear();
+
     function hideImage(e: Event) {
         const img = e.target as HTMLImageElement;
         img.style.display = 'none';
@@ -22,7 +24,7 @@
         try {
             loading = true;
             const response = await api.teams.getAll({ search: searchTerm || undefined });
-            teams = response.data;
+            teams = response.data.data;
         } catch (err) {
             error = err instanceof Error ? err.message : 'Failed to load teams';
         } finally {
@@ -134,7 +136,7 @@
                                 </div>
                                 <div class="flex-grow-1">
                                     <h5 class="card-title mb-1">Active Season</h5>
-                                    <h3 class="text-info mb-0">2025</h3>
+                                    <h3 class="text-info mb-0">{activeSeasonYear}</h3>
                                 </div>
                             </div>
                         </div>

@@ -18,12 +18,12 @@ class OddsApiService
     public function __construct()
     {
         $this->config = config('odds-api');
-        $this->apiKey = $this->config['api_key'];
+        $this->apiKey = (string) ($this->config['api_key'] ?? '');
         $this->baseUrl = $this->config['base_url'];
         $this->timeout = $this->config['timeout'];
 
-        if (empty($this->apiKey)) {
-            throw new \InvalidArgumentException('The Odds API key is required. Set ODDS_API_KEY in your .env file.');
+        if ($this->apiKey === '') {
+            Log::warning('ODDS_API_KEY is not set; Odds API requests are disabled until it is configured.');
         }
     }
 
@@ -643,6 +643,12 @@ class OddsApiService
      */
     private function makeRequest(string $endpoint, array $params = []): array
     {
+        if ($this->apiKey === '') {
+            Log::debug('Odds API request skipped: missing API key', ['endpoint' => $endpoint]);
+
+            return ['data' => []];
+        }
+
         $params['apiKey'] = $this->apiKey;
 
         // Track API usage
@@ -944,6 +950,10 @@ class OddsApiService
      */
     private function canMakeRequest(): bool
     {
+        if ($this->apiKey === '') {
+            return false;
+        }
+
         $today = Carbon::today()->format('Y-m-d');
         $month = Carbon::now()->format('Y-m');
 

@@ -57,7 +57,7 @@ class GameController extends Controller
     {
         $gameTeam = $game->gameTeams->where('home_away', $homeAway)->first();
 
-        if (!$gameTeam) {
+        if (!$gameTeam || !$gameTeam->team) {
             return null;
         }
 

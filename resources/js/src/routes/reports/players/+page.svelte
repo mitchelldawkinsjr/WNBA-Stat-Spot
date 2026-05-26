@@ -51,14 +51,14 @@
             const response = await api.players.getAll(params);
 
             if (append) {
-                players = [...players, ...response.data];
+                players = [...players, ...response.data.data];
             } else {
-                players = response.data;
+                players = response.data.data;
             }
 
-            currentPage = response.meta.current_page;
-            totalPages = response.meta.last_page;
-            totalPlayers = response.meta.total;
+            currentPage = response.data.meta.current_page;
+            totalPages = response.data.meta.last_page;
+            totalPlayers = response.data.meta.total;
             hasMorePages = currentPage < totalPages;
 
         } catch (err) {

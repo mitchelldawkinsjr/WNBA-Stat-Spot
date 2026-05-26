@@ -11,6 +11,7 @@ export default defineConfig({
 		}
 	},
 	resolve: {
+		dedupe: ['chart.js'],
 		alias: {
 			'~bootstrap': 'bootstrap'
 		}

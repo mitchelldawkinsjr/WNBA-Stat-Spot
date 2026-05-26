@@ -98,7 +98,7 @@
     bind:this={baseChart}
     title={statName ? `${statName} Trend` : 'Player Statistics'}
     chartType="line"
-    {data}={chartData}
+    data={chartData}
     options={chartOptions}
     {height}
     {loading}

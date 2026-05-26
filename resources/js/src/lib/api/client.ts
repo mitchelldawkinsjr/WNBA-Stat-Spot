@@ -3,10 +3,10 @@ import { env } from '$env/dynamic/public';
 
 // Development fallback URLs - these should be set via environment variables in production
 const API_URLS = {
-    service: env.PUBLIC_API_URL_SERVICE || 'http://laravel.test:80/api',
-    hostInternal: env.PUBLIC_API_URL_HOST_INTERNAL || 'http://host.docker.internal:80/api',
-    localhost: env.PUBLIC_API_URL_LOCALHOST || 'http://localhost:80/api',
-    localhostDefault: env.PUBLIC_API_URL_DEFAULT || 'http://localhost/api'
+    service: 'http://localhost:8080/api',
+    hostInternal: 'http://localhost:8080/api',
+    localhost: 'http://localhost:8080/api',
+    localhostDefault: 'http://localhost:8080/api'
 };
 
 // Get API URL from environment variables with fallbacks
@@ -25,11 +25,12 @@ const getApiUrl = () => {
         }
     }
 
-    // Development mode - use localhost for browser (host machine) and service name for server-side (container)
-    return browser ? API_URLS.localhost : API_URLS.service;
+    // Development mode - ALWAYS use localhost:8080 for both browser and server-side
+    // This ensures the frontend always connects to the correct port
+    return 'http://localhost:8080/api';
 };
 
-const API_URL = getApiUrl();
+const API_URL = 'http://localhost:8080/api';
 
 // Utility function to get user timezone information
 export function getUserTimezone() {
@@ -596,7 +597,7 @@ function setCache(key: string, data: any, ttl: number): void {
 }
 
 async function fetchApi<T>(endpoint: string, options?: RequestInit & { cacheTtl?: keyof typeof CACHE_TTL }): Promise<T> {
-    const url = `${API_URL}${endpoint}`;
+    const url = `${getApiUrl()}${endpoint}`;
     const cacheKey = getCacheKey(url, options);
     const cacheTtl = options?.cacheTtl ? CACHE_TTL[options.cacheTtl] : CACHE_TTL.short;
 
@@ -641,6 +642,21 @@ async function fetchApi<T>(endpoint: string, options?: RequestInit & { cacheTtl?
 
         throw error;
     }
+}
+
+/** DataAggregator aggregated player stats (players/{id}/data page). Shared by api.players & api.wnba.data. */
+function fetchAggregatedPlayerDataApi(
+    playerId: string,
+    options?: { season?: number; last_n_games?: number }
+) {
+    const params = new URLSearchParams();
+    if (options?.season != null) params.append('season', String(options.season));
+    if (options?.last_n_games != null) params.append('last_n_games', String(options.last_n_games));
+    const qs = params.toString();
+    return fetchApi<{ success: boolean; data: AggregatedPlayerData; message?: string }>(
+        `/wnba/data/players/${playerId}${qs ? `?${qs}` : ''}`,
+        { cacheTtl: 'medium' }
+    );
 }
 
 export const api = {
@@ -708,6 +724,12 @@ export const api = {
         },
         getSummary: () => fetchApi<ApiResponse<Player[]>>('/players/summary', { cacheTtl: 'long' }),
         getById: (id: string) => fetchApi<ApiResponse<Player>>(`/players/${id}`, { cacheTtl: 'medium' }),
+        /**
+         * Aggregated box-score + trends from DataAggregator (/wnba/data/players/:id).
+         * Use this instead of api.wnba.data.getPlayerData — some deployments had `api.wnba.data` stripped/missing at runtime.
+         */
+        getAggregatedData: (playerId: string, options?: { season?: number; last_n_games?: number }) =>
+            fetchAggregatedPlayerDataApi(playerId, options),
         clearCache: () => fetchApi<ApiResponse<any>>('/players/clear-cache', { method: 'POST' }),
     },
     games: {
@@ -796,6 +818,21 @@ export const api = {
             getAnalytics: (params?: { timeframe?: string; bet_type?: string }) => {
                 const query = params ? `?${new URLSearchParams(params as any).toString()}` : '';
                 return fetchApi<{ success: boolean; data: any }>(`/wnba/betting/analytics${query}`, { cacheTtl: 'medium' });
+            },
+        },
+        /** @deprecated Prefer `api.players.getAggregatedData` — some builds dropped nested `api.wnba.data`. */
+        data: {
+            getPlayerData: (playerId: string, options?: { season?: number; last_n_games?: number }) =>
+                fetchAggregatedPlayerDataApi(playerId, options),
+            getTeamData: (teamId: string, options?: { season?: number; last_n_games?: number }) => {
+                const params = new URLSearchParams();
+                if (options?.season != null) params.append('season', String(options.season));
+                if (options?.last_n_games != null) params.append('last_n_games', String(options.last_n_games));
+                const qs = params.toString();
+                return fetchApi<{ success: boolean; data: AggregatedTeamData; message?: string }>(
+                    `/wnba/data/teams/${teamId}${qs ? `?${qs}` : ''}`,
+                    { cacheTtl: 'medium' }
+                );
             },
         },
         dataQuality: {

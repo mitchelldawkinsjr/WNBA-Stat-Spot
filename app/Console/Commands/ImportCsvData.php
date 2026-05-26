@@ -2,12 +2,12 @@
 
 namespace App\Console\Commands;
 
-use App\Jobs\ImportCsvData;
+use App\Jobs\ImportCsvData as ImportCsvDataJob;
 use App\Services\WNBA\Data\ImporterService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Storage;
 
-class ImportCsvDataCommand extends Command
+class ImportCsvData extends Command
 {
     protected $signature = 'wnba:import-csv
                             {file : Path to the CSV file}
@@ -50,7 +50,7 @@ class ImportCsvDataCommand extends Command
             // Process import
             if ($useQueue) {
                 $this->info('Dispatching import job to queue...');
-                ImportCsvData::dispatch($filePath, $table, $columnMappings);
+                ImportCsvDataJob::dispatch($filePath, $table, $columnMappings);
                 $this->info('Import job dispatched successfully');
             } else {
                 $this->info('Starting import process...');

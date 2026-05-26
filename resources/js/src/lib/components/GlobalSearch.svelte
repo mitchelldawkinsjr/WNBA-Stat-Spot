@@ -61,12 +61,12 @@
 
         // Search players
         try {
-            const playersResponse = await api.players.getAll({ 
-                search: term, 
-                per_page: maxResults / 2 
+            const playersResponse = await api.players.getAll({
+                search: term,
+                per_page: maxResults / 2
             });
-            
-            const playerResults = playersResponse.data.map((player: any) => ({
+
+            const playerResults = playersResponse.data.data.map((player: any) => ({
                 id: `player-${player.id}`,
                 type: 'player' as const,
                 title: player.athlete_display_name,
@@ -87,8 +87,8 @@
         // Search teams
         try {
             const teamsResponse = await api.teams.getAll({ search: term });
-            
-            const teamResults = teamsResponse.data.slice(0, maxResults / 4).map((team: any) => ({
+
+            const teamResults = teamsResponse.data.data.slice(0, maxResults / 4).map((team: any) => ({
                 id: `team-${team.id}`,
                 type: 'team' as const,
                 title: team.team_display_name,
@@ -108,14 +108,14 @@
         return results.sort((a, b) => {
             const aExact = a.title.toLowerCase().includes(term.toLowerCase());
             const bExact = b.title.toLowerCase().includes(term.toLowerCase());
-            
+
             if (aExact && !bExact) return -1;
             if (!aExact && bExact) return 1;
-            
+
             // Prioritize players over teams
             if (a.type === 'player' && b.type === 'team') return -1;
             if (a.type === 'team' && b.type === 'player') return 1;
-            
+
             return 0;
         });
     }
@@ -124,7 +124,7 @@
         const target = event.target as HTMLInputElement;
         searchTerm = target.value;
         selectedIndex = -1;
-        
+
         if (searchTerm.trim()) {
             debouncedSearch(searchTerm.trim());
         } else {
@@ -165,7 +165,7 @@
         searchResults = [];
         showDropdown = false;
         selectedIndex = -1;
-        
+
         // Navigate to the result URL
         window.location.href = result.url;
     }
@@ -228,16 +228,16 @@
                 </span>
             {/if}
         </div>
-        
+
         {#if showFilters}
             <div class="search-filters mt-2">
                 <div class="btn-group btn-group-sm" role="group">
                     <input type="radio" class="btn-check" name="searchType" id="all" checked>
                     <label class="btn btn-outline-primary" for="all">All</label>
-                    
+
                     <input type="radio" class="btn-check" name="searchType" id="players">
                     <label class="btn btn-outline-primary" for="players">Players</label>
-                    
+
                     <input type="radio" class="btn-check" name="searchType" id="teams">
                     <label class="btn btn-outline-primary" for="teams">Teams</label>
                 </div>
@@ -252,7 +252,7 @@
                     {searchResults.length} result{searchResults.length !== 1 ? 's' : ''} for "{searchTerm}"
                 </small>
             </div>
-            
+
             {#each searchResults as result, index}
                 <button
                     class="search-result-item {selectedIndex === index ? 'selected' : ''}"
@@ -265,7 +265,7 @@
                             <i class="mdi {getResultIcon(result.type)} fs-4"></i>
                         {/if}
                     </div>
-                    
+
                     <div class="result-content">
                         <div class="result-title">{result.title}</div>
                         {#if result.subtitle}
@@ -282,13 +282,13 @@
                             </div>
                         {/if}
                     </div>
-                    
+
                     <div class="result-type">
                         <span class="badge badge-soft-info">{result.type}</span>
                     </div>
                 </button>
             {/each}
-            
+
             {#if searchResults.length >= maxResults}
                 <div class="dropdown-footer">
                     <small class="text-muted">Showing first {maxResults} results. Refine your search for more specific results.</small>

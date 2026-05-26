@@ -9,7 +9,7 @@ mv /tmp/nginx.conf /etc/nginx/nginx.conf
 
 # Configure PHP-FPM to listen on 127.0.0.1:9000
 echo "🔧 Configuring PHP-FPM..."
-cat > /etc/php82/php-fpm.d/www.conf << 'EOF'
+cat > /etc/php83/php-fpm.d/www.conf << 'EOF'
 [www]
 user = nginx
 group = nginx
@@ -17,6 +17,8 @@ listen = 127.0.0.1:9000
 listen.owner = nginx
 listen.group = nginx
 listen.mode = 0660
+; Inherit APP_KEY, DB_*, etc. from Docker (default clears env for workers)
+clear_env = no
 pm = dynamic
 pm.max_children = 50
 pm.start_servers = 5
@@ -328,10 +330,8 @@ wait_for_database() {
                 php artisan migrate --force --verbose || echo "⚠️  Migrations still failed, but continuing..."
             }
 
-            # Create queue tables explicitly if they don't exist
-            echo "📋 Ensuring queue tables exist..."
-            php artisan queue:table --create || echo "Queue table migration already exists"
-            php artisan migrate --force || echo "⚠️  Queue table migration failed"
+            # Queue tables (jobs, failed_jobs, job_batches) ship with default Laravel migrations.
+            echo "📋 Queue tables: using migrations (0001_01_01_000002_create_jobs_table)."
 
             # Laravel optimizations (with error handling)
             echo "⚡ Optimizing Laravel application..."

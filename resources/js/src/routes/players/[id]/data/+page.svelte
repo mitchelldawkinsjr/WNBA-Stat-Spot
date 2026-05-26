@@ -18,11 +18,15 @@
         try {
             const [playerResponse, dataResponse] = await Promise.all([
                 api.players.getById(playerId),
-                api.wnba.data.getPlayerData(playerId, { season: 2025, last_n_games: 20 })
+                // Same endpoint as api.wnba.data.getPlayerData; use players.* so deep `wnba.data` is never required.
+                api.players.getAggregatedData(playerId, { last_n_games: 20 }),
             ]);
 
             player = playerResponse.data;
-            aggregatedData = dataResponse;
+            if (!dataResponse.success || !dataResponse.data) {
+                throw new Error(dataResponse.message || 'Failed to load aggregated player data');
+            }
+            aggregatedData = dataResponse.data;
         } catch (err) {
             error = err instanceof Error ? err.message : 'Failed to load player data';
         } finally {
@@ -80,6 +84,16 @@
                 </div>
             </div>
         {:else if player && aggregatedData}
+            {#if aggregatedData.season_stats.games_played === 0}
+                <div class="row mb-3">
+                    <div class="col-12">
+                        <div class="alert alert-info mb-0" role="alert">
+                            No game statistics were found for this player for the active season. Confirm stats import has run and
+                            <code>WNBA_CURRENT_SEASON</code> matches your data.
+                        </div>
+                    </div>
+                </div>
+            {/if}
             <!-- Player Info Card -->
             <div class="row mb-4">
                 <div class="col-12">

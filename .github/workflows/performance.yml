@@ -1,0 +1,483 @@
+name: Performance Testing
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 2 * * 0' # Weekly on Sunday at 2 AM UTC
+  workflow_dispatch:
+    inputs:
+      test_type:
+        description: 'Type of performance test'
+        required: true
+        default: 'basic'
+        type: choice
+        options:
+          - basic
+          - load
+          - stress
+          - spike
+          - endurance
+
+env:
+  PHP_VERSION: 8.2
+  NODE_VERSION: 20
+
+jobs:
+  setup-test-environment:
+    name: Setup Test Environment
+    runs-on: ubuntu-latest
+    outputs:
+      test_url: ${{ steps.deploy.outputs.url }}
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: wnba_perf_test
+          POSTGRES_PASSWORD: perf_password
+          POSTGRES_DB: wnba_perf_test
+        options: >-
+          --health-cmd "pg_isready -U wnba_perf_test -d wnba_perf_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: pdo, pdo_pgsql, mbstring, exif, pcntl, bcmath, gd, redis
+          tools: composer:v2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: resources/js/package-lock.json
+
+      - name: Install Dependencies
+        run: |
+          composer install --no-interaction --optimize-autoloader
+          cd resources/js && npm ci
+
+      - name: Build Application
+        working-directory: ./resources/js
+        run: npm run build
+
+      - name: Configure Test Environment
+        run: |
+          cp .env.example .env.testing
+          php artisan key:generate --env=testing
+
+          # Configure for performance testing
+          echo "DB_CONNECTION=pgsql" >> .env.testing
+          echo "DB_HOST=localhost" >> .env.testing
+          echo "DB_PORT=5432" >> .env.testing
+          echo "DB_DATABASE=wnba_perf_test" >> .env.testing
+          echo "DB_USERNAME=wnba_perf_test" >> .env.testing
+          echo "DB_PASSWORD=perf_password" >> .env.testing
+          echo "REDIS_HOST=localhost" >> .env.testing
+          echo "REDIS_PORT=6379" >> .env.testing
+          echo "CACHE_DRIVER=redis" >> .env.testing
+          echo "QUEUE_CONNECTION=sync" >> .env.testing
+          echo "SESSION_DRIVER=redis" >> .env.testing
+
+          # Performance optimizations
+          echo "APP_DEBUG=false" >> .env.testing
+          echo "LOG_LEVEL=error" >> .env.testing
+
+      - name: Setup Database
+        env:
+          APP_ENV: testing
+        run: |
+          php artisan migrate --env=testing --force
+          php artisan db:seed --env=testing --force
+
+      - name: Start Application Server
+        id: deploy
+        run: |
+          # Start PHP built-in server for testing
+          php artisan serve --host=0.0.0.0 --port=8000 --env=testing &
+
+          # Wait for server to start
+          sleep 10
+
+          # Test that server is running
+          curl -f http://localhost:8000/health || exit 1
+
+          echo "url=http://localhost:8000" >> $GITHUB_OUTPUT
+
+  basic-performance:
+    name: Basic Performance Tests
+    runs-on: ubuntu-latest
+    needs: setup-test-environment
+    if: github.event.inputs.test_type == 'basic' || github.event.inputs.test_type == '' || github.event_name != 'workflow_dispatch'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install Performance Testing Tools
+        run: |
+          npm install -g lighthouse artillery autocannon
+
+      - name: Run Lighthouse Performance Audit
+        run: |
+          echo "🔍 Running Lighthouse performance audit..."
+
+          lighthouse ${{ needs.setup-test-environment.outputs.test_url }} \
+            --output json \
+            --output html \
+            --chrome-flags="--headless --no-sandbox" \
+            --output-path ./lighthouse-report
+
+          # Extract performance score
+          PERF_SCORE=$(cat lighthouse-report.json | jq '.categories.performance.score * 100')
+          echo "Performance Score: $PERF_SCORE/100"
+
+          # Check if performance is acceptable
+          if (( $(echo "$PERF_SCORE < 70" | bc -l) )); then
+            echo "❌ Performance score is below 70"
+            exit 1
+          fi
+
+          echo "✅ Performance score is acceptable"
+
+      - name: Quick Load Test
+        run: |
+          echo "🚀 Running quick load test..."
+
+          autocannon \
+            --connections 10 \
+            --duration 30 \
+            --json \
+            ${{ needs.setup-test-environment.outputs.test_url }} \
+            > quick-load-test.json
+
+          # Extract metrics
+          REQUESTS_PER_SEC=$(cat quick-load-test.json | jq '.requests.average')
+          LATENCY_AVG=$(cat quick-load-test.json | jq '.latency.average')
+
+          echo "Average RPS: $REQUESTS_PER_SEC"
+          echo "Average Latency: ${LATENCY_AVG}ms"
+
+          # Performance thresholds
+          if (( $(echo "$REQUESTS_PER_SEC < 50" | bc -l) )); then
+            echo "⚠️ Low throughput: $REQUESTS_PER_SEC RPS"
+          fi
+
+          if (( $(echo "$LATENCY_AVG > 500" | bc -l) )); then
+            echo "⚠️ High latency: ${LATENCY_AVG}ms"
+          fi
+
+      - name: API Endpoint Performance
+        run: |
+          echo "🔌 Testing API endpoint performance..."
+
+          # Test key API endpoints
+          ENDPOINTS=(
+            "/api/teams"
+            "/api/players"
+            "/api/games"
+            "/health"
+          )
+
+          for endpoint in "${ENDPOINTS[@]}"; do
+            echo "Testing $endpoint..."
+
+            autocannon \
+              --connections 5 \
+              --duration 10 \
+              --json \
+              ${{ needs.setup-test-environment.outputs.test_url }}$endpoint \
+              > api-test-${endpoint//\//-}.json
+
+            RPS=$(cat api-test-${endpoint//\//-}.json | jq '.requests.average')
+            LATENCY=$(cat api-test-${endpoint//\//-}.json | jq '.latency.average')
+
+            echo "$endpoint: ${RPS} RPS, ${LATENCY}ms latency"
+          done
+
+      - name: Upload Performance Reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: basic-performance-reports
+          path: |
+            lighthouse-report.*
+            quick-load-test.json
+            api-test-*.json
+          retention-days: 30
+
+  load-testing:
+    name: Load Testing
+    runs-on: ubuntu-latest
+    needs: setup-test-environment
+    if: github.event.inputs.test_type == 'load' || github.event.inputs.test_type == 'stress' || github.event.inputs.test_type == 'spike'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install Artillery
+        run: |
+          npm install -g artillery
+
+      - name: Create Load Test Configuration
+        run: |
+          cat > load-test.yml << 'EOF'
+          config:
+            target: ${{ needs.setup-test-environment.outputs.test_url }}
+            phases:
+              - duration: 60
+                arrivalRate: 5
+                name: "Warm up"
+              - duration: 120
+                arrivalRate: 20
+                name: "Ramp up load"
+              - duration: 300
+                arrivalRate: 50
+                name: "Sustained load"
+            defaults:
+              headers:
+                User-Agent: "Artillery Load Test"
+          scenarios:
+            - name: "Homepage and API"
+              weight: 60
+              flow:
+                - get:
+                    url: "/"
+                - think: 2
+                - get:
+                    url: "/api/teams"
+                - think: 1
+                - get:
+                    url: "/api/players"
+            - name: "API Only"
+              weight: 40
+              flow:
+                - get:
+                    url: "/api/games"
+                - think: 1
+                - get:
+                    url: "/health"
+          EOF
+
+      - name: Run Load Test
+        run: |
+          echo "🚀 Running load test..."
+
+          TEST_TYPE="${{ github.event.inputs.test_type || 'load' }}"
+
+          case "$TEST_TYPE" in
+            stress)
+              echo "Running stress test with high load..."
+              sed -i 's/arrivalRate: 50/arrivalRate: 100/' load-test.yml
+              ;;
+            spike)
+              echo "Running spike test..."
+              cat > load-test.yml << 'EOF'
+          config:
+            target: ${{ needs.setup-test-environment.outputs.test_url }}
+            phases:
+              - duration: 60
+                arrivalRate: 10
+                name: "Normal load"
+              - duration: 60
+                arrivalRate: 200
+                name: "Spike!"
+              - duration: 60
+                arrivalRate: 10
+                name: "Recovery"
+          scenarios:
+            - flow:
+                - get:
+                    url: "/"
+          EOF
+              ;;
+          esac
+
+          artillery run load-test.yml --output load-test-results.json
+
+      - name: Generate Load Test Report
+        run: |
+          artillery report load-test-results.json --output load-test-report.html
+
+          # Extract key metrics
+          REQUESTS_COMPLETED=$(cat load-test-results.json | jq '.aggregate.counters."http.requests"')
+          MEDIAN_RESPONSE=$(cat load-test-results.json | jq '.aggregate.latency.median')
+          P95_RESPONSE=$(cat load-test-results.json | jq '.aggregate.latency.p95')
+          ERROR_RATE=$(cat load-test-results.json | jq '.aggregate.counters."http.codes.500" // 0')
+
+          echo "## Load Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "- Total Requests: $REQUESTS_COMPLETED" >> $GITHUB_STEP_SUMMARY
+          echo "- Median Response Time: ${MEDIAN_RESPONSE}ms" >> $GITHUB_STEP_SUMMARY
+          echo "- 95th Percentile: ${P95_RESPONSE}ms" >> $GITHUB_STEP_SUMMARY
+          echo "- Errors: $ERROR_RATE" >> $GITHUB_STEP_SUMMARY
+
+          # Performance thresholds
+          if (( $(echo "$P95_RESPONSE > 2000" | bc -l) )); then
+            echo "❌ High P95 response time: ${P95_RESPONSE}ms"
+            exit 1
+          fi
+
+          if (( $(echo "$ERROR_RATE > 0" | bc -l) )); then
+            echo "❌ Errors detected: $ERROR_RATE"
+            exit 1
+          fi
+
+          echo "✅ Load test passed all thresholds"
+
+      - name: Upload Load Test Results
+        uses: actions/upload-artifact@v4
+        with:
+          name: load-test-results
+          path: |
+            load-test-results.json
+            load-test-report.html
+            load-test.yml
+          retention-days: 30
+
+  database-performance:
+    name: Database Performance
+    runs-on: ubuntu-latest
+    needs: setup-test-environment
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: pdo, pdo_pgsql, mbstring, exif, pcntl, bcmath, gd
+          tools: composer:v2
+
+      - name: Install Dependencies
+        run: composer install --no-interaction
+
+      - name: Database Performance Tests
+        run: |
+          echo "🗄️ Running database performance tests..."
+
+          # Test database query performance
+          php artisan tinker --execute="
+            \$start = microtime(true);
+            \DB::table('wnba_teams')->count();
+            \$teams_time = microtime(true) - \$start;
+            echo 'Teams query: ' . round(\$teams_time * 1000, 2) . 'ms' . PHP_EOL;
+
+            \$start = microtime(true);
+            \DB::table('wnba_players')->limit(100)->get();
+            \$players_time = microtime(true) - \$start;
+            echo 'Players query: ' . round(\$players_time * 1000, 2) . 'ms' . PHP_EOL;
+
+            \$start = microtime(true);
+            \DB::table('wnba_games')->orderBy('game_date', 'desc')->limit(50)->get();
+            \$games_time = microtime(true) - \$start;
+            echo 'Games query: ' . round(\$games_time * 1000, 2) . 'ms' . PHP_EOL;
+          "
+
+  performance-summary:
+    name: Performance Summary
+    runs-on: ubuntu-latest
+    needs: [basic-performance, load-testing, database-performance]
+    if: always()
+
+    steps:
+      - name: Download Performance Reports
+        uses: actions/download-artifact@v4
+        with:
+          pattern: '*-performance-*'
+          merge-multiple: true
+
+      - name: Generate Performance Summary
+        run: |
+          echo "## 📊 Performance Test Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Type | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Basic Performance | ${{ needs.basic-performance.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Load Testing | ${{ needs.load-testing.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Database Performance | ${{ needs.database-performance.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ -f "lighthouse-report.json" ]; then
+            PERF_SCORE=$(cat lighthouse-report.json | jq '.categories.performance.score * 100')
+            echo "### Lighthouse Performance Score: $PERF_SCORE/100" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ -f "quick-load-test.json" ]; then
+            RPS=$(cat quick-load-test.json | jq '.requests.average')
+            LATENCY=$(cat quick-load-test.json | jq '.latency.average')
+            echo "### Quick Load Test: ${RPS} RPS, ${LATENCY}ms latency" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "### Recommendations" >> $GITHUB_STEP_SUMMARY
+          echo "- Monitor response times during peak usage" >> $GITHUB_STEP_SUMMARY
+          echo "- Consider caching strategies for frequently accessed data" >> $GITHUB_STEP_SUMMARY
+          echo "- Optimize database queries with high execution times" >> $GITHUB_STEP_SUMMARY
+
+      - name: Comment on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let comment = '## 📊 Performance Test Results\n\n';
+
+            // Add performance summary
+            comment += '### Test Status\n';
+            comment += `- Basic Performance: ${{ needs.basic-performance.result }}\n`;
+            comment += `- Load Testing: ${{ needs.load-testing.result }}\n`;
+            comment += `- Database Performance: ${{ needs.database-performance.result }}\n\n`;
+
+            // Add details if available
+            if (fs.existsSync('lighthouse-report.json')) {
+              const lighthouse = JSON.parse(fs.readFileSync('lighthouse-report.json'));
+              const score = Math.round(lighthouse.categories.performance.score * 100);
+              comment += `### Lighthouse Score: ${score}/100\n\n`;
+            }
+
+            comment += '### Next Steps\n';
+            comment += '- Review performance artifacts for detailed metrics\n';
+            comment += '- Address any failing performance thresholds\n';
+            comment += '- Monitor production performance after deployment\n';
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });

@@ -14,7 +14,7 @@ jobs:
   test:
     name: Run Tests
     runs-on: ubuntu-latest
-    
+
     services:
       postgres:
         image: postgres:15
@@ -29,7 +29,7 @@ jobs:
           --health-retries 5
         ports:
           - 5432:5432
-          
+
       redis:
         image: redis:alpine
         options: >-
@@ -43,7 +43,7 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        
+
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
@@ -51,38 +51,45 @@ jobs:
           extensions: pdo, pdo_pgsql, mbstring, exif, pcntl, bcmath, gd, redis
           coverage: xdebug
           tools: composer:v2
-          
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
           cache-dependency-path: resources/js/package-lock.json
-          
+
       - name: Get Composer Cache Directory
         id: composer-cache
         run: echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
-        
+
       - name: Cache Composer dependencies
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ${{ steps.composer-cache.outputs.dir }}
           key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
           restore-keys: ${{ runner.os }}-composer-
-          
+
+      - name: Verify .env.example exists
+        run: |
+          if [ ! -f .env.example ]; then
+            echo "ERROR: .env.example file is missing"
+            exit 1
+          fi
+
       - name: Install PHP Dependencies
         run: composer install --no-interaction --prefer-dist --optimize-autoloader
-        
+
       - name: Install Frontend Dependencies
         working-directory: ./resources/js
         run: npm ci
-        
+
       - name: Copy Environment File
         run: cp .env.example .env.testing
-        
+
       - name: Generate Application Key
         run: php artisan key:generate --env=testing
-        
+
       - name: Configure Test Environment
         run: |
           echo "DB_CONNECTION=pgsql" >> .env.testing
@@ -96,42 +103,54 @@ jobs:
           echo "CACHE_DRIVER=redis" >> .env.testing
           echo "QUEUE_CONNECTION=redis" >> .env.testing
           echo "SESSION_DRIVER=redis" >> .env.testing
-          
+
       - name: Run Database Migrations
         env:
           APP_ENV: testing
         run: php artisan migrate --env=testing --force
-        
+
+      - name: Seed Test Database
+        env:
+          APP_ENV: testing
+        run: php artisan db:seed --env=testing --force
+        continue-on-error: true
+
       - name: Build Frontend Assets
         working-directory: ./resources/js
         run: npm run build
-        
+
       - name: Run PHP Code Style Check
         run: vendor/bin/pint --test
         continue-on-error: true
-        
+
       - name: Run PHP Tests
         env:
           APP_ENV: testing
         run: vendor/bin/phpunit --coverage-clover=coverage.xml --coverage-text
-        
+
       - name: Run Frontend Linting
         working-directory: ./resources/js
         run: npm run lint
         continue-on-error: true
-        
+
       - name: Run Frontend Type Check
         working-directory: ./resources/js
         run: npm run check
         continue-on-error: true
-        
+
+      - name: Run Frontend Tests
+        working-directory: ./resources/js
+        run: npm run test
+        continue-on-error: true
+
       - name: Upload Coverage Reports
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v4
         with:
           file: ./coverage.xml
           flags: backend
           name: php-coverage
-          
+          token: ${{ secrets.CODECOV_TOKEN }}
+
       - name: Archive Test Results
         if: failure()
         uses: actions/upload-artifact@v4
@@ -146,40 +165,40 @@ jobs:
     name: Build Application
     runs-on: ubuntu-latest
     needs: test
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        
+
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ env.PHP_VERSION }}
           extensions: pdo, mbstring, exif, pcntl, bcmath, gd
           tools: composer:v2
-          
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
           cache-dependency-path: resources/js/package-lock.json
-          
+
       - name: Install Dependencies
         run: |
           composer install --no-dev --optimize-autoloader --no-interaction
           cd resources/js && npm ci
-          
+
       - name: Build Production Assets
         working-directory: ./resources/js
         run: npm run build
-        
+
       - name: Optimize Laravel
         run: |
           php artisan config:cache
           php artisan route:cache
           php artisan view:cache
-          
+
       - name: Create Build Archive
         run: |
           tar -czf application-build.tar.gz \
@@ -188,7 +207,7 @@ jobs:
             --exclude=tests \
             --exclude=storage/logs \
             .
-            
+
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -200,22 +219,22 @@ jobs:
     name: Build Docker Image
     runs-on: ubuntu-latest
     needs: test
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
-    
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/refactor-main'
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-        
+
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-          
+
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
@@ -225,7 +244,8 @@ jobs:
             type=ref,event=branch
             type=ref,event=pr
             type=sha,prefix={{branch}}-
-            
+            type=raw,value=latest,enable={{is_default_branch}}
+
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
@@ -236,3 +256,10 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/amd64,linux/arm64
+
+      - name: Test Docker Image
+        run: |
+          docker run --rm -d -p 8080:80 --name test-container ghcr.io/${{ github.repository }}:${{ github.sha }}
+          sleep 10
+          curl -f http://localhost:8080/ || exit 1
+          docker stop test-container

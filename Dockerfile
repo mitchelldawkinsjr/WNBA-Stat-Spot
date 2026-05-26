@@ -13,32 +13,31 @@ FROM node:20-alpine AS backend
 
 # Install PHP and system dependencies
 RUN apk add --no-cache \
-    php82 \
-    php82-fpm \
-    php82-pdo \
-    php82-pdo_pgsql \
-    php82-mbstring \
-    php82-exif \
-    php82-pcntl \
-    php82-bcmath \
-    php82-gd \
-    php82-session \
-    php82-tokenizer \
-    php82-xml \
-    php82-ctype \
-    php82-json \
-    php82-fileinfo \
-    php82-openssl \
-    php82-zip \
-    php82-curl \
-    php82-dom \
-    php82-xmlreader \
-    php82-xmlwriter \
-    php82-simplexml \
-    php82-phar \
-    php82-iconv \
-    php82-intl \
-    php82-posix \
+    php83 \
+    php83-fpm \
+    php83-pdo \
+    php83-pdo_pgsql \
+    php83-mbstring \
+    php83-exif \
+    php83-pcntl \
+    php83-bcmath \
+    php83-gd \
+    php83-session \
+    php83-tokenizer \
+    php83-xml \
+    php83-ctype \
+    php83-fileinfo \
+    php83-openssl \
+    php83-zip \
+    php83-curl \
+    php83-dom \
+    php83-xmlreader \
+    php83-xmlwriter \
+    php83-simplexml \
+    php83-phar \
+    php83-iconv \
+    php83-intl \
+    php83-posix \
     git \
     curl \
     zip \
@@ -54,9 +53,9 @@ RUN apk add --no-cache \
     net-tools \
     procps
 
-# Create symlinks for PHP and set up PHP configuration
-RUN ln -sf /usr/bin/php82 /usr/bin/php \
-    && ln -sf /usr/sbin/php-fpm82 /usr/sbin/php-fpm
+# Create symlinks for PHP and set up PHP configuration (php83: Alpine amd64 uses 8.3; aarch64 may differ)
+RUN ln -sf /usr/bin/php83 /usr/bin/php \
+    && ln -sf /usr/sbin/php-fpm83 /usr/sbin/php-fpm
 
 # Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
@@ -118,6 +117,9 @@ RUN chmod +x /usr/local/bin/start.sh \
 ENV PORT=80
 
 EXPOSE $PORT
+
+# node:20-alpine sets an entrypoint that can break non-Node CMDs
+ENTRYPOINT []
 
 # Use exec form to avoid shell interpretation issues
 CMD ["/usr/local/bin/start.sh"]

@@ -29,7 +29,7 @@
                 api.wnba.cache.getStats()
             ]);
 
-            teams = teamsResponse.data;
+            teams = teamsResponse.data.data;
             recentGames = gamesResponse.data.slice(0, 10);
             cacheStats = cacheResponse.data || cacheStats;
         } catch (err) {

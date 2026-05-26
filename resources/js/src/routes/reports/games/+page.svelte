@@ -15,7 +15,7 @@
     let loading = true;
     let error = '';
 
-    const seasons = ['2025', '2024', '2023'];
+    const seasons = ['2026', '2025', '2024', '2023'];
 
     onMount(async () => {
         try {
@@ -25,7 +25,7 @@
             ]);
 
             games = gamesResponse.data;
-            teams = teamsResponse.data;
+            teams = teamsResponse.data.data;
             filteredGames = games;
         } catch (err) {
             error = err instanceof Error ? err.message : 'Failed to load data';

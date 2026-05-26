@@ -2,27 +2,22 @@
 
 namespace App\Services\WNBA\Predictions;
 
-use App\Models\WnbaPlayerGame;
 use App\Models\WnbaGame;
-use App\Models\WnbaGameTeam;
 use App\Models\WnbaPlayer;
-use App\Models\WnbaTeam;
+use App\Models\WnbaPlayerGame;
 use App\Services\WNBA\Analytics\PlayerAnalyticsService;
-use App\Services\WNBA\Math\BayesianCalculator;
-use App\Services\WNBA\Math\MonteCarloSimulator;
-use App\Services\WNBA\Math\PoissonCalculator;
 use App\Services\WNBA\Data\DataAggregatorService;
-use App\Services\WNBA\Analytics\StatisticalEngineService;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
-use Carbon\Carbon;
 
 class PropsPredictionService
 {
     private PredictionEngine $predictionEngine;
+
     private PlayerAnalyticsService $playerAnalytics;
+
     private DataAggregatorService $dataAggregator;
+
     private \App\Services\WNBA\Predictions\StatisticalEngineService $statisticalEngine;
 
     public function __construct(
@@ -56,12 +51,12 @@ class PropsPredictionService
     {
         $cacheKey = "prop_prediction_{$playerId}_{$gameId}_{$propType}_{$lineValue}";
 
-        return Cache::remember($cacheKey, 1800, function() use ($playerId, $gameId, $propType, $lineValue) {
+        return Cache::remember($cacheKey, 1800, function () use ($playerId, $gameId, $propType, $lineValue) {
             // Get player and game context
             $player = WnbaPlayer::find($playerId);
             $game = WnbaGame::find($gameId);
 
-            if (!$player || !$game) {
+            if (! $player || ! $game) {
                 throw new \InvalidArgumentException('Invalid player or game ID');
             }
 
@@ -90,13 +85,13 @@ class PropsPredictionService
                     'athlete_id' => $player->athlete_id,
                     'name' => $player->athlete_display_name,
                     'position' => $player->athlete_position_abbreviation,
-                    'team_id' => $gameContext['player_team_id']
+                    'team_id' => $gameContext['player_team_id'],
                 ],
                 'game_context' => $gameContext,
                 'prop_details' => [
                     'type' => $propType,
                     'line_value' => $lineValue,
-                    'category' => $this->getPropCategory($propType)
+                    'category' => $this->getPropCategory($propType),
                 ],
                 'prediction' => [
                     'predicted_value' => $this->ensurePositiveAndRoundToHalf($prediction['predicted_value']),
@@ -104,7 +99,7 @@ class PropsPredictionService
                     'under_probability' => 1 - $prediction['over_probability'],
                     'confidence_score' => $confidence,
                     'expected_value' => $expectedValue,
-                    'recommendation' => $this->getRecommendation($prediction['over_probability'], $expectedValue, $confidence)
+                    'recommendation' => $this->getRecommendation($prediction['over_probability'], $expectedValue, $confidence),
                 ],
                 'contributing_factors' => $prediction['factors'],
                 'statistical_basis' => $prediction['statistical_basis'],
@@ -112,8 +107,8 @@ class PropsPredictionService
                     'version' => '1.0',
                     'model_type' => $prediction['model_type'],
                     'data_points_used' => $prediction['data_points'],
-                    'last_updated' => now()->toISOString()
-                ]
+                    'last_updated' => now()->toISOString(),
+                ],
             ];
         });
     }
@@ -131,7 +126,7 @@ class PropsPredictionService
             'steals' => [0.5, 1.5, 2.5],
             'blocks' => [0.5, 1.5, 2.5],
             'turnovers' => [2.5, 3.5, 4.5],
-            'minutes' => [25.5, 30.5, 35.5]
+            'minutes' => [25.5, 30.5, 35.5],
         ];
 
         $predictions = [];
@@ -141,7 +136,7 @@ class PropsPredictionService
                     $predictions[$propType][] = $this->predictProp($playerId, $gameId, $propType, $line);
                 } catch (\Exception $e) {
                     // Log error and continue
-                    Log::warning("Failed to predict {$propType} {$line} for player {$playerId}: " . $e->getMessage());
+                    Log::warning("Failed to predict {$propType} {$line} for player {$playerId}: ".$e->getMessage());
                 }
             }
         }
@@ -156,7 +151,7 @@ class PropsPredictionService
     {
         $game = WnbaGame::with('playerGames.player')->find($gameId);
 
-        if (!$game) {
+        if (! $game) {
             throw new \InvalidArgumentException('Invalid game ID');
         }
 
@@ -176,7 +171,7 @@ class PropsPredictionService
     /**
      * Predict points for a player in a game
      */
-    public function predictPoints(int $playerId, int $gameId, float $lineValue = null): array
+    public function predictPoints(int $playerId, int $gameId, ?float $lineValue = null): array
     {
         return $this->predictionEngine->predict('points', $playerId, $gameId, $lineValue);
     }
@@ -184,7 +179,7 @@ class PropsPredictionService
     /**
      * Predict rebounds for a player in a game
      */
-    public function predictRebounds(int $playerId, int $gameId, float $lineValue = null): array
+    public function predictRebounds(int $playerId, int $gameId, ?float $lineValue = null): array
     {
         return $this->predictionEngine->predict('rebounds', $playerId, $gameId, $lineValue);
     }
@@ -192,7 +187,7 @@ class PropsPredictionService
     /**
      * Predict assists for a player in a game
      */
-    public function predictAssists(int $playerId, int $gameId, float $lineValue = null): array
+    public function predictAssists(int $playerId, int $gameId, ?float $lineValue = null): array
     {
         return $this->predictionEngine->predict('assists', $playerId, $gameId, $lineValue);
     }
@@ -200,7 +195,7 @@ class PropsPredictionService
     /**
      * Predict steals for a player in a game
      */
-    public function predictSteals(int $playerId, int $gameId, float $lineValue = null): array
+    public function predictSteals(int $playerId, int $gameId, ?float $lineValue = null): array
     {
         return $this->predictionEngine->predict('steals', $playerId, $gameId, $lineValue);
     }
@@ -208,7 +203,7 @@ class PropsPredictionService
     /**
      * Predict blocks for a player in a game
      */
-    public function predictBlocks(int $playerId, int $gameId, float $lineValue = null): array
+    public function predictBlocks(int $playerId, int $gameId, ?float $lineValue = null): array
     {
         return $this->predictionEngine->predict('blocks', $playerId, $gameId, $lineValue);
     }
@@ -216,7 +211,7 @@ class PropsPredictionService
     /**
      * Predict turnovers for a player in a game
      */
-    public function predictTurnovers(int $playerId, int $gameId, float $lineValue = null): array
+    public function predictTurnovers(int $playerId, int $gameId, ?float $lineValue = null): array
     {
         return $this->predictionEngine->predict('turnovers', $playerId, $gameId, $lineValue);
     }
@@ -224,7 +219,7 @@ class PropsPredictionService
     /**
      * Predict field goals made for a player in a game
      */
-    public function predictFieldGoalsMade(int $playerId, int $gameId, float $lineValue = null): array
+    public function predictFieldGoalsMade(int $playerId, int $gameId, ?float $lineValue = null): array
     {
         return $this->predictionEngine->predict('field_goals_made', $playerId, $gameId, $lineValue);
     }
@@ -232,7 +227,7 @@ class PropsPredictionService
     /**
      * Predict field goals attempted for a player in a game
      */
-    public function predictFieldGoalsAttempted(int $playerId, int $gameId, float $lineValue = null): array
+    public function predictFieldGoalsAttempted(int $playerId, int $gameId, ?float $lineValue = null): array
     {
         return $this->predictionEngine->predict('field_goals_attempted', $playerId, $gameId, $lineValue);
     }
@@ -240,7 +235,7 @@ class PropsPredictionService
     /**
      * Predict three pointers made for a player in a game
      */
-    public function predictThreePointersMade(int $playerId, int $gameId, float $lineValue = null): array
+    public function predictThreePointersMade(int $playerId, int $gameId, ?float $lineValue = null): array
     {
         return $this->predictionEngine->predict('three_pointers_made', $playerId, $gameId, $lineValue);
     }
@@ -248,7 +243,7 @@ class PropsPredictionService
     /**
      * Predict three pointers attempted for a player in a game
      */
-    public function predictThreePointersAttempted(int $playerId, int $gameId, float $lineValue = null): array
+    public function predictThreePointersAttempted(int $playerId, int $gameId, ?float $lineValue = null): array
     {
         return $this->predictionEngine->predict('three_pointers_attempted', $playerId, $gameId, $lineValue);
     }
@@ -256,7 +251,7 @@ class PropsPredictionService
     /**
      * Predict free throws made for a player in a game
      */
-    public function predictFreeThrowsMade(int $playerId, int $gameId, float $lineValue = null): array
+    public function predictFreeThrowsMade(int $playerId, int $gameId, ?float $lineValue = null): array
     {
         return $this->predictionEngine->predict('free_throws_made', $playerId, $gameId, $lineValue);
     }
@@ -264,7 +259,7 @@ class PropsPredictionService
     /**
      * Predict free throws attempted for a player in a game
      */
-    public function predictFreeThrowsAttempted(int $playerId, int $gameId, float $lineValue = null): array
+    public function predictFreeThrowsAttempted(int $playerId, int $gameId, ?float $lineValue = null): array
     {
         return $this->predictionEngine->predict('free_throws_attempted', $playerId, $gameId, $lineValue);
     }
@@ -272,7 +267,7 @@ class PropsPredictionService
     /**
      * Predict minutes played for a player in a game
      */
-    public function predictMinutesPlayed(int $playerId, int $gameId, float $lineValue = null): array
+    public function predictMinutesPlayed(int $playerId, int $gameId, ?float $lineValue = null): array
     {
         return $this->predictionEngine->predict('minutes_played', $playerId, $gameId, $lineValue);
     }
@@ -280,7 +275,7 @@ class PropsPredictionService
     /**
      * Predict plus minus for a player in a game
      */
-    public function predictPlusMinus(int $playerId, int $gameId, float $lineValue = null): array
+    public function predictPlusMinus(int $playerId, int $gameId, ?float $lineValue = null): array
     {
         return $this->predictionEngine->predict('plus_minus', $playerId, $gameId, $lineValue);
     }
@@ -288,7 +283,7 @@ class PropsPredictionService
     /**
      * Predict personal fouls for a player in a game
      */
-    public function predictPersonalFouls(int $playerId, int $gameId, float $lineValue = null): array
+    public function predictPersonalFouls(int $playerId, int $gameId, ?float $lineValue = null): array
     {
         return $this->predictionEngine->predict('personal_fouls', $playerId, $gameId, $lineValue);
     }
@@ -343,12 +338,12 @@ class PropsPredictionService
             'confidence' => round($confidence, 3),
             'probabilities' => [
                 'over' => round($overProbability, 3),
-                'under' => round($underProbability, 3)
+                'under' => round($underProbability, 3),
             ],
             'odds' => [
                 'over' => $oddsOver,
-                'under' => $oddsUnder
-            ]
+                'under' => $oddsUnder,
+            ],
         ];
     }
 
@@ -362,7 +357,7 @@ class PropsPredictionService
             'recency' => min(1.0, $dataQuality['days_since_last_game'] <= 7 ? 1.0 : 0.8),
             'consistency' => $dataQuality['consistency_score'] / 100,
             'injury_status' => $dataQuality['injury_free'] ? 1.0 : 0.7,
-            'minutes_stability' => min(1.0, $dataQuality['minutes_variance'] <= 5 ? 1.0 : 0.8)
+            'minutes_stability' => min(1.0, $dataQuality['minutes_variance'] <= 5 ? 1.0 : 0.8),
         ];
 
         $weights = [
@@ -370,7 +365,7 @@ class PropsPredictionService
             'recency' => 0.2,
             'consistency' => 0.2,
             'injury_status' => 0.15,
-            'minutes_stability' => 0.15
+            'minutes_stability' => 0.15,
         ];
 
         $confidence = 0;
@@ -401,7 +396,7 @@ class PropsPredictionService
             'over_bet' => round($overEV, 2),
             'under_bet' => round($underEV, 2),
             'best_bet' => $overEV > $underEV ? 'over' : 'under',
-            'edge' => round(max($overEV, $underEV), 2)
+            'edge' => round(max($overEV, $underEV), 2),
         ];
     }
 
@@ -414,7 +409,7 @@ class PropsPredictionService
             ->where('player_id', $playerId)
             ->first();
 
-        if (!$game || !$playerGame) {
+        if (! $game || ! $playerGame) {
             throw new \InvalidArgumentException('Game or player game not found');
         }
 
@@ -431,15 +426,15 @@ class PropsPredictionService
             'rest_days' => $this->calculateRestDays($playerId, $game->game_date),
             'pace_factor' => $this->calculatePaceFactor($playerTeam, $opponentTeam->team_id ?? null),
             'opponent_defense_rating' => $this->getTeamDefensiveRating($opponentTeam->team_id ?? null),
-            'projected_minutes' => $this->projectMinutes($playerId, $gameId)
+            'projected_minutes' => $this->projectMinutes($playerId, $gameId),
         ];
     }
 
     private function getPlayerProfile(int $playerId, string $statType): array
     {
         $seasonGames = WnbaPlayerGame::where('player_id', $playerId)
-            ->whereHas('game', function($query) {
-                $query->where('season', 2025);
+            ->whereHas('game', function ($query) {
+                $query->where('season', (int) config('wnba.seasons.current_season'));
             })
             ->get();
 
@@ -456,7 +451,7 @@ class PropsPredictionService
             'std_dev' => $this->calculateStandardDeviation($statValues),
             'consistency_score' => $this->calculateConsistencyScore($statValues),
             'trend' => $this->calculateTrend($statValues),
-            'percentiles' => $this->calculatePercentiles($statValues)
+            'percentiles' => $this->calculatePercentiles($statValues),
         ];
     }
 
@@ -498,7 +493,7 @@ class PropsPredictionService
             'factors' => $prediction['factors'],
             'statistical_basis' => $playerProfile,
             'data_points' => $playerProfile['games_played'],
-            'data_quality' => $this->assessDataQuality($playerProfile, $gameContext)
+            'data_quality' => $this->assessDataQuality($playerProfile, $gameContext),
         ];
     }
 
@@ -517,6 +512,7 @@ class PropsPredictionService
             case 'binomial':
                 $n = $prediction['prediction']['n'] ?? 10;
                 $p = $prediction['prediction']['p'] ?? 0.5;
+
                 return $this->statisticalEngine->calculateBinomialOverProbability(
                     ['n' => $n, 'p' => $p],
                     $lineValue
@@ -525,6 +521,7 @@ class PropsPredictionService
             case 'normal':
                 $mean = $prediction['prediction']['base_value'];
                 $stdDev = $prediction['prediction']['std_dev'] ?? 1;
+
                 return $this->statisticalEngine->calculateNormalOverProbability(
                     ['mean' => $mean, 'std_dev' => $stdDev],
                     $lineValue
@@ -542,12 +539,12 @@ class PropsPredictionService
             'pace' => $gameContext['pace_factor'] ?? 1.0,
             'defense' => 1 - (($gameContext['opponent_defense_rating'] - 100) / 100 * 0.1),
             'rest' => $this->getRestAdjustment($gameContext['rest_days']),
-            'home_court' => $this->getHomeCourtAdjustment($gameContext['home_away'])
+            'home_court' => $this->getHomeCourtAdjustment($gameContext['home_away']),
         ];
 
         $adjustedValue = $baseValue;
         foreach ($adjustments as $type => $factor) {
-            $weight = $weights[$type . '_weight'] ?? 0;
+            $weight = $weights[$type.'_weight'] ?? 0;
             $adjustedValue *= (1 + ($factor - 1) * $weight);
         }
 
@@ -556,9 +553,16 @@ class PropsPredictionService
 
     private function getRestAdjustment(int $restDays): float
     {
-        if ($restDays === 0) return 0.95; // Back-to-back
-        if ($restDays === 1) return 0.98; // One day rest
-        if ($restDays >= 3) return 1.02; // Well rested
+        if ($restDays === 0) {
+            return 0.95;
+        } // Back-to-back
+        if ($restDays === 1) {
+            return 0.98;
+        } // One day rest
+        if ($restDays >= 3) {
+            return 1.02;
+        } // Well rested
+
         return 1.0; // Normal rest
     }
 
@@ -569,10 +573,12 @@ class PropsPredictionService
 
     private function calculateVariance(array $values): float
     {
-        if (empty($values)) return 0;
+        if (empty($values)) {
+            return 0;
+        }
 
         $mean = array_sum($values) / count($values);
-        $squaredDiffs = array_map(function($value) use ($mean) {
+        $squaredDiffs = array_map(function ($value) use ($mean) {
             return pow($value - $mean, 2);
         }, $values);
 
@@ -586,7 +592,9 @@ class PropsPredictionService
 
     private function calculateConsistencyScore(array $values): float
     {
-        if (empty($values)) return 0;
+        if (empty($values)) {
+            return 0;
+        }
 
         $mean = array_sum($values) / count($values);
         $coefficientOfVariation = $mean > 0 ? $this->calculateStandardDeviation($values) / $mean : 0;
@@ -597,7 +605,9 @@ class PropsPredictionService
     private function calculateTrend(array $values): float
     {
         $n = count($values);
-        if ($n < 2) return 0;
+        if ($n < 2) {
+            return 0;
+        }
 
         $x = range(1, $n);
         $sumX = array_sum($x);
@@ -611,12 +621,15 @@ class PropsPredictionService
         }
 
         $slope = ($n * $sumXY - $sumX * $sumY) / ($n * $sumX2 - $sumX * $sumX);
+
         return round($slope, 3);
     }
 
     private function calculatePercentiles(array $values): array
     {
-        if (empty($values)) return [];
+        if (empty($values)) {
+            return [];
+        }
 
         sort($values);
         $count = count($values);
@@ -626,7 +639,7 @@ class PropsPredictionService
             '25th' => $values[intval($count * 0.25)],
             '50th' => $values[intval($count * 0.5)],
             '75th' => $values[intval($count * 0.75)],
-            '90th' => $values[intval($count * 0.9)]
+            '90th' => $values[intval($count * 0.9)],
         ];
     }
 
@@ -636,7 +649,7 @@ class PropsPredictionService
             'predicted_value' => 0,
             'distribution_type' => 'unknown',
             'confidence' => 0,
-            'error' => "Insufficient data for {$statType} prediction"
+            'error' => "Insufficient data for {$statType} prediction",
         ];
     }
 
@@ -649,7 +662,7 @@ class PropsPredictionService
             'std_dev' => 0,
             'consistency_score' => 0,
             'trend' => 0,
-            'percentiles' => []
+            'percentiles' => [],
         ];
     }
 
@@ -663,7 +676,7 @@ class PropsPredictionService
             'steals' => 'defense',
             'blocks' => 'defense',
             'turnovers' => 'ball_handling',
-            'minutes' => 'playing_time'
+            'minutes' => 'playing_time',
         ];
 
         return $categories[$propType] ?? 'other';
@@ -689,7 +702,7 @@ class PropsPredictionService
             'side' => $bestBet,
             'strength' => $strength,
             'edge' => $edge,
-            'confidence' => $confidence
+            'confidence' => $confidence,
         ];
     }
 
@@ -700,22 +713,73 @@ class PropsPredictionService
             'days_since_last_game' => $this->getDaysSinceLastGame($gameContext['game_date']),
             'consistency_score' => $playerProfile['consistency_score'],
             'injury_free' => true, // Would need injury data
-            'minutes_variance' => $playerProfile['std_dev']
+            'minutes_variance' => $playerProfile['std_dev'],
         ];
     }
 
     // Placeholder methods that would need full implementation
-    private function getHomeAway($game, $teamId): string { return 'home'; }
-    private function calculateRestDays($playerId, $gameDate): int { return 2; }
-    private function calculatePaceFactor($team1, $team2): float { return 1.0; }
-    private function getTeamDefensiveRating($teamId): float { return 100.0; }
-    private function projectMinutes($playerId, $gameId): float { return 30.0; }
-    private function getOpponentReboundingRate($teamId): float { return 0.0; }
-    private function getTeamAssistRate($teamId): float { return 0.5; }
-    private function getOpponentThreePointDefense($teamId): float { return 0.0; }
-    private function getOpponentTurnoverRate($teamId): float { return 0.0; }
-    private function getInjuryAdjustment($playerId): float { return 1.0; }
-    private function getGameImportance($gameId): float { return 1.0; }
-    private function getFoulTroubleRisk($playerId): float { return 1.0; }
-    private function getDaysSinceLastGame($gameDate): int { return 2; }
+    private function getHomeAway($game, $teamId): string
+    {
+        return 'home';
+    }
+
+    private function calculateRestDays($playerId, $gameDate): int
+    {
+        return 2;
+    }
+
+    private function calculatePaceFactor($team1, $team2): float
+    {
+        return 1.0;
+    }
+
+    private function getTeamDefensiveRating($teamId): float
+    {
+        return 100.0;
+    }
+
+    private function projectMinutes($playerId, $gameId): float
+    {
+        return 30.0;
+    }
+
+    private function getOpponentReboundingRate($teamId): float
+    {
+        return 0.0;
+    }
+
+    private function getTeamAssistRate($teamId): float
+    {
+        return 0.5;
+    }
+
+    private function getOpponentThreePointDefense($teamId): float
+    {
+        return 0.0;
+    }
+
+    private function getOpponentTurnoverRate($teamId): float
+    {
+        return 0.0;
+    }
+
+    private function getInjuryAdjustment($playerId): float
+    {
+        return 1.0;
+    }
+
+    private function getGameImportance($gameId): float
+    {
+        return 1.0;
+    }
+
+    private function getFoulTroubleRisk($playerId): float
+    {
+        return 1.0;
+    }
+
+    private function getDaysSinceLastGame($gameDate): int
+    {
+        return 2;
+    }
 }

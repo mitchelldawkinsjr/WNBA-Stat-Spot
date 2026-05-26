@@ -34,7 +34,7 @@
     onMount(async () => {
         try {
             const response = await api.teams.getAll();
-            teams = response.data;
+            teams = response.data.data;
         } catch (e) {
             error = e instanceof Error ? e.message : 'An error occurred';
         } finally {
