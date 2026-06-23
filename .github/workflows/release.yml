@@ -19,7 +19,7 @@ on:
         type: boolean
 
 env:
-  PHP_VERSION: 8.2
+  PHP_VERSION: 8.4
   NODE_VERSION: 20
 
 jobs:
@@ -238,7 +238,7 @@ jobs:
           4. Run database migrations
 
           ## 📋 Requirements
-          - PHP 8.2+
+          - PHP 8.4+
           - PostgreSQL 15+
           - Redis 6+
           - Node.js 20+ (for frontend builds)

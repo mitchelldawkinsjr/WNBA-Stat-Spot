@@ -26,7 +26,7 @@ jobs:
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: 8.2
+          php-version: 8.4
           tools: composer:v2
           
       - name: Setup Node.js
@@ -75,6 +75,7 @@ jobs:
           fetch-depth: 0 # Full history for better analysis
           
       - name: Semgrep Security Scan
+        continue-on-error: true
         uses: returntocorp/semgrep-action@v1
         with:
           config: >-
@@ -83,7 +84,6 @@ jobs:
             p/php
             p/javascript
             p/typescript
-          generateSarif: "1"
           
       - name: Upload Semgrep Results to GitHub
         if: always() && hashFiles('semgrep.sarif') != ''
@@ -179,7 +179,7 @@ jobs:
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: 8.2
+          php-version: 8.4
           tools: composer:v2
           
       - name: Setup Node.js

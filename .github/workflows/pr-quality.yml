@@ -7,7 +7,7 @@ on:
     types: [submitted]
 
 env:
-  PHP_VERSION: 8.2
+  PHP_VERSION: 8.4
   NODE_VERSION: 20
 
 jobs:
