@@ -140,6 +140,18 @@ return [
         'enable_rest_tracking' => env('WNBA_ENABLE_REST_TRACKING', true),
     ],
 
+    'data_source' => [
+        'provider' => env('WNBA_DATA_PROVIDER', 'sportsblaze'),
+        'base_url' => rtrim(env('SPORTSBLAZE_WNBA_BASE_URL', 'https://sportsblaze.com'), '/'),
+        'feeds' => [
+            'player_boxscores' => env('SPORTSBLAZE_WNBA_PLAYER_BOXSCORES_URL'),
+            'team_boxscores' => env('SPORTSBLAZE_WNBA_TEAM_BOXSCORES_URL'),
+            'schedule' => env('SPORTSBLAZE_WNBA_SCHEDULE_URL'),
+            'play_by_play' => env('SPORTSBLAZE_WNBA_PLAY_BY_PLAY_URL'),
+        ],
+        'fallback_to_sportsdataverse' => env('WNBA_FALLBACK_TO_SPORTSDATAVERSE', false),
+    ],
+
     'api' => [
         'rate_limit' => env('WNBA_API_RATE_LIMIT', 100), // requests per minute
         'timeout' => env('WNBA_API_TIMEOUT', 30), // seconds
@@ -156,6 +168,7 @@ return [
 
     'seasons' => [
         'current_season' => (int) env('WNBA_CURRENT_SEASON', 2026),
+        'current_season_label' => env('WNBA_CURRENT_SEASON_LABEL', '2026-27'),
         'season_start_month' => 5, // May
         'season_end_month' => 10, // October
         'playoff_start_month' => 9, // September
