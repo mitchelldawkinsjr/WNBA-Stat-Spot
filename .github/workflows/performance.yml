@@ -89,8 +89,15 @@ jobs:
           cp .env.example .env.testing
           php artisan key:generate --env=testing
 
-          # Configure for performance testing
-          echo "DB_CONNECTION=pgsql" >> .env.testing
+          # Override .env.example values (append does not replace in dotenv)
+          sed -i 's/^APP_ENV=.*/APP_ENV=testing/' .env.testing
+          sed -i 's/^DB_CONNECTION=.*/DB_CONNECTION=pgsql/' .env.testing
+          sed -i 's/^SESSION_DRIVER=.*/SESSION_DRIVER=array/' .env.testing
+          sed -i 's/^CACHE_STORE=.*/CACHE_STORE=array/' .env.testing
+          sed -i 's/^QUEUE_CONNECTION=.*/QUEUE_CONNECTION=sync/' .env.testing
+          sed -i 's/^APP_DEBUG=.*/APP_DEBUG=false/' .env.testing
+          sed -i 's/^LOG_LEVEL=.*/LOG_LEVEL=error/' .env.testing
+
           echo "DB_HOST=localhost" >> .env.testing
           echo "DB_PORT=5432" >> .env.testing
           echo "DB_DATABASE=wnba_perf_test" >> .env.testing
@@ -99,13 +106,6 @@ jobs:
           echo "DB_SSLMODE=disable" >> .env.testing
           echo "REDIS_HOST=localhost" >> .env.testing
           echo "REDIS_PORT=6379" >> .env.testing
-          echo "CACHE_STORE=array" >> .env.testing
-          echo "QUEUE_CONNECTION=sync" >> .env.testing
-          echo "SESSION_DRIVER=array" >> .env.testing
-
-          # Performance optimizations
-          echo "APP_DEBUG=false" >> .env.testing
-          echo "LOG_LEVEL=error" >> .env.testing
 
       - name: Setup Database
         env:

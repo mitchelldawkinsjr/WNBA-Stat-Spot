@@ -202,12 +202,13 @@ jobs:
 
       - name: Create Build Archive
         run: |
-          tar -czf application-build.tar.gz \
+          tar -czf /tmp/application-build.tar.gz \
             --exclude=node_modules \
             --exclude=.git \
             --exclude=tests \
             --exclude=storage/logs \
             .
+          mv /tmp/application-build.tar.gz application-build.tar.gz
 
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
