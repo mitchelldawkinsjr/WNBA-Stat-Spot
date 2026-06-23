@@ -35,24 +35,62 @@ jobs:
           ssh-private-key: ${{ secrets.VPS_SSH_KEY }}
 
       - name: Add server to known hosts
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_SSH_PORT: ${{ secrets.VPS_SSH_PORT || '22' }}
         run: |
-          ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
+          set -euo pipefail
+
+          if [ -z "${VPS_HOST}" ]; then
+            echo "::error::Missing required secret VPS_HOST."
+            exit 1
+          fi
+
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          touch ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${VPS_SSH_PORT}" -H "${VPS_HOST}" >> ~/.ssh/known_hosts; then
+              sort -u ~/.ssh/known_hosts -o ~/.ssh/known_hosts
+              exit 0
+            fi
+
+            echo "ssh-keyscan attempt ${attempt}/3 failed for ${VPS_HOST}:${VPS_SSH_PORT}; retrying..."
+            sleep 5
+          done
+
+          echo "::error::Unable to scan SSH host key for ${VPS_HOST}:${VPS_SSH_PORT}. Verify VPS_HOST, VPS_SSH_PORT, DNS, and firewall access from GitHub Actions."
+          exit 1
 
       - name: Deploy to mitch-cloud
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_SSH_PORT: ${{ secrets.VPS_SSH_PORT || '22' }}
           VPS_USER: ${{ secrets.VPS_USER }}
         run: |
-          set -e
+          set -euo pipefail
+
+          if [ -z "${VPS_HOST}" ]; then
+            echo "::error::Missing required secret VPS_HOST."
+            exit 1
+          fi
+
+          if [ -z "${VPS_USER}" ]; then
+            echo "::error::Missing required secret VPS_USER."
+            exit 1
+          fi
 
           # Ensure deploy directory exists
-          ssh ${VPS_USER}@${VPS_HOST} << 'EOF'
+          ssh -p "${VPS_SSH_PORT}" "${VPS_USER}@${VPS_HOST}" << 'EOF'
             set -e
             mkdir -p /opt/360ws/clients/docker-app/wnba-stat-spot
           EOF
 
           # Sync files to server
           rsync -avz --delete \
+            -e "ssh -p ${VPS_SSH_PORT}" \
             --exclude '.git' \
             --exclude 'node_modules' \
             --exclude 'vendor' \
@@ -61,10 +99,10 @@ jobs:
             --exclude 'storage/framework/sessions' \
             --exclude 'storage/framework/views' \
             --exclude '.env' \
-            ./ ${VPS_USER}@${VPS_HOST}:/opt/360ws/clients/docker-app/wnba-stat-spot/
+            ./ "${VPS_USER}@${VPS_HOST}:/opt/360ws/clients/docker-app/wnba-stat-spot/"
 
           # SSH in and deploy
-          ssh ${VPS_USER}@${VPS_HOST} << 'EOF'
+          ssh -p "${VPS_SSH_PORT}" "${VPS_USER}@${VPS_HOST}" << 'EOF'
             set -e
             cd /opt/360ws/clients/docker-app/wnba-stat-spot
 
