@@ -13,13 +13,9 @@
 
     <!-- Font Awesome for icons -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-
-    <!-- Vite Assets -->
-    @vite(['resources/js/app.js', 'resources/css/app.css'])
 </head>
 <body>
     <div id="app">
-        <!-- Svelte app will mount here -->
         <div class="loading-container" style="display: flex; justify-content: center; align-items: center; height: 100vh; flex-direction: column;">
             <div class="spinner" style="border: 4px solid #f3f3f3; border-top: 4px solid #3498db; border-radius: 50%; width: 40px; height: 40px; animation: spin 2s linear infinite;"></div>
             <p style="margin-top: 20px; color: #666;">Loading WNBA Stat Spot...</p>

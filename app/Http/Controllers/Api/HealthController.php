@@ -43,6 +43,8 @@ class HealthController extends Controller
         $overallStatus = $this->determineOverallStatus($checks);
         $responseTime = round((microtime(true) - $startTime) * 1000, 2);
 
+        $httpStatus = $overallStatus === 'unhealthy' ? 503 : 200;
+
         return response()->json([
             'status' => $overallStatus,
             'checks' => $checks,
@@ -50,7 +52,7 @@ class HealthController extends Controller
             'timestamp' => now()->toISOString(),
             'environment' => config('app.env'),
             'version' => config('app.version', '1.0.0')
-        ], $overallStatus === 'ok' ? 200 : 503);
+        ], $httpStatus);
     }
 
     /**
@@ -328,7 +330,7 @@ class HealthController extends Controller
                             'accessible' => true
                         ];
                     }
-                } catch (Exception $e) {
+                } catch (\Throwable $e) {
                     $results[$name] = [
                         'status' => 'error',
                         'driver' => $config['driver'] ?? 'unknown',
@@ -346,7 +348,7 @@ class HealthController extends Controller
                 'message' => 'Storage system checked'
             ];
 
-        } catch (Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Storage health check failed', [
                 'error' => $e->getMessage()
             ]);

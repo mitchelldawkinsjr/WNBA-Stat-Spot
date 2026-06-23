@@ -59,7 +59,7 @@
     "svelte-routing": "^2.13.0",
     "svelte-toasts": "^1.1.2",
     "sweetalert2": "^11.11.0",
-    "swiper": "^11.2.8",
+    "swiper": "^12.2.0",
     "wnumb": "^1.2.0",
     "yup": "^1.4.0"
   }

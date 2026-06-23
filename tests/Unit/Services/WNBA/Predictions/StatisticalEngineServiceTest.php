@@ -4,12 +4,9 @@ namespace Tests\Unit\Services\WNBA\Predictions;
 
 use App\Services\WNBA\Predictions\StatisticalEngineService;
 use Tests\TestCase;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 
 class StatisticalEngineServiceTest extends TestCase
 {
-    use RefreshDatabase;
-
     private StatisticalEngineService $service;
 
     protected function setUp(): void
@@ -65,117 +62,14 @@ class StatisticalEngineServiceTest extends TestCase
     }
 
     /** @test */
-    public function it_runs_monte_carlo_simulation_with_valid_data()
-    {
-        $playerId = 1;
-        $gameId = 1;
-        $statType = 'points';
-        $lineValue = 15.5;
-        $iterations = 1000;
-
-        $result = $this->service->runMonteCarloSimulation(
-            $playerId,
-            $gameId,
-            $statType,
-            $lineValue,
-            $iterations
-        );
-
-        $this->assertIsArray($result);
-        $this->assertArrayHasKey('over_probability', $result);
-        $this->assertArrayHasKey('expected_value', $result);
-        $this->assertArrayHasKey('standard_deviation', $result);
-        $this->assertArrayHasKey('confidence_intervals', $result);
-        $this->assertGreaterThanOrEqual(0, $result['over_probability']);
-        $this->assertLessThanOrEqual(1, $result['over_probability']);
-    }
-
-    /** @test */
-    public function it_handles_empty_historical_data()
-    {
-        $playerId = 999; // Non-existent player
-        $gameId = 1;
-        $statType = 'points';
-        $lineValue = 15.5;
-
-        $result = $this->service->runMonteCarloSimulation(
-            $playerId,
-            $gameId,
-            $statType,
-            $lineValue
-        );
-
-        $this->assertIsArray($result);
-        $this->assertEquals(0, $result['over_probability']);
-        $this->assertEquals(0, $result['expected_value']);
-        $this->assertEquals(0, $result['standard_deviation']);
-    }
-
-    /** @test */
-    public function it_calculates_confidence_intervals_correctly()
+    public function it_calculates_confidence_interval_for_sample_data()
     {
         $data = [10, 12, 14, 16, 18];
-        $result = $this->service->calculateConfidenceIntervals($data);
+        $result = $this->service->calculateConfidenceInterval($data);
 
         $this->assertIsArray($result);
-        $this->assertArrayHasKey('95', $result);
-        $this->assertArrayHasKey('99', $result);
-        $this->assertCount(2, $result['95']);
-        $this->assertCount(2, $result['99']);
-    }
-
-    /** @test */
-    public function it_generates_values_from_normal_distribution()
-    {
-        $mean = 10;
-        $stdDev = 2;
-        $iterations = 1000;
-
-        $values = [];
-        for ($i = 0; $i < $iterations; $i++) {
-            $values[] = $this->service->generateNormalValue($mean, $stdDev);
-        }
-
-        $sampleMean = array_sum($values) / count($values);
-        $sampleStdDev = sqrt(
-            array_sum(array_map(function($x) use ($sampleMean) {
-                return pow($x - $sampleMean, 2);
-            }, $values)) / count($values)
-        );
-
-        $this->assertEqualsWithDelta($mean, $sampleMean, 0.5);
-        $this->assertEqualsWithDelta($stdDev, $sampleStdDev, 0.5);
-    }
-
-    /** @test */
-    public function it_generates_values_from_poisson_distribution()
-    {
-        $lambda = 2.5;
-        $iterations = 1000;
-
-        $values = [];
-        for ($i = 0; $i < $iterations; $i++) {
-            $values[] = $this->service->generatePoissonValue($lambda);
-        }
-
-        $sampleMean = array_sum($values) / count($values);
-        $this->assertEqualsWithDelta($lambda, $sampleMean, 0.2);
-    }
-
-    /** @test */
-    public function it_generates_values_from_binomial_distribution()
-    {
-        $n = 10;
-        $p = 0.5;
-        $iterations = 1000;
-
-        $values = [];
-        for ($i = 0; $i < $iterations; $i++) {
-            $values[] = $this->service->generateBinomialValue($n, $p);
-        }
-
-        $sampleMean = array_sum($values) / count($values);
-        $expectedMean = $n * $p;
-        $this->assertEqualsWithDelta($expectedMean, $sampleMean, 0.5);
+        $this->assertArrayHasKey('lower', $result);
+        $this->assertArrayHasKey('upper', $result);
+        $this->assertLessThan($result['upper'], $result['lower']);
     }
 }

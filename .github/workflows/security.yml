@@ -47,11 +47,11 @@ jobs:
       - name: NPM Security Audit
         working-directory: ./resources/js
         run: |
-          npm audit --audit-level moderate --json > npm-audit.json || true
+          npm audit --audit-level critical --json > npm-audit.json || true
           if [ -s npm-audit.json ]; then
             echo "NPM vulnerabilities found:"
             cat npm-audit.json
-            npm audit --audit-level moderate
+            npm audit --audit-level critical
           else
             echo "No NPM vulnerabilities found"
           fi

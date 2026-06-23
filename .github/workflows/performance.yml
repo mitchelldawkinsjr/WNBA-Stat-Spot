@@ -99,9 +99,9 @@ jobs:
           echo "DB_SSLMODE=disable" >> .env.testing
           echo "REDIS_HOST=localhost" >> .env.testing
           echo "REDIS_PORT=6379" >> .env.testing
-          echo "CACHE_DRIVER=redis" >> .env.testing
+          echo "CACHE_STORE=array" >> .env.testing
           echo "QUEUE_CONNECTION=sync" >> .env.testing
-          echo "SESSION_DRIVER=redis" >> .env.testing
+          echo "SESSION_DRIVER=array" >> .env.testing
 
           # Performance optimizations
           echo "APP_DEBUG=false" >> .env.testing
