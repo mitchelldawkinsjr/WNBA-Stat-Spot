@@ -32,24 +32,54 @@ class WnbaDataService
 
         $this->wnbaBoxScoreUrl = $this->feedUrl(
             'player_boxscores',
-            "wnba/v1/boxscores/season/{$y}.json",
+            $this->sportsBlazeV1Path("boxscores/season/{$y}.json"),
             "https://github.com/sportsdataverse/sportsdataverse-data/releases/download/espn_wnba_player_boxscores/player_box_{$y}.csv"
         );
         $this->wnbaTeamUrl = $this->feedUrl(
             'team_boxscores',
-            "wnba/v1/schedule/season/{$y}.json",
+            '',
             "https://github.com/sportsdataverse/sportsdataverse-data/releases/download/espn_wnba_team_boxscores/team_box_{$y}.csv"
         );
         $this->wnbaPbpUrl = $this->feedUrl(
             'play_by_play',
-            "play-by-play/wnba/{$y}",
+            '',
             "https://github.com/sportsdataverse/sportsdataverse-data/releases/download/espn_wnba_pbp/play_by_play_{$y}.csv"
         );
         $this->wnbaTeamScheduleUrl = $this->feedUrl(
             'schedule',
-            "wnba/v1/schedule/season/{$y}.json",
+            $this->sportsBlazeV1Path("schedule/season/{$y}.json"),
             "https://github.com/sportsdataverse/sportsdataverse-data/releases/download/espn_wnba_schedules/wnba_schedule_{$y}.csv"
         );
+    }
+
+    /**
+     * Fetch available seasons from the public cache API (documentation.sportsblaze.com/seasons).
+     *
+     * @return array<int, array{year: int, season: string}>
+     */
+    public function fetchAvailableSeasons(): array
+    {
+        $league = $this->sportsBlazeLeagueId();
+        $cacheBase = rtrim((string) config('wnba.data_source.cache_base_url'), '/');
+        $response = Http::acceptJson()
+            ->timeout((int) config('wnba.api.timeout', 30))
+            ->get("{$cacheBase}/seasons/{$league}");
+
+        if (! $response->successful()) {
+            throw new \Exception("Failed to fetch SportsBlaze seasons for {$league} from {$cacheBase}/seasons/{$league}");
+        }
+
+        return $response->json('seasons', []);
+    }
+
+    private function sportsBlazeLeagueId(): string
+    {
+        return (string) config('wnba.data_source.league_id', 'wnba');
+    }
+
+    private function sportsBlazeV1Path(string $suffix): string
+    {
+        return $this->sportsBlazeLeagueId().'/v1/'.ltrim($suffix, '/');
     }
 
     private function feedUrl(string $feed, string $sportsBlazePath, string $legacyUrl): string
@@ -59,7 +89,7 @@ class WnbaDataService
             return $configuredUrl;
         }
 
-        if (config('wnba.data_source.provider') === 'sportsblaze') {
+        if (config('wnba.data_source.provider') === 'sportsblaze' && $sportsBlazePath !== '') {
             $baseUrl = rtrim((string) config('wnba.data_source.base_url', 'https://api.sportsblaze.com'), '/');
 
             return $baseUrl.'/'.ltrim($sportsBlazePath, '/');
@@ -100,6 +130,22 @@ class WnbaDataService
         return str_starts_with(ltrim($content), '{') || str_starts_with(ltrim($content), '[');
     }
 
+    private function sportsBlazeGamesList(array $payload): array
+    {
+        return $payload['games'] ?? $payload['events'] ?? [];
+    }
+
+    private function sportsBlazeTeamScore(array $game, string $side): int
+    {
+        $total = $game['scores']['total'][$side] ?? null;
+
+        if (is_array($total)) {
+            return (int) ($total['points'] ?? 0);
+        }
+
+        return (int) ($total ?? 0);
+    }
+
     /**
      * Safely get a value from an array with an optional default
      */
@@ -137,7 +183,7 @@ class WnbaDataService
     private function parseSportsBlazeBoxScores(array $payload): array
     {
         $records = [];
-        foreach (($payload['games'] ?? []) as $game) {
+        foreach ($this->sportsBlazeGamesList($payload) as $game) {
             $game = isset($game['id']) && isset($game['rosters']) ? $game : ($game ?? []);
             foreach (['away', 'home'] as $side) {
                 $team = $game['teams'][$side] ?? [];
@@ -183,12 +229,12 @@ class WnbaDataService
                         'athlete_position_abbreviation' => $player['position'] ?? null,
                         'home_away' => $side,
                         'team_winner' => null,
-                        'team_score' => $game['scores']['total'][$side]['points'] ?? 0,
+                        'team_score' => $this->sportsBlazeTeamScore($game, $side),
                         'opponent_team_id' => $opponent['id'] ?? null,
                         'opponent_team_name' => $opponent['name'] ?? null,
                         'opponent_team_display_name' => $opponent['name'] ?? null,
                         'opponent_team_abbreviation' => $opponent['abbreviation'] ?? null,
-                        'opponent_team_score' => $game['scores']['total'][$opponentSide]['points'] ?? 0,
+                        'opponent_team_score' => $this->sportsBlazeTeamScore($game, $opponentSide),
                     ];
                 }
             }
@@ -200,7 +246,7 @@ class WnbaDataService
     private function parseSportsBlazeSchedule(array $payload): array
     {
         $records = [];
-        foreach (($payload['games'] ?? []) as $game) {
+        foreach ($this->sportsBlazeGamesList($payload) as $game) {
             $venueParts = array_map('trim', explode(',', $game['venue']['location'] ?? ''));
             $records[] = [
                 'game_id' => $game['id'] ?? null,
@@ -232,32 +278,99 @@ class WnbaDataService
                 'status_id' => null,
             ];
         }
+
+        return $records;
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function fetchSportsBlazeCompletedGameBoxscores(): array
+    {
+        $schedulePath = $this->downloadTeamScheduleData();
+        $schedule = json_decode(Storage::get($schedulePath), true);
+        $games = [];
+
+        foreach (($schedule['games'] ?? []) as $game) {
+            if (empty($game['id']) || ($game['status'] ?? null) === 'Scheduled') {
+                continue;
+            }
+
+            $url = $this->withSportsBlazeKey($this->feedUrl(
+                'player_boxscores',
+                $this->sportsBlazeV1Path("boxscores/game/{$game['id']}.json"),
+                ''
+            ));
+            $response = Http::acceptJson()->timeout((int) config('wnba.api.timeout', 30))->get($url);
+            if ($response->successful()) {
+                $games[] = json_decode($response->body(), true);
+            }
+        }
+
+        return $games;
+    }
+
+    private function parseSportsBlazeTeamBoxScores(array $payload): array
+    {
+        $games = isset($payload['games']) ? $payload['games'] : [$payload];
+        $records = [];
+
+        foreach ($games as $game) {
+            if (empty($game['id']) || empty($game['stats'])) {
+                continue;
+            }
+
+            foreach (['away', 'home'] as $side) {
+                $team = $game['teams'][$side] ?? [];
+                $opponentSide = $side === 'home' ? 'away' : 'home';
+                $opponent = $game['teams'][$opponentSide] ?? [];
+                $stats = $game['stats'][$side] ?? [];
+
+                $records[] = [
+                    'game_id' => $game['id'],
+                    'season' => $game['season']['year'] ?? $this->dataSeasonYear,
+                    'season_type' => $game['season']['type'] ?? null,
+                    'game_date' => isset($game['date']) ? substr($game['date'], 0, 10) : null,
+                    'game_date_time' => $game['date'] ?? null,
+                    'team_id' => $team['id'] ?? null,
+                    'team_name' => $team['name'] ?? null,
+                    'team_location' => $team['name'] ?? null,
+                    'team_abbreviation' => $team['abbreviation'] ?? null,
+                    'team_display_name' => $team['name'] ?? null,
+                    'home_away' => $side,
+                    'team_winner' => null,
+                    'team_score' => $this->sportsBlazeTeamScore($game, $side),
+                    'opponent_team_id' => $opponent['id'] ?? null,
+                    'opponent_team_name' => $opponent['name'] ?? null,
+                    'opponent_team_location' => $opponent['name'] ?? null,
+                    'opponent_team_display_name' => $opponent['name'] ?? null,
+                    'opponent_team_abbreviation' => $opponent['abbreviation'] ?? null,
+                    'opponent_team_score' => $this->sportsBlazeTeamScore($game, $opponentSide),
+                    'field_goals_made' => $stats['field_goals_made'] ?? 0,
+                    'field_goals_attempted' => $stats['field_goals_attempts'] ?? 0,
+                    'three_point_field_goals_made' => $stats['three_pointers_made'] ?? 0,
+                    'three_point_field_goals_attempted' => $stats['three_pointers_attempts'] ?? 0,
+                    'free_throws_made' => $stats['free_throws_made'] ?? 0,
+                    'free_throws_attempted' => $stats['free_throws_attempts'] ?? 0,
+                    'offensive_rebounds' => $stats['rebounds_offensive'] ?? 0,
+                    'defensive_rebounds' => $stats['rebounds_defensive'] ?? 0,
+                    'rebounds' => $stats['rebounds'] ?? 0,
+                    'assists' => $stats['assists'] ?? 0,
+                    'steals' => $stats['steals'] ?? 0,
+                    'blocks' => $stats['blocks'] ?? 0,
+                    'turnovers' => $stats['turnovers'] ?? 0,
+                    'fouls' => $stats['fouls_personal'] ?? 0,
+                ];
+            }
+        }
+
         return $records;
     }
 
     public function downloadBoxScoreData(): string
     {
         if (config('wnba.data_source.provider') === 'sportsblaze') {
-            $schedulePath = $this->downloadTeamScheduleData();
-            $schedule = json_decode(Storage::get($schedulePath), true);
-            $games = [];
-
-            foreach (($schedule['games'] ?? []) as $game) {
-                if (empty($game['id']) || ($game['status'] ?? null) === 'Scheduled') {
-                    continue;
-                }
-
-                $url = $this->withSportsBlazeKey($this->feedUrl(
-                    'player_boxscores',
-                    'wnba/v1/boxscores/game/'.$game['id'].'.json',
-                    ''
-                ));
-                $response = Http::acceptJson()->timeout((int) config('wnba.api.timeout', 30))->get($url);
-                if ($response->successful()) {
-                    $games[] = json_decode($response->body(), true);
-                }
-            }
-
+            $games = $this->fetchSportsBlazeCompletedGameBoxscores();
             $path = "wnba/player_box_{$this->dataSeasonYear}.json";
             Storage::put($path, json_encode(['games' => $games]));
 
@@ -273,6 +386,14 @@ class WnbaDataService
 
     public function downloadTeamData(): string
     {
+        if (config('wnba.data_source.provider') === 'sportsblaze') {
+            $games = $this->fetchSportsBlazeCompletedGameBoxscores();
+            $path = "wnba/team_box_{$this->dataSeasonYear}.json";
+            Storage::put($path, json_encode(['games' => $games]));
+
+            return $path;
+        }
+
         return $this->downloadFeed(
             $this->wnbaTeamUrl,
             "wnba/team_box_{$this->dataSeasonYear}.csv",
@@ -377,7 +498,7 @@ class WnbaDataService
     {
         $csvContent = Storage::get($path);
         if ($this->isJsonContent($csvContent)) {
-            return $this->parseSportsBlazeBoxScores(json_decode($csvContent, true) ?: []);
+            return $this->parseSportsBlazeTeamBoxScores(json_decode($csvContent, true) ?: []);
         }
 
         $csv = Reader::createFromString($csvContent);

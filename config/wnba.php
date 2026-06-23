@@ -142,7 +142,11 @@ return [
 
     'data_source' => [
         'provider' => env('WNBA_DATA_PROVIDER', 'sportsblaze'),
+        // v1 JSON API (schedule, boxscores) — requires ?key= per docs.sportsblaze.com
         'base_url' => rtrim(env('SPORTSBLAZE_WNBA_BASE_URL', 'https://api.sportsblaze.com'), '/'),
+        // Public cache API (seasons list) — no auth per documentation.sportsblaze.com/seasons
+        'cache_base_url' => rtrim(env('SPORTSBLAZE_CACHE_BASE_URL', 'https://cache.sportsblaze.com'), '/'),
+        'league_id' => env('SPORTSBLAZE_LEAGUE_ID', 'wnba'),
         'api_key' => env('SPORTSBLAZE_API_KEY'),
         'feeds' => [
             'player_boxscores' => env('SPORTSBLAZE_WNBA_PLAYER_BOXSCORES_URL'),
@@ -169,8 +173,9 @@ return [
     ],
 
     'seasons' => [
+        // Start-year value used in SportsBlaze URLs (e.g. 2025 for the "2025-2026" season).
         'current_season' => (int) env('WNBA_CURRENT_SEASON', 2026),
-        'current_season_label' => env('WNBA_CURRENT_SEASON_LABEL', '2026-27'),
+        'current_season_label' => env('WNBA_CURRENT_SEASON_LABEL', '2026-2027'),
         'season_start_month' => 5, // May
         'season_end_month' => 10, // October
         'playoff_start_month' => 9, // September
