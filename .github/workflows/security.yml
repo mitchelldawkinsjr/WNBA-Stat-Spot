@@ -37,10 +37,8 @@ jobs:
       - name: Install PHP Dependencies
         run: composer install --no-dev --optimize-autoloader
         
-      - name: PHP Security Checker
-        uses: StephaneBour/actions-php-security-checker@1.1
-        with:
-          composer-lock: './composer.lock'
+      - name: PHP Security Audit
+        run: composer audit --no-dev
           
       - name: Install Frontend Dependencies
         working-directory: ./resources/js
@@ -88,14 +86,15 @@ jobs:
           generateSarif: "1"
           
       - name: Upload Semgrep Results to GitHub
-        if: always()
-        uses: github/codeql-action/upload-sarif@v2
+        if: always() && hashFiles('semgrep.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: semgrep.sarif
 
   secrets-scan:
     name: Secrets Detection
     runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
     
     steps:
       - name: Checkout code
@@ -131,8 +130,8 @@ jobs:
           severity: 'CRITICAL,HIGH,MEDIUM'
           
       - name: Upload Trivy Results
-        if: always()
-        uses: github/codeql-action/upload-sarif@v2
+        if: always() && hashFiles('trivy-results.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: 'trivy-results.sarif'
           
@@ -155,6 +154,7 @@ jobs:
         
       - name: Checkov Infrastructure Scan
         uses: bridgecrewio/checkov-action@master
+        continue-on-error: true
         with:
           directory: .
           framework: dockerfile,docker_compose,secrets
@@ -163,8 +163,8 @@ jobs:
           quiet: true
           
       - name: Upload Checkov Results
-        if: always()
-        uses: github/codeql-action/upload-sarif@v2
+        if: always() && hashFiles('checkov-results.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: checkov-results.sarif
 

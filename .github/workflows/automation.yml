@@ -119,22 +119,7 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: context.issue.number,
-                body: `## 📝 Issue Template Missing
-
-Thank you for opening this issue! To help us understand and resolve your issue quickly, please provide more details using our issue templates:
-
-### For Bug Reports:
-- Clear description of the problem
-- Steps to reproduce
-- Expected vs actual behavior
-- Environment details (browser, OS, etc.)
-
-### For Feature Requests:
-- Clear description of the proposed feature
-- Use case and benefits
-- Possible implementation approach
-
-Please update your issue with this information. Issues without sufficient detail may be closed.`
+                body: '## Issue Template Missing\n\nThank you for opening this issue! To help us understand and resolve your issue quickly, please provide more details using our issue templates:\n\n### For Bug Reports:\n- Clear description of the problem\n- Steps to reproduce\n- Expected vs actual behavior\n- Environment details (browser, OS, etc.)\n\n### For Feature Requests:\n- Clear description of the proposed feature\n- Use case and benefits\n- Possible implementation approach\n\nPlease update your issue with this information. Issues without sufficient detail may be closed.'
               });
 
               await github.rest.issues.addLabels({
@@ -171,22 +156,7 @@ Please update your issue with this information. Issues without sufficient detail
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: context.issue.number,
-                body: `## 🎉 Welcome, First-time Contributor!
-
-Thank you for your first contribution to WNBA Stat Spot! We're excited to have you join our community.
-
-### What happens next:
-1. 🔍 Our automated CI/CD pipeline will run tests and checks
-2. 👀 A maintainer will review your changes
-3. 💬 We may provide feedback or suggestions
-4. ✅ Once approved, your changes will be merged
-
-### Getting Help:
-- Check our [Contributing Guide](../CONTRIBUTING.md) for detailed guidelines
-- Review our [Code of Conduct](../CODE_OF_CONDUCT.md)
-- Join our discussions if you have questions
-
-Thank you for making WNBA Stat Spot better! 🏀`
+                body: '## Welcome, First-time Contributor!\n\nThank you for your first contribution to WNBA Stat Spot! We are excited to have you join our community.\n\n### What happens next:\n1. Our automated CI/CD pipeline will run tests and checks\n2. A maintainer will review your changes\n3. We may provide feedback or suggestions\n4. Once approved, your changes will be merged\n\n### Getting Help:\n- Check our [Contributing Guide](../CONTRIBUTING.md) for detailed guidelines\n- Review our [Code of Conduct](../CODE_OF_CONDUCT.md)\n- Join our discussions if you have questions\n\nThank you for making WNBA Stat Spot better!'
               });
 
               await github.rest.issues.addLabels({
@@ -206,16 +176,7 @@ Thank you for making WNBA Stat Spot better! 🏀`
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
-              body: `## 🎊 Contribution Merged!
-
-Thank you @${context.payload.pull_request.user.login} for your contribution! Your changes have been successfully merged into the main branch.
-
-### What's Next:
-- 🚀 Your changes will be deployed in the next release
-- 📊 You can track the deployment in our [Actions tab](../../actions)
-- 🏆 You're now officially a WNBA Stat Spot contributor!
-
-Feel free to tackle more issues or suggest new features. Happy coding! 🏀✨`
+              body: `## Contribution Merged!\n\nThank you @${context.payload.pull_request.user.login} for your contribution! Your changes have been successfully merged into the main branch.\n\n### What's Next:\n- Your changes will be deployed in the next release\n- You can track the deployment in our [Actions tab](../../actions)\n- You are now officially a WNBA Stat Spot contributor!\n\nFeel free to tackle more issues or suggest new features. Happy coding!`
             });
 
   stale-issue-management:
@@ -519,23 +480,7 @@ Feel free to tackle more issues or suggest new features. Happy coding! 🏀✨`
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: context.issue.number,
-                body: `## 🤖 Available Commands
-
-### For Collaborators:
-- \`/close\` - Close this issue
-- \`/reopen\` - Reopen this issue
-- \`/assign @username\` - Assign user to issue
-
-### For Everyone:
-- \`/help\` - Show this help message
-- \`/ping\` - Test bot responsiveness
-
-### Labels:
-- Add \`priority-high\`, \`priority-low\` labels as needed
-- Use \`good first issue\` for beginner-friendly issues
-- Apply \`help wanted\` for issues needing contributors
-
-For more information, see our [Contributing Guide](../CONTRIBUTING.md).`
+                body: '## Available Commands\n\n### For Collaborators:\n- `/close` - Close this issue\n- `/reopen` - Reopen this issue\n- `/assign @username` - Assign user to issue\n\n### For Everyone:\n- `/help` - Show this help message\n- `/ping` - Test bot responsiveness\n\n### Labels:\n- Add `priority-high`, `priority-low` labels as needed\n- Use `good first issue` for beginner-friendly issues\n- Apply `help wanted` for issues needing contributors\n\nFor more information, see our [Contributing Guide](../CONTRIBUTING.md).'
               });
             }
 

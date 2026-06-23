@@ -157,6 +157,7 @@ jobs:
           DB_DATABASE: wnba_test
           DB_USERNAME: wnba_test
           DB_PASSWORD: test_password
+          DB_SSLMODE: disable
           REDIS_HOST: localhost
           REDIS_PORT: 6379
         run: |
