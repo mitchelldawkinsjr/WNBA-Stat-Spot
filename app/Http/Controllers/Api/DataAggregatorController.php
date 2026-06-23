@@ -165,9 +165,9 @@ class DataAggregatorController extends Controller
         try {
             Log::info('Starting teams data import via API');
 
-            $teamDataPath = $this->wnbaDataService->downloadTeamData();
-            $teamData = $this->wnbaDataService->parseTeamData($teamDataPath);
-            $this->wnbaDataService->saveTeamData($teamData);
+            $teamSchedulePath = $this->wnbaDataService->downloadTeamScheduleData();
+            $teamScheduleData = $this->wnbaDataService->parseTeamScheduleData($teamSchedulePath);
+            $this->wnbaDataService->saveTeamScheduleData($teamScheduleData);
 
             $teamCount = DB::table('wnba_teams')->count();
 
@@ -237,11 +237,7 @@ class DataAggregatorController extends Controller
         try {
             Log::info('Starting player stats data import via API');
 
-            // Import both PBP and box score data for comprehensive stats
-            $pbpPath = $this->wnbaDataService->downloadPbpData();
-            $pbpData = $this->wnbaDataService->parsePbpData($pbpPath);
-            $this->wnbaDataService->saveBoxScoreData($pbpData);
-
+            // Import box score data for comprehensive player stats and player syncing.
             $boxScorePath = $this->wnbaDataService->downloadBoxScoreData();
             $boxScoreData = $this->wnbaDataService->parseBoxScoreData($boxScorePath);
             $this->wnbaDataService->saveBoxScoreData($boxScoreData);

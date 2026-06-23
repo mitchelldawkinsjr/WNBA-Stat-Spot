@@ -142,11 +142,13 @@ return [
 
     'data_source' => [
         'provider' => env('WNBA_DATA_PROVIDER', 'sportsblaze'),
-        'base_url' => rtrim(env('SPORTSBLAZE_WNBA_BASE_URL', 'https://sportsblaze.com'), '/'),
+        'base_url' => rtrim(env('SPORTSBLAZE_WNBA_BASE_URL', 'https://api.sportsblaze.com'), '/'),
+        'api_key' => env('SPORTSBLAZE_API_KEY'),
         'feeds' => [
             'player_boxscores' => env('SPORTSBLAZE_WNBA_PLAYER_BOXSCORES_URL'),
             'team_boxscores' => env('SPORTSBLAZE_WNBA_TEAM_BOXSCORES_URL'),
             'schedule' => env('SPORTSBLAZE_WNBA_SCHEDULE_URL'),
+            'rosters' => env('SPORTSBLAZE_WNBA_ROSTERS_URL'),
             'play_by_play' => env('SPORTSBLAZE_WNBA_PLAY_BY_PLAY_URL'),
         ],
         'fallback_to_sportsdataverse' => env('WNBA_FALLBACK_TO_SPORTSDATAVERSE', false),
