@@ -128,79 +128,52 @@ jobs:
 
           echo "url=http://localhost:8000" >> $GITHUB_OUTPUT
 
-  basic-performance:
-    name: Basic Performance Tests
-    runs-on: ubuntu-latest
-    needs: setup-test-environment
-    if: github.event.inputs.test_type == 'basic' || github.event.inputs.test_type == '' || github.event_name != 'workflow_dispatch'
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
       - name: Install Performance Testing Tools
-        run: |
-          npm install -g lighthouse artillery autocannon
+        if: github.event.inputs.test_type == 'basic' || github.event.inputs.test_type == '' || github.event_name != 'workflow_dispatch'
+        run: npm install -g lighthouse autocannon
 
       - name: Run Lighthouse Performance Audit
+        if: github.event.inputs.test_type == 'basic' || github.event.inputs.test_type == '' || github.event_name != 'workflow_dispatch'
         run: |
-          echo "🔍 Running Lighthouse performance audit..."
+          echo "Running Lighthouse performance audit..."
 
-          lighthouse ${{ needs.setup-test-environment.outputs.test_url }} \
+          lighthouse http://localhost:8000/ \
             --output json \
             --output html \
             --chrome-flags="--headless --no-sandbox" \
             --output-path ./lighthouse-report
 
-          # Extract performance score
-          PERF_SCORE=$(cat lighthouse-report.json | jq '.categories.performance.score * 100')
+          PERF_SCORE=$(cat lighthouse-report.report.json | jq '.categories.performance.score * 100')
           echo "Performance Score: $PERF_SCORE/100"
 
-          # Check if performance is acceptable
           if (( $(echo "$PERF_SCORE < 70" | bc -l) )); then
-            echo "❌ Performance score is below 70"
+            echo "Performance score is below 70"
             exit 1
           fi
 
-          echo "✅ Performance score is acceptable"
-
       - name: Quick Load Test
+        if: github.event.inputs.test_type == 'basic' || github.event.inputs.test_type == '' || github.event_name != 'workflow_dispatch'
         run: |
-          echo "🚀 Running quick load test..."
+          echo "Running quick load test..."
 
           autocannon \
             --connections 10 \
             --duration 30 \
             --json \
-            ${{ needs.setup-test-environment.outputs.test_url }} \
+            http://localhost:8000/status \
             > quick-load-test.json
 
-          # Extract metrics
           REQUESTS_PER_SEC=$(cat quick-load-test.json | jq '.requests.average')
           LATENCY_AVG=$(cat quick-load-test.json | jq '.latency.average')
 
           echo "Average RPS: $REQUESTS_PER_SEC"
           echo "Average Latency: ${LATENCY_AVG}ms"
 
-          # Performance thresholds
-          if (( $(echo "$REQUESTS_PER_SEC < 50" | bc -l) )); then
-            echo "⚠️ Low throughput: $REQUESTS_PER_SEC RPS"
-          fi
-
-          if (( $(echo "$LATENCY_AVG > 500" | bc -l) )); then
-            echo "⚠️ High latency: ${LATENCY_AVG}ms"
-          fi
-
       - name: API Endpoint Performance
+        if: github.event.inputs.test_type == 'basic' || github.event.inputs.test_type == '' || github.event_name != 'workflow_dispatch'
         run: |
-          echo "🔌 Testing API endpoint performance..."
+          echo "Testing API endpoint performance..."
 
-          # Test key API endpoints
           ENDPOINTS=(
             "/api/teams"
             "/api/players"
@@ -215,16 +188,17 @@ jobs:
               --connections 5 \
               --duration 10 \
               --json \
-              ${{ needs.setup-test-environment.outputs.test_url }}$endpoint \
-              > api-test-${endpoint//\//-}.json
+              "http://localhost:8000${endpoint}" \
+              > "api-test-${endpoint//\//-}.json"
 
-            RPS=$(cat api-test-${endpoint//\//-}.json | jq '.requests.average')
-            LATENCY=$(cat api-test-${endpoint//\//-}.json | jq '.latency.average')
+            RPS=$(cat "api-test-${endpoint//\//-}.json" | jq '.requests.average')
+            LATENCY=$(cat "api-test-${endpoint//\//-}.json" | jq '.latency.average')
 
             echo "$endpoint: ${RPS} RPS, ${LATENCY}ms latency"
           done
 
-      - name: Upload Performance Reports
+      - name: Upload Basic Performance Reports
+        if: always() && (github.event.inputs.test_type == 'basic' || github.event.inputs.test_type == '' || github.event_name != 'workflow_dispatch')
         uses: actions/upload-artifact@v4
         with:
           name: basic-performance-reports
@@ -412,7 +386,7 @@ jobs:
   performance-summary:
     name: Performance Summary
     runs-on: ubuntu-latest
-    needs: [basic-performance, load-testing, database-performance]
+    needs: [setup-test-environment, load-testing, database-performance]
     if: always()
 
     steps:
@@ -429,13 +403,13 @@ jobs:
           echo "### Test Results" >> $GITHUB_STEP_SUMMARY
           echo "| Test Type | Status |" >> $GITHUB_STEP_SUMMARY
           echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Basic Performance | ${{ needs.basic-performance.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Basic Performance | ${{ needs.setup-test-environment.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Load Testing | ${{ needs.load-testing.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Database Performance | ${{ needs.database-performance.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          if [ -f "lighthouse-report.json" ]; then
-            PERF_SCORE=$(cat lighthouse-report.json | jq '.categories.performance.score * 100')
+          if [ -f "lighthouse-report.report.json" ]; then
+            PERF_SCORE=$(cat lighthouse-report.report.json | jq '.categories.performance.score * 100')
             echo "### Lighthouse Performance Score: $PERF_SCORE/100" >> $GITHUB_STEP_SUMMARY
           fi
 
@@ -460,13 +434,13 @@ jobs:
 
             // Add performance summary
             comment += '### Test Status\n';
-            comment += `- Basic Performance: ${{ needs.basic-performance.result }}\n`;
+            comment += `- Basic Performance: ${{ needs.setup-test-environment.result }}\n`;
             comment += `- Load Testing: ${{ needs.load-testing.result }}\n`;
             comment += `- Database Performance: ${{ needs.database-performance.result }}\n\n`;
 
             // Add details if available
-            if (fs.existsSync('lighthouse-report.json')) {
-              const lighthouse = JSON.parse(fs.readFileSync('lighthouse-report.json'));
+            if (fs.existsSync('lighthouse-report.report.json')) {
+              const lighthouse = JSON.parse(fs.readFileSync('lighthouse-report.report.json'));
               const score = Math.round(lighthouse.categories.performance.score * 100);
               comment += `### Lighthouse Score: ${score}/100\n\n`;
             }
