@@ -30,22 +30,55 @@ class WnbaDataService
         $this->dataSeasonYear = (int) config('wnba.seasons.current_season');
         $y = $this->dataSeasonYear;
 
-        $this->wnbaBoxScoreUrl = env(
-            'WNBA_BOX_SCORE_URL',
+        $this->wnbaBoxScoreUrl = $this->feedUrl(
+            'player_boxscores',
+            "boxscores/wnba/{$y}",
             "https://github.com/sportsdataverse/sportsdataverse-data/releases/download/espn_wnba_player_boxscores/player_box_{$y}.csv"
         );
-        $this->wnbaTeamUrl = env(
-            'WNBA_TEAM_URL',
+        $this->wnbaTeamUrl = $this->feedUrl(
+            'team_boxscores',
+            "team-boxscores/wnba/{$y}",
             "https://github.com/sportsdataverse/sportsdataverse-data/releases/download/espn_wnba_team_boxscores/team_box_{$y}.csv"
         );
-        $this->wnbaPbpUrl = env(
-            'WNBA_PBP_URL',
+        $this->wnbaPbpUrl = $this->feedUrl(
+            'play_by_play',
+            "play-by-play/wnba/{$y}",
             "https://github.com/sportsdataverse/sportsdataverse-data/releases/download/espn_wnba_pbp/play_by_play_{$y}.csv"
         );
-        $this->wnbaTeamScheduleUrl = env(
-            'WNBA_TEAM_SCHEDULE_URL',
+        $this->wnbaTeamScheduleUrl = $this->feedUrl(
+            'schedule',
+            "games/wnba/{$y}",
             "https://github.com/sportsdataverse/sportsdataverse-data/releases/download/espn_wnba_schedules/wnba_schedule_{$y}.csv"
         );
+    }
+
+    private function feedUrl(string $feed, string $sportsBlazePath, string $legacyUrl): string
+    {
+        $configuredUrl = config("wnba.data_source.feeds.{$feed}");
+        if (! empty($configuredUrl)) {
+            return $configuredUrl;
+        }
+
+        if (config('wnba.data_source.provider') === 'sportsblaze') {
+            $baseUrl = rtrim((string) config('wnba.data_source.base_url', 'https://sportsblaze.com'), '/');
+
+            return $baseUrl.'/'.ltrim($sportsBlazePath, '/');
+        }
+
+        return $legacyUrl;
+    }
+
+    private function downloadFeed(string $url, string $path, string $description): string
+    {
+        $response = Http::acceptJson()->timeout((int) config('wnba.api.timeout', 30))->get($url);
+
+        if (! $response->successful()) {
+            throw new \Exception("Failed to download {$description} from {$url}");
+        }
+
+        Storage::put($path, $response->body());
+
+        return $path;
     }
 
     /**
@@ -84,70 +117,38 @@ class WnbaDataService
 
     public function downloadBoxScoreData(): string
     {
-        $response = Http::get($this->wnbaBoxScoreUrl);
-
-        if (! $response->successful()) {
-            throw new \Exception('Failed to download WNBA box score data');
-        }
-
-        $csvContent = $response->body();
-
-        // Save to storage
-        $path = "wnba/player_box_{$this->dataSeasonYear}.csv";
-        Storage::put($path, $csvContent);
-
-        return $path;
+        return $this->downloadFeed(
+            $this->wnbaBoxScoreUrl,
+            "wnba/player_box_{$this->dataSeasonYear}.csv",
+            'WNBA player boxscore feed'
+        );
     }
 
     public function downloadTeamData(): string
     {
-        $response = Http::get($this->wnbaTeamUrl);
-
-        if (! $response->successful()) {
-            throw new \Exception('Failed to download WNBA team data');
-        }
-
-        $csvContent = $response->body();
-
-        // Save to storage
-        $path = "wnba/team_box_{$this->dataSeasonYear}.csv";
-        Storage::put($path, $csvContent);
-
-        return $path;
+        return $this->downloadFeed(
+            $this->wnbaTeamUrl,
+            "wnba/team_box_{$this->dataSeasonYear}.csv",
+            'WNBA team boxscore feed'
+        );
     }
 
     public function downloadTeamScheduleData(): string
     {
-        $response = Http::get($this->wnbaTeamScheduleUrl);
-
-        if (! $response->successful()) {
-            throw new \Exception('Failed to download WNBA team schedule data');
-        }
-
-        $csvContent = $response->body();
-
-        // Save to storage
-        $path = "wnba/team_schedule_{$this->dataSeasonYear}.csv";
-        Storage::put($path, $csvContent);
-
-        return $path;
+        return $this->downloadFeed(
+            $this->wnbaTeamScheduleUrl,
+            "wnba/team_schedule_{$this->dataSeasonYear}.csv",
+            'WNBA schedule feed'
+        );
     }
 
     public function downloadPbpData(): string
     {
-        $response = Http::get($this->wnbaPbpUrl);
-
-        if (! $response->successful()) {
-            throw new \Exception('Failed to download WNBA PBP data');
-        }
-
-        $csvContent = $response->body();
-
-        // Save to storage
-        $path = "wnba/play_by_play_{$this->dataSeasonYear}.csv";
-        Storage::put($path, $csvContent);
-
-        return $path;
+        return $this->downloadFeed(
+            $this->wnbaPbpUrl,
+            "wnba/play_by_play_{$this->dataSeasonYear}.csv",
+            'WNBA play-by-play feed'
+        );
     }
 
     public function parseBoxScoreData(string $path): array
