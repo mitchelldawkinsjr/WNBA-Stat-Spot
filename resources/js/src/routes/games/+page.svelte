@@ -9,23 +9,37 @@
     let error: string | null = null;
     let searchTerm = '';
     let viewMode: 'cards' | 'table' = 'cards';
+    let selectedSeason = 2026;
 
     $: filteredGames = games.filter(game =>
         (game.venue_name && game.venue_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
         (game.venue_city && game.venue_city.toLowerCase().includes(searchTerm.toLowerCase())) ||
         game.season.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        game.game_id.toLowerCase().includes(searchTerm.toLowerCase())
+        game.game_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (game.away_team?.abbreviation && game.away_team.abbreviation.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (game.home_team?.abbreviation && game.home_team.abbreviation.toLowerCase().includes(searchTerm.toLowerCase()))
     );
 
-    onMount(async () => {
+    async function loadGames(season = selectedSeason) {
         try {
-            const response = await api.games.getAll();
+            loading = true;
+            error = null;
+            const response = await api.games.getAll({ season });
             games = response.data;
         } catch (e) {
             error = e instanceof Error ? e.message : 'An error occurred';
         } finally {
             loading = false;
         }
+    }
+
+    async function changeSeason(season: number) {
+        selectedSeason = season;
+        await loadGames(season);
+    }
+
+    onMount(() => {
+        loadGames();
     });
 
     function formatDate(dateString: string): string {
@@ -90,6 +104,20 @@
             <div class="col-md-4">
                 <div class="card">
                     <div class="card-body">
+                        <div class="btn-group w-100 mb-2" role="group" aria-label="Season">
+                            <button
+                                type="button"
+                                class="btn {selectedSeason === 2026 ? 'btn-warning' : 'btn-outline-warning'}"
+                                disabled={loading}
+                                on:click={() => changeSeason(2026)}
+                            >2026</button>
+                            <button
+                                type="button"
+                                class="btn {selectedSeason === 2025 ? 'btn-warning' : 'btn-outline-warning'}"
+                                disabled={loading}
+                                on:click={() => changeSeason(2025)}
+                            >2025</button>
+                        </div>
                         <div class="btn-group w-100" role="group">
                             <button
                                 type="button"

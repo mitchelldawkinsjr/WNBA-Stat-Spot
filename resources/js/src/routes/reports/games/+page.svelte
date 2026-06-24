@@ -8,7 +8,7 @@
     let teams: Team[] = [];
     let filteredGames: Game[] = [];
     let searchTerm = '';
-    let selectedSeason = '';
+    let selectedSeason = '2026';
     let selectedTeam = '';
     let sortBy = 'game_date';
     let sortOrder = 'desc';
@@ -20,7 +20,7 @@
     onMount(async () => {
         try {
             const [gamesResponse, teamsResponse] = await Promise.all([
-                api.games.getAll(),
+                api.games.getAll({ season: 2026 }),
                 api.teams.getAll()
             ]);
 

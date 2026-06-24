@@ -720,7 +720,13 @@ export const api = {
         clearCache: () => fetchApi<ApiResponse<any>>('/players/clear-cache', { method: 'POST' }),
     },
     games: {
-        getAll: () => fetchApi<ApiResponse<Game[]>>('/games', { cacheTtl: 'medium' }),
+        getAll: (options?: { season?: number; live?: boolean }) => {
+            const params = new URLSearchParams();
+            if (options?.season != null) params.append('season', String(options.season));
+            if (options?.live === false) params.append('live', '0');
+            const qs = params.toString();
+            return fetchApi<{ data: Game[]; meta?: { season: number; count: number } }>(`/games${qs ? `?${qs}` : ''}`, { cacheTtl: 'short' });
+        },
     },
     stats: {
         getAll: () => fetchApi<ApiResponse<Stats[]>>('/stats', { cacheTtl: 'medium' }),
