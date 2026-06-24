@@ -90,7 +90,6 @@ class GamePreviewService
 
             return [
                 'error' => 'Failed to generate game preview',
-                'error_detail' => $e->getMessage(),
                 'game' => $this->formatGameMeta($game),
             ];
         }
@@ -369,7 +368,9 @@ class GamePreviewService
             ->where('wnba_games.season', $season)
             ->where('wnba_player_games.did_not_play', false)
             ->whereNotNull('wnba_player_games.minutes')
-            ->whereNotIn('wnba_player_games.minutes', ['', '0', 'DNP'])
+            ->where('wnba_player_games.minutes', '!=', '')
+            ->where('wnba_player_games.minutes', '!=', '0')
+            ->whereRaw("UPPER(wnba_player_games.minutes) != 'DNP'")
             ->groupBy(
                 'wnba_player_games.player_id',
                 'wnba_players.athlete_display_name',
@@ -385,9 +386,8 @@ class GamePreviewService
                 DB::raw('ROUND(AVG(wnba_player_games.points), 1) as ppg'),
                 DB::raw('ROUND(AVG(wnba_player_games.rebounds), 1) as rpg'),
                 DB::raw('ROUND(AVG(wnba_player_games.assists), 1) as apg'),
-                DB::raw('ROUND(AVG(wnba_player_games.minutes), 1) as mpg'),
             ])
-            ->orderByDesc('ppg')
+            ->orderByRaw('ppg DESC')
             ->limit(self::KEY_PLAYER_COUNT)
             ->get();
 
@@ -419,7 +419,7 @@ class GamePreviewService
                     'ppg' => (float) $leader->ppg,
                     'rpg' => (float) $leader->rpg,
                     'apg' => (float) $leader->apg,
-                    'mpg' => (float) $leader->mpg,
+                    'mpg' => 0.0,
                 ],
                 'last_5' => $recentForm['averages'],
                 'vs_opponent' => [
