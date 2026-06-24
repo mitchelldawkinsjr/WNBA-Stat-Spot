@@ -118,7 +118,7 @@ jobs:
             # Run Laravel migrations
             echo "Running database migrations..."
             docker compose -f docker-compose.prod.yml exec -T app php artisan migrate --force || \
-            docker compose -f docker-compose.prod.yml run --rm app php artisan migrate --force || true
+            docker compose -f docker-compose.prod.yml run --rm app php artisan migrate --force
 
             # Load WNBA CSV dataset when players table is empty (first deploy / cleared DB)
             echo "Ensuring WNBA player/team/game data (skips if already populated)..."
