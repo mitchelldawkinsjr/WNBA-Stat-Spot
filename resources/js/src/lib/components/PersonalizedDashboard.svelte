@@ -29,15 +29,12 @@
         id: string;
         home_team: string;
         away_team: string;
+        home_logo?: string;
+        away_logo?: string;
         game_time: string;
-        prediction_confidence: number;
-        top_prop: {
-            player: string;
-            stat: string;
-            line: number;
-            recommendation: 'over' | 'under';
-            confidence: number;
-        };
+        status: string;
+        home_score?: number | null;
+        away_score?: number | null;
     }
 
     interface QuickStat {
@@ -99,37 +96,6 @@
         }
     ];
 
-    const mockTodaysGames: TodaysGame[] = [
-        {
-            id: "game1",
-            home_team: "Las Vegas Aces",
-            away_team: "New York Liberty",
-            game_time: "8:00 PM ET",
-            prediction_confidence: 73,
-            top_prop: {
-                player: "A'ja Wilson",
-                stat: "Points",
-                line: 24.5,
-                recommendation: "over",
-                confidence: 78
-            }
-        },
-        {
-            id: "game2",
-            home_team: "Seattle Storm",
-            away_team: "Phoenix Mercury",
-            game_time: "10:00 PM ET",
-            prediction_confidence: 65,
-            top_prop: {
-                player: "Jewell Loyd",
-                stat: "3-Pointers",
-                line: 2.5,
-                recommendation: "over",
-                confidence: 71
-            }
-        }
-    ];
-
     const mockQuickStats: QuickStat[] = [
         { label: "Prop Accuracy", value: "73.2%", change: 2.1, trend: "up", color: "#10b981" },
         { label: "Model ROI", value: "+12.4%", change: 1.8, trend: "up", color: "#3b82f6" },
@@ -139,14 +105,36 @@
 
     onMount(async () => {
         try {
-            // In a real app, these would be actual API calls
-            await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate loading
-            
+            const gamesRes = await api.games.getAll({ season: 2026 });
+            const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+
+            todaysGames = (gamesRes.data ?? [])
+                .filter((game) => game.game_date === today)
+                .map((game) => ({
+                    id: game.game_id,
+                    home_team: game.home_team?.abbreviation ?? game.home_team?.name ?? 'TBD',
+                    away_team: game.away_team?.abbreviation ?? game.away_team?.name ?? 'TBD',
+                    home_logo: game.home_team?.logo,
+                    away_logo: game.away_team?.logo,
+                    game_time: new Date(game.game_date_time || game.game_date).toLocaleTimeString('en-US', {
+                        hour: 'numeric',
+                        minute: '2-digit',
+                        timeZoneName: 'short',
+                    }),
+                    status: game.status_name === 'STATUS_FINAL'
+                        ? 'Final'
+                        : game.status_name === 'STATUS_IN_PROGRESS'
+                            ? 'Live'
+                            : 'Scheduled',
+                    home_score: game.home_team?.score,
+                    away_score: game.away_team?.score,
+                }));
+
             trendingPlayers = mockTrendingPlayers;
-            todaysGames = mockTodaysGames;
             quickStats = mockQuickStats;
         } catch (e) {
             error = e instanceof Error ? e.message : 'Failed to load dashboard data';
+            todaysGames = [];
         } finally {
             loading = false;
         }
@@ -189,12 +177,6 @@
             case 'down': return 'text-danger';
             default: return 'text-muted';
         }
-    }
-
-    function getConfidenceColor(confidence: number): string {
-        if (confidence >= 75) return 'bg-success';
-        if (confidence >= 60) return 'bg-warning';
-        return 'bg-danger';
     }
 </script>
 
@@ -261,37 +243,41 @@
                         </div>
                     </CardHeader>
                     <CardBody>
+                        {#if todaysGames.length === 0}
+                            <p class="text-muted mb-0">No WNBA games scheduled for today.</p>
+                        {:else}
                         {#each todaysGames as game}
-                            <div class="game-card mb-3">
+                            <a href="/games/{game.id}" class="game-card mb-3 d-block text-decoration-none text-reset">
                                 <div class="row align-items-center">
-                                    <div class="col-md-6">
+                                    <div class="col-md-8">
                                         <div class="game-matchup">
-                                            <div class="teams">
-                                                <span class="away-team">{game.away_team}</span>
-                                                <span class="vs">@</span>
-                                                <span class="home-team">{game.home_team}</span>
+                                            <div class="teams d-flex align-items-center gap-2 flex-wrap">
+                                                {#if game.away_logo}
+                                                    <img src={game.away_logo} alt={game.away_team} style="width:24px;height:24px;object-fit:contain;" />
+                                                {/if}
+                                                <span class="away-team fw-semibold">{game.away_team}</span>
+                                                {#if game.away_score != null}
+                                                    <span class="badge bg-secondary-subtle">{game.away_score}</span>
+                                                {/if}
+                                                <span class="vs text-muted">@</span>
+                                                {#if game.home_logo}
+                                                    <img src={game.home_logo} alt={game.home_team} style="width:24px;height:24px;object-fit:contain;" />
+                                                {/if}
+                                                <span class="home-team fw-semibold">{game.home_team}</span>
+                                                {#if game.home_score != null}
+                                                    <span class="badge bg-secondary-subtle">{game.home_score}</span>
+                                                {/if}
                                             </div>
                                             <div class="game-time text-muted">{game.game_time}</div>
                                         </div>
                                     </div>
-                                    <div class="col-md-6">
-                                        <div class="prediction-info">
-                                            <div class="confidence-badge">
-                                                <span class="badge {getConfidenceColor(game.prediction_confidence)}">
-                                                    {game.prediction_confidence}% confidence
-                                                </span>
-                                            </div>
-                                            <div class="top-prop mt-2">
-                                                <strong>Top Prop:</strong> {game.top_prop.player} {game.top_prop.stat} 
-                                                <span class="recommendation-badge">
-                                                    {game.top_prop.recommendation.toUpperCase()} {game.top_prop.line}
-                                                </span>
-                                            </div>
-                                        </div>
+                                    <div class="col-md-4 text-md-end">
+                                        <span class="badge bg-primary-subtle text-primary">{game.status}</span>
                                     </div>
                                 </div>
-                            </div>
+                            </a>
                         {/each}
+                        {/if}
                     </CardBody>
                 </Card>
             </div>

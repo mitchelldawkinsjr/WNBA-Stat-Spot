@@ -2,7 +2,7 @@
     import { onMount } from 'svelte';
     import { page } from '$app/stores';
     import { api } from '$lib/api/client';
-    import type { Game } from '$lib/api/client';
+    import type { Game, GameBoxScorePlayer } from '$lib/api/client';
     import DefaultLayout from '$lib/layouts/DefaultLayout.svelte';
     import PageHeader from '$lib/components/ui/PageHeader.svelte';
     import StatusBadge from '$lib/components/ui/StatusBadge.svelte';
@@ -10,6 +10,7 @@
     import ErrorMessage from '$lib/components/ErrorMessage.svelte';
 
     let game: Game | null = null;
+    let boxScore: GameBoxScorePlayer[] = [];
     let loading = true;
     let error: string | null = null;
 
@@ -22,13 +23,13 @@
         loading = true;
         error = null;
         try {
-            const response = await api.games.getAll({ season: 2026 });
-            game = response.data.find((g) => g.game_id === gameId) ?? null;
-            if (!game) {
-                error = 'Game not found';
-            }
+            const response = await api.games.getById(gameId, { season: 2026 });
+            game = response.data;
+            boxScore = response.data.box_score ?? [];
         } catch (e) {
             error = e instanceof Error ? e.message : 'Failed to load game';
+            game = null;
+            boxScore = [];
         } finally {
             loading = false;
         }
@@ -40,15 +41,35 @@
         return team?.name ?? team?.abbreviation ?? 'TBD';
     }
 
+    function teamAbbr(side: 'home' | 'away'): string {
+        if (!game) return 'TBD';
+        const team = side === 'home' ? game.home_team : game.away_team;
+        return team?.abbreviation ?? team?.name?.slice(0, 3).toUpperCase() ?? 'TBD';
+    }
+
+    function teamLogo(side: 'home' | 'away'): string | null {
+        if (!game) return null;
+        const team = side === 'home' ? game.home_team : game.away_team;
+        return team?.logo ?? null;
+    }
+
     function teamScore(side: 'home' | 'away'): string | number {
         if (!game) return '–';
         if (side === 'home') return game.home_team_score ?? game.home_team?.score ?? '–';
         return game.away_team_score ?? game.away_team?.score ?? '–';
     }
+
+    function formatStatus(status: string | null | undefined): string {
+        if (!status) return 'Scheduled';
+        if (status === 'STATUS_FINAL') return 'Final';
+        if (status === 'STATUS_SCHEDULED') return 'Scheduled';
+        if (status === 'STATUS_IN_PROGRESS') return 'Live';
+        return status.replace(/^STATUS_/, '').replaceAll('_', ' ').toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+    }
 </script>
 
 <svelte:head>
-    <title>{game ? `${teamLabel('away')} @ ${teamLabel('home')}` : 'Game'} | WNBA Stat Spot</title>
+    <title>{game ? `${teamAbbr('away')} @ ${teamAbbr('home')}` : 'Game'} | WNBA Stat Spot</title>
 </svelte:head>
 
 <DefaultLayout>
@@ -75,9 +96,7 @@
                                     {new Date(game.game_date_time || game.game_date).toLocaleString()}
                                 </p>
                             </div>
-                            {#if game.status_name}
-                                <StatusBadge variant="neutral" label={game.status_name} />
-                            {/if}
+                            <StatusBadge variant="neutral" label={formatStatus(game.status_name)} />
                         </div>
 
                         <div class="row g-3">
@@ -85,7 +104,12 @@
                                 <div class="ds-score-card h-100">
                                     <p class="ds-section-label mb-2">Away</p>
                                     <div class="d-flex justify-content-between align-items-center">
-                                        <span class="fw-semibold">{teamLabel('away')}</span>
+                                        <div class="d-flex align-items-center gap-2">
+                                            {#if teamLogo('away')}
+                                                <img src={teamLogo('away')} alt={teamAbbr('away')} style="width:32px;height:32px;object-fit:contain;" />
+                                            {/if}
+                                            <span class="fw-semibold">{teamAbbr('away')}</span>
+                                        </div>
                                         <span class="ds-stat-value fs-3">{teamScore('away')}</span>
                                     </div>
                                 </div>
@@ -94,12 +118,57 @@
                                 <div class="ds-score-card h-100">
                                     <p class="ds-section-label mb-2">Home</p>
                                     <div class="d-flex justify-content-between align-items-center">
-                                        <span class="fw-semibold">{teamLabel('home')}</span>
+                                        <div class="d-flex align-items-center gap-2">
+                                            {#if teamLogo('home')}
+                                                <img src={teamLogo('home')} alt={teamAbbr('home')} style="width:32px;height:32px;object-fit:contain;" />
+                                            {/if}
+                                            <span class="fw-semibold">{teamAbbr('home')}</span>
+                                        </div>
                                         <span class="ds-stat-value fs-3">{teamScore('home')}</span>
                                     </div>
                                 </div>
                             </div>
                         </div>
+                    </div>
+                </div>
+
+                <div class="card mt-4" id="box-score">
+                    <div class="card-header border-0">
+                        <h3 class="ds-headline-sm mb-0">Box Score</h3>
+                    </div>
+                    <div class="card-body">
+                        {#if boxScore.length > 0}
+                            <div class="table-responsive">
+                                <table class="table table-sm table-hover mb-0">
+                                    <thead>
+                                        <tr>
+                                            <th>Player</th>
+                                            <th>Team</th>
+                                            <th>MIN</th>
+                                            <th>PTS</th>
+                                            <th>REB</th>
+                                            <th>AST</th>
+                                            <th>FG</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {#each boxScore as row}
+                                            <tr>
+                                                <td>{row.player_name ?? '—'}</td>
+                                                <td>{row.team_abbreviation ?? '—'}</td>
+                                                <td>{row.minutes ?? '—'}</td>
+                                                <td><strong>{row.points}</strong></td>
+                                                <td>{row.rebounds}</td>
+                                                <td>{row.assists}</td>
+                                                <td><small>{row.field_goals_made}/{row.field_goals_attempted}</small></td>
+                                            </tr>
+                                        {/each}
+                                    </tbody>
+                                </table>
+                            </div>
+                        {:else}
+                            <p class="ds-text-muted mb-0">Box score not available yet for this game.</p>
+                        {/if}
                     </div>
                 </div>
             </div>

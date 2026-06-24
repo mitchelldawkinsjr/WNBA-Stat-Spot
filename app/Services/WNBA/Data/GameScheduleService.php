@@ -31,7 +31,7 @@ class GameScheduleService
                     }
 
                     if ($dbByGameId->has($gameId)) {
-                        $results[] = $this->transformDbGame($dbByGameId->get($gameId));
+                        $results[] = $this->transformDbGame($dbByGameId->get($gameId), $record);
                         $dbByGameId->forget($gameId);
                     } else {
                         $results[] = $this->transformScheduleRecord($record);
@@ -55,9 +55,9 @@ class GameScheduleService
         });
     }
 
-    private function transformDbGame(WnbaGame $game): array
+    private function transformDbGame(WnbaGame $game, ?array $scheduleRecord = null): array
     {
-        return [
+        $result = [
             'id' => $game->id,
             'game_id' => $game->game_id,
             'season' => (string) $game->season,
@@ -75,6 +75,74 @@ class GameScheduleService
             'final_score' => $this->finalScoreFromDb($game),
             'source' => 'database',
         ];
+
+        if ($scheduleRecord !== null) {
+            $result = $this->enrichFromSchedule($result, $scheduleRecord);
+        }
+
+        return $result;
+    }
+
+    /**
+     * @param  array<string, mixed>  $dbGame
+     * @param  array<string, mixed>  $record
+     * @return array<string, mixed>
+     */
+    private function enrichFromSchedule(array $dbGame, array $record): array
+    {
+        $espn = $this->transformScheduleRecord($record);
+
+        if ($dbGame['home_team'] === null) {
+            $dbGame['home_team'] = $espn['home_team'];
+        }
+
+        if ($dbGame['away_team'] === null) {
+            $dbGame['away_team'] = $espn['away_team'];
+        }
+
+        foreach (['venue_name', 'venue_city', 'venue_state', 'status_name', 'game_date', 'game_date_time'] as $field) {
+            if (empty($dbGame[$field]) && ! empty($espn[$field])) {
+                $dbGame[$field] = $espn[$field];
+            }
+        }
+
+        $dbGame['home_team'] = $this->mergeTeamScores($dbGame['home_team'], $espn['home_team']);
+        $dbGame['away_team'] = $this->mergeTeamScores($dbGame['away_team'], $espn['away_team']);
+
+        if ($dbGame['final_score'] === null && $espn['final_score'] !== null) {
+            $dbGame['final_score'] = $espn['final_score'];
+        }
+
+        return $dbGame;
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $dbTeam
+     * @param  array<string, mixed>|null  $espnTeam
+     * @return array<string, mixed>|null
+     */
+    private function mergeTeamScores(?array $dbTeam, ?array $espnTeam): ?array
+    {
+        if ($dbTeam === null) {
+            return $espnTeam;
+        }
+
+        if ($espnTeam === null) {
+            return $dbTeam;
+        }
+
+        if (($dbTeam['score'] === null || $dbTeam['score'] === 0) && $espnTeam['score'] !== null) {
+            $dbTeam['score'] = $espnTeam['score'];
+            $dbTeam['winner'] = $espnTeam['winner'];
+        }
+
+        foreach (['name', 'abbreviation', 'logo'] as $field) {
+            if (empty($dbTeam[$field]) && ! empty($espnTeam[$field])) {
+                $dbTeam[$field] = $espnTeam[$field];
+            }
+        }
+
+        return $dbTeam;
     }
 
     /**

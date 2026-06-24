@@ -21,7 +21,7 @@ class PlayerAnalyticsService
      */
     public function getRecentForm(int $playerId, int $games = 10): array
     {
-        $recentGames = WnbaPlayerGame::with(['game', 'team'])
+        $recentGames = WnbaPlayerGame::with(['game.gameTeams.opponentTeam', 'team'])
             ->where('player_id', $playerId)
             ->whereHas('game', function ($query) {
                 $query->orderBy('game_date', 'desc');
@@ -622,10 +622,21 @@ class PlayerAnalyticsService
         })->toArray();
     }
 
-    private function getOpponentName($game): string
+    private function getOpponentName(WnbaPlayerGame $playerGame): string
     {
-        // This would need to be implemented based on your game structure
-        return 'Opponent'; // Placeholder
+        $gameTeam = $playerGame->game?->gameTeams
+            ?->firstWhere('team_id', $playerGame->team_id);
+
+        if ($gameTeam?->opponentTeam) {
+            $abbr = $gameTeam->opponentTeam->team_abbreviation
+                ?? $gameTeam->opponentTeam->team_display_name
+                ?? 'OPP';
+            $prefix = $gameTeam->home_away === 'home' ? 'vs ' : '@ ';
+
+            return $prefix.$abbr;
+        }
+
+        return 'Opponent';
     }
 
     private function getEmptyPer36Data(): array

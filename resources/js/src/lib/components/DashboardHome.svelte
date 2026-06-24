@@ -111,11 +111,21 @@
                         {/if}
                     </div>
                     <div class="ds-score-row">
-                        <span class="ds-team-abbr">{teamAbbr(game, 'away')}</span>
+                        <span class="ds-team-abbr d-inline-flex align-items-center gap-1">
+                            {#if game.away_team?.logo}
+                                <img src={game.away_team.logo} alt={teamAbbr(game, 'away')} style="width:18px;height:18px;object-fit:contain;" />
+                            {/if}
+                            {teamAbbr(game, 'away')}
+                        </span>
                         <span class="ds-stat-value">{game.away_team_score ?? game.away_team?.score ?? '–'}</span>
                     </div>
                     <div class="ds-score-row">
-                        <span class="ds-team-abbr">{teamAbbr(game, 'home')}</span>
+                        <span class="ds-team-abbr d-inline-flex align-items-center gap-1">
+                            {#if game.home_team?.logo}
+                                <img src={game.home_team.logo} alt={teamAbbr(game, 'home')} style="width:18px;height:18px;object-fit:contain;" />
+                            {/if}
+                            {teamAbbr(game, 'home')}
+                        </span>
                         <span class="ds-stat-value">{game.home_team_score ?? game.home_team?.score ?? '–'}</span>
                     </div>
                 </a>

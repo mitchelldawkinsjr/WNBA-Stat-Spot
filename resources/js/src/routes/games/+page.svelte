@@ -65,6 +65,19 @@
             day: 'numeric'
         });
     }
+
+    function formatStatus(status: string | null | undefined): string {
+        if (!status) return 'TBD';
+        if (status === 'STATUS_FINAL') return 'Final';
+        if (status === 'STATUS_SCHEDULED') return 'Scheduled';
+        if (status === 'STATUS_IN_PROGRESS') return 'Live';
+        return status.replace(/^STATUS_/, '').replaceAll('_', ' ').toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+    }
+
+    function teamAbbr(game: Game, side: 'home' | 'away'): string {
+        const team = side === 'home' ? game.home_team : game.away_team;
+        return team?.abbreviation ?? team?.name?.slice(0, 3).toUpperCase() ?? 'TBD';
+    }
 </script>
 
 <DefaultLayout>
@@ -245,18 +258,16 @@
                                                     </td>
                                                     <td>
                                                         <span class="badge bg-{game.status_name === 'STATUS_FINAL' ? 'success' : game.status_name === 'STATUS_SCHEDULED' ? 'secondary' : 'warning'}">
-                                                            {game.status_name === 'STATUS_FINAL' ? 'Final' :
-                                                             game.status_name === 'STATUS_SCHEDULED' ? 'Scheduled' :
-                                                             game.status_name || 'TBD'}
+                                                            {formatStatus(game.status_name)}
                                                         </span>
                                                     </td>
                                                     <td class="text-center">
-                                                        <button class="btn btn-outline-warning btn-sm me-1">
+                                                        <a href="/games/{game.game_id}" class="btn btn-outline-warning btn-sm me-1" title="View details">
                                                             <i class="fas fa-eye"></i>
-                                                        </button>
-                                                        <button class="btn btn-outline-secondary btn-sm">
+                                                        </a>
+                                                        <a href="/games/{game.game_id}#box-score" class="btn btn-outline-secondary btn-sm" title="Box score">
                                                             <i class="fas fa-chart-bar"></i>
-                                                        </button>
+                                                        </a>
                                                     </td>
                                                 </tr>
                                             {/each}
@@ -291,6 +302,28 @@
                                         <h6 class="card-title mb-1">Game #{game.game_id}</h6>
                                         <p class="text-muted mb-0 small">{game.season} {game.season_type}</p>
                                     </div>
+                                </div>
+
+                                <div class="mb-3">
+                                    {#if game.away_team && game.home_team}
+                                        <div class="d-flex align-items-center justify-content-between p-2 bg-light rounded">
+                                            <div class="d-flex align-items-center">
+                                                {#if game.away_team.logo}
+                                                    <img src={game.away_team.logo} alt={game.away_team.abbreviation} class="avatar-xs rounded me-2" />
+                                                {/if}
+                                                <span class="fw-semibold">{teamAbbr(game, 'away')}</span>
+                                            </div>
+                                            <span class="text-muted mx-2">@</span>
+                                            <div class="d-flex align-items-center">
+                                                {#if game.home_team.logo}
+                                                    <img src={game.home_team.logo} alt={game.home_team.abbreviation} class="avatar-xs rounded me-2" />
+                                                {/if}
+                                                <span class="fw-semibold">{teamAbbr(game, 'home')}</span>
+                                            </div>
+                                        </div>
+                                    {:else}
+                                        <div class="text-center p-2 bg-light rounded text-muted">Teams TBD</div>
+                                    {/if}
                                 </div>
 
                                 <div class="mb-3">
@@ -333,18 +366,18 @@
                                     <div class="col-6">
                                         <div class="text-center p-2 bg-light rounded">
                                             <small class="text-muted d-block">Status</small>
-                                            <span class="fw-semibold">{game.status_name || 'TBD'}</span>
+                                            <span class="fw-semibold">{formatStatus(game.status_name)}</span>
                                         </div>
                                     </div>
                                 </div>
 
                                 <div class="mt-3">
-                                    <button class="btn btn-warning btn-sm me-2">
+                                    <a href="/games/{game.game_id}" class="btn btn-warning btn-sm me-2">
                                         View Details
-                                    </button>
-                                    <button class="btn btn-outline-secondary btn-sm">
+                                    </a>
+                                    <a href="/games/{game.game_id}#box-score" class="btn btn-outline-secondary btn-sm">
                                         Box Score
-                                    </button>
+                                    </a>
                                 </div>
                             </div>
                         </div>

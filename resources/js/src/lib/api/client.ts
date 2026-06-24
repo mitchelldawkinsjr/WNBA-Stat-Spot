@@ -189,6 +189,23 @@ export interface Game {
         away: number | null;
         final: boolean;
     } | null;
+    box_score?: GameBoxScorePlayer[];
+}
+
+export interface GameBoxScorePlayer {
+    player_name: string | null;
+    team_abbreviation: string | null;
+    minutes: string | null;
+    points: number;
+    rebounds: number;
+    assists: number;
+    steals: number;
+    blocks: number;
+    field_goals_made: number;
+    field_goals_attempted: number;
+    three_point_field_goals_made: number;
+    three_point_field_goals_attempted: number;
+    starter: boolean;
 }
 
 export interface Stats extends PlayerGame {
@@ -781,6 +798,13 @@ export const api = {
             if (options?.live === false) params.append('live', '0');
             const qs = params.toString();
             return fetchApi<{ data: Game[]; meta?: { season: number; count: number } }>(`/games${qs ? `?${qs}` : ''}`, { cacheTtl: 'short' });
+        },
+        getById: (gameId: string, options?: { season?: number; live?: boolean }) => {
+            const params = new URLSearchParams();
+            if (options?.season != null) params.append('season', String(options.season));
+            if (options?.live === false) params.append('live', '0');
+            const qs = params.toString();
+            return fetchApi<{ data: Game; message?: string }>(`/games/${encodeURIComponent(gameId)}${qs ? `?${qs}` : ''}`, { cacheTtl: 'short' });
         },
     },
     stats: {
