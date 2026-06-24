@@ -13,31 +13,31 @@ FROM node:20-alpine AS backend
 
 # Install PHP and system dependencies
 RUN apk add --no-cache \
-    php83 \
-    php83-fpm \
-    php83-pdo \
-    php83-pdo_pgsql \
-    php83-mbstring \
-    php83-exif \
-    php83-pcntl \
-    php83-bcmath \
-    php83-gd \
-    php83-session \
-    php83-tokenizer \
-    php83-xml \
-    php83-ctype \
-    php83-fileinfo \
-    php83-openssl \
-    php83-zip \
-    php83-curl \
-    php83-dom \
-    php83-xmlreader \
-    php83-xmlwriter \
-    php83-simplexml \
-    php83-phar \
-    php83-iconv \
-    php83-intl \
-    php83-posix \
+    php84 \
+    php84-fpm \
+    php84-pdo \
+    php84-pdo_pgsql \
+    php84-mbstring \
+    php84-exif \
+    php84-pcntl \
+    php84-bcmath \
+    php84-gd \
+    php84-session \
+    php84-tokenizer \
+    php84-xml \
+    php84-ctype \
+    php84-fileinfo \
+    php84-openssl \
+    php84-zip \
+    php84-curl \
+    php84-dom \
+    php84-xmlreader \
+    php84-xmlwriter \
+    php84-simplexml \
+    php84-phar \
+    php84-iconv \
+    php84-intl \
+    php84-posix \
     git \
     curl \
     zip \
@@ -53,9 +53,9 @@ RUN apk add --no-cache \
     net-tools \
     procps
 
-# Create symlinks for PHP and set up PHP configuration (php83: Alpine amd64 uses 8.3; aarch64 may differ)
-RUN ln -sf /usr/bin/php83 /usr/bin/php \
-    && ln -sf /usr/sbin/php-fpm83 /usr/sbin/php-fpm
+# Create symlinks for PHP and set up PHP configuration
+RUN ln -sf /usr/bin/php84 /usr/bin/php \
+    && ln -sf /usr/sbin/php-fpm84 /usr/sbin/php-fpm
 
 # Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer

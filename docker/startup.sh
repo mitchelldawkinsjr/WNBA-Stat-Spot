@@ -9,7 +9,7 @@ mv /tmp/nginx.conf /etc/nginx/nginx.conf
 
 # Configure PHP-FPM to listen on 127.0.0.1:9000
 echo "🔧 Configuring PHP-FPM..."
-cat > /etc/php83/php-fpm.d/www.conf << 'EOF'
+cat > /etc/php84/php-fpm.d/www.conf << 'EOF'
 [www]
 user = nginx
 group = nginx
