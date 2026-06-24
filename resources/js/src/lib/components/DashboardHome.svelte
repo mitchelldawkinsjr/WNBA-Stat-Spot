@@ -1,60 +1,90 @@
 <script lang="ts">
-    import { onMount } from 'svelte';
+    import { onDestroy, onMount } from 'svelte';
     import { api } from '$lib/api/client';
-    import type { Game } from '$lib/api/client';
+    import type { Game, LeagueLeader, PlayerSpotlight } from '$lib/api/client';
     import StatusBadge from '$lib/components/ui/StatusBadge.svelte';
     import DsIcon from '$lib/components/ui/DsIcon.svelte';
     import TodaysBestProps from '$lib/components/TodaysBestProps.svelte';
 
-    interface Leader {
-        rank: number;
-        name: string;
-        stat: string;
-        headshot?: string | null;
-    }
+    const WNBA_TIMEZONE = 'America/New_York';
+    const LIVE_STATUS_PATTERN = /IN_PROGRESS|HALFTIME|END_PERIOD|LIVE/i;
+    const FINAL_STATUS_PATTERN = /FINAL|COMPLETED|POSTPONED|CANCEL/i;
 
     let games: Game[] = [];
-    let leaders: Leader[] = [];
+    let leaders: LeagueLeader[] = [];
     let newsItems: Array<Record<string, unknown>> = [];
-    let featuredPlayer = { name: 'Featured Player', team: 'WNBA', position: '—', ppg: '—', apg: '—', per: '—', headshot: null as string | null };
+    let featuredPlayer: PlayerSpotlight & { position: string } = {
+        name: 'Featured Player',
+        player_id: '',
+        team: 'WNBA',
+        position: '—',
+        ppg: 0,
+        apg: null,
+        rpg: null,
+        headshot: null,
+    };
     let loading = true;
+    let refreshTimer: ReturnType<typeof setInterval> | null = null;
+
+    $: liveGames = games.filter(isLive);
+    $: todaysGames = games.filter((game) => isTodayEt(game) && !isFinal(game) && !isLive(game));
+    $: displayGames = liveGames.length > 0 ? liveGames : todaysGames;
+    $: gamesSectionTitle = liveGames.length > 0 ? 'Live Games' : (todaysGames.length > 0 ? "Today's Games" : 'Games');
+    $: gamesSectionSubtitle = liveGames.length > 0
+        ? 'Scores updating from in-progress matchups'
+        : (todaysGames.length > 0 ? 'Scheduled for today (ET)' : 'No live or scheduled games right now');
 
     onMount(async () => {
+        await loadDashboard();
+        refreshTimer = setInterval(loadGames, 30_000);
+    });
+
+    onDestroy(() => {
+        if (refreshTimer) clearInterval(refreshTimer);
+    });
+
+    async function loadDashboard() {
         try {
-            const [gamesRes, playersRes, newsRes] = await Promise.all([
+            loading = true;
+            const [gamesRes, leadersRes, newsRes] = await Promise.all([
                 api.games.getAll({ season: 2026 }),
-                api.players.getAll({ per_page: 5 }),
+                api.players.getLeaders({ season: 2026 }),
                 api.wnba.getNews({ limit: 4 }).catch(() => null),
             ]);
             games = gamesRes.data ?? [];
-            const players = playersRes.data?.data ?? [];
-            if (players[0]) {
+            leaders = leadersRes.data?.leaders ?? [];
+            newsItems = newsRes?.data?.items ?? [];
+
+            const spotlight = leadersRes.data?.spotlight;
+            if (spotlight) {
                 featuredPlayer = {
-                    name: players[0].athlete_display_name?.toUpperCase() ?? 'PLAYER',
-                    team: 'WNBA',
-                    position: players[0].athlete_position_abbreviation ?? '—',
-                    ppg: '—',
-                    apg: '—',
-                    per: '—',
-                    headshot: players[0].athlete_headshot_href,
+                    ...spotlight,
+                    position: spotlight.position ?? '—',
+                    ppg: spotlight.ppg ?? 0,
+                    apg: spotlight.apg ?? null,
+                    rpg: spotlight.rpg ?? null,
                 };
             }
-            leaders = players.slice(0, 3).map((p, i) => ({
-                rank: i + 1,
-                name: p.athlete_short_name || p.athlete_display_name,
-                stat: p.athlete_position_abbreviation ?? '—',
-                headshot: p.athlete_headshot_href,
-            }));
-            newsItems = newsRes?.data?.items ?? [];
         } catch (e) {
             console.error('Dashboard load failed', e);
         } finally {
             loading = false;
         }
-    });
+    }
 
-    function formatGameTime(dateStr: string): string {
-        return new Date(dateStr).toLocaleString('en-US', {
+    async function loadGames() {
+        try {
+            const gamesRes = await api.games.getAll({ season: 2026 });
+            games = gamesRes.data ?? [];
+        } catch (e) {
+            console.error('Games refresh failed', e);
+        }
+    }
+
+    function formatGameTime(game: Game): string {
+        const raw = game.game_date_time || game.game_date;
+        return new Date(raw).toLocaleString('en-US', {
+            timeZone: WNBA_TIMEZONE,
             month: 'short',
             day: 'numeric',
             hour: 'numeric',
@@ -68,7 +98,26 @@
     }
 
     function isLive(game: Game): boolean {
-        return (game.status_type?.toLowerCase() ?? '').includes('in') || (game.status_name?.toLowerCase() ?? '').includes('progress');
+        const status = game.status_name ?? '';
+        if (FINAL_STATUS_PATTERN.test(status)) return false;
+        return LIVE_STATUS_PATTERN.test(status);
+    }
+
+    function isFinal(game: Game): boolean {
+        return FINAL_STATUS_PATTERN.test(game.status_name ?? '');
+    }
+
+    function isTodayEt(game: Game): boolean {
+        const today = new Date().toLocaleDateString('en-CA', { timeZone: WNBA_TIMEZONE });
+        return game.game_date === today;
+    }
+
+    function formatStatus(game: Game): string {
+        if (isLive(game)) return 'Live';
+        const status = game.status_name ?? '';
+        if (status === 'STATUS_SCHEDULED') return 'Scheduled';
+        if (status === 'STATUS_FINAL') return 'Final';
+        return status.replace(/^STATUS_/, '').replaceAll('_', ' ').toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
     }
 
     function newsTitle(item: Record<string, unknown>): string {
@@ -80,34 +129,45 @@
         if (typeof desc !== 'string' || !desc) return null;
         return desc.length > 120 ? `${desc.slice(0, 120)}…` : desc;
     }
+
+    function formatStat(value: number | null | undefined): string {
+        return value != null ? value.toFixed(1) : '—';
+    }
 </script>
 
-<!-- Live Games -->
+<!-- Live / Today's Games -->
 <section class="ds-dashboard-section">
     <div class="ds-section-header">
         <div class="d-flex align-items-center gap-2">
-            <span class="ds-live-dot"></span>
-            <h2 class="ds-section-label mb-0">Live Games</h2>
+            {#if liveGames.length > 0}
+                <span class="ds-live-dot"></span>
+            {/if}
+            <div>
+                <h2 class="ds-section-label mb-0">{gamesSectionTitle}</h2>
+                <small class="ds-text-muted">{gamesSectionSubtitle}</small>
+            </div>
         </div>
         <a href="/games" class="ds-link-caps">View All</a>
     </div>
 
     {#if loading}
         <p class="ds-text-muted">Loading games…</p>
+    {:else if displayGames.length === 0}
+        <div class="ds-score-card"><span class="ds-text-muted">No live or scheduled games right now. Check back on game day.</span></div>
     {:else}
         <div class="ds-horizontal-scroll">
-            {#each games.slice(0, 10) as game}
+            {#each displayGames as game}
                 <a
                     href="/games/{game.game_id}"
                     class="ds-score-card text-decoration-none text-reset"
-                    class:is-scheduled={!isLive(game) && !game.home_team_score}
+                    class:is-live={isLive(game)}
                 >
                     <div class="d-flex justify-content-between align-items-center mb-2">
-                        <span class="ds-meta-caps">{formatGameTime(game.game_date)}</span>
+                        <span class="ds-meta-caps">{formatGameTime(game)}</span>
                         {#if isLive(game)}
                             <StatusBadge variant="live" label="LIVE" />
                         {:else}
-                            <span class="ds-meta-caps">{game.status_abbreviation ?? game.season}</span>
+                            <span class="ds-meta-caps">{formatStatus(game)}</span>
                         {/if}
                     </div>
                     <div class="ds-score-row">
@@ -129,8 +189,6 @@
                         <span class="ds-stat-value">{game.home_team_score ?? game.home_team?.score ?? '–'}</span>
                     </div>
                 </a>
-            {:else}
-                <div class="ds-score-card"><span class="ds-text-muted">No games available</span></div>
             {/each}
         </div>
     {/if}
@@ -151,32 +209,42 @@
                 </div>
                 <h1 class="ds-display-title">{featuredPlayer.name}</h1>
                 <div class="ds-hero__stats">
-                    <div><span class="ds-meta-caps">PPG</span><span class="ds-hero__stat">{featuredPlayer.ppg}</span></div>
-                    <div><span class="ds-meta-caps">APG</span><span class="ds-hero__stat">{featuredPlayer.apg}</span></div>
-                    <div><span class="ds-meta-caps">POS</span><span class="ds-hero__stat">{featuredPlayer.position}</span></div>
+                    <div><span class="ds-meta-caps">PPG</span><span class="ds-hero__stat">{formatStat(featuredPlayer.ppg)}</span></div>
+                    <div><span class="ds-meta-caps">RPG</span><span class="ds-hero__stat">{formatStat(featuredPlayer.rpg)}</span></div>
+                    <div><span class="ds-meta-caps">APG</span><span class="ds-hero__stat">{formatStat(featuredPlayer.apg)}</span></div>
                 </div>
+                {#if featuredPlayer.player_id}
+                    <a href="/players/{featuredPlayer.player_id}" class="btn btn-sm btn-primary mt-3">View Profile</a>
+                {/if}
             </div>
         </div>
 
         <div class="ds-bento-grid">
             <div class="ds-panel">
                 <h3 class="ds-panel__title"><DsIcon name="trending_up" size={20} className="text-primary" /> League Leaders</h3>
+                <p class="ds-text-muted small mb-3">Season averages (min. 5 games)</p>
                 <div class="ds-leader-list">
-                    {#each leaders as leader}
-                        <a href="/players" class="ds-leader-row">
+                    {#each leaders as leader, i}
+                        <a href="/players/{leader.player_id}" class="ds-leader-row">
                             <div class="d-flex align-items-center gap-3">
-                                <span class="ds-leader-rank">{leader.rank}</span>
+                                <span class="ds-leader-rank">{i + 1}</span>
                                 {#if leader.headshot}
                                     <img class="ds-leader-avatar" src={leader.headshot} alt="" />
                                 {:else}
                                     <span class="ds-leader-avatar ds-leader-avatar--placeholder"></span>
                                 {/if}
-                                <span class="fw-semibold">{leader.name}</span>
+                                <div>
+                                    <span class="fw-semibold d-block">{leader.name}</span>
+                                    <small class="ds-text-muted">{leader.category}</small>
+                                </div>
                             </div>
-                            <span class="ds-stat-value text-primary">{leader.stat}</span>
+                            <div class="text-end">
+                                <span class="ds-stat-value text-primary">{leader.value}</span>
+                                <small class="ds-text-muted d-block">{leader.category_abbr}</small>
+                            </div>
                         </a>
                     {:else}
-                        <p class="ds-text-muted mb-0">No player data</p>
+                        <p class="ds-text-muted mb-0">No leader data yet</p>
                     {/each}
                 </div>
             </div>

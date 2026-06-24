@@ -55,97 +55,16 @@
             loading = true;
             error = null;
 
-            // Get today's games and generate props
-            const response = await generateTodaysProps();
-            todaysProps = response.data || [];
-            lastUpdated = new Date().toLocaleTimeString();
+            const response = await api.wnba.predictions.getTodaysBest('America/New_York');
+            todaysProps = response.data ?? [];
+            lastUpdated = new Date().toLocaleTimeString('en-US', { timeZone: 'America/New_York' });
         } catch (err) {
             error = err instanceof Error ? err.message : 'Failed to load today\'s props';
+            todaysProps = [];
             console.error('Failed to load today\'s props:', err);
-
-            // Fallback to mock data for demonstration
-            todaysProps = getMockProps();
-            lastUpdated = new Date().toLocaleTimeString();
         } finally {
             loading = false;
         }
-    }
-
-    async function generateTodaysProps(): Promise<{ data: TodaysProp[] }> {
-        // Call the new API endpoint for today's best props
-        try {
-            const response = await api.wnba.predictions.getTodaysBest();
-            return { data: response.data };
-        } catch (error) {
-            console.error('Failed to fetch from API, using fallback:', error);
-            // Fallback to mock data if API fails
-            return { data: getMockProps() };
-        }
-    }
-
-    function getMockProps(): TodaysProp[] {
-        return [
-            {
-                player_id: '3149391',
-                player_name: "A'ja Wilson",
-                team_abbreviation: 'LAS',
-                opponent: 'vs SEA',
-                game_time: '7:00 PM ET',
-                stat_type: 'points',
-                suggested_line: 22.5,
-                predicted_value: 25.2,
-                confidence: 78,
-                recommendation: 'over',
-                expected_value: 12.4,
-                probability_over: 68.5,
-                probability_under: 31.5,
-                recent_form: 26.8,
-                season_average: 24.1,
-                matchup_difficulty: 'favorable',
-                betting_value: 'excellent',
-                reasoning: 'Strong recent form (26.8 PPG last 5) vs weak interior defense'
-            },
-            {
-                player_id: '4066261',
-                player_name: 'Breanna Stewart',
-                team_abbreviation: 'NY',
-                opponent: 'vs CHI',
-                game_time: '7:30 PM ET',
-                stat_type: 'rebounds',
-                suggested_line: 8.5,
-                predicted_value: 10.1,
-                confidence: 72,
-                recommendation: 'over',
-                expected_value: 8.7,
-                probability_over: 64.2,
-                probability_under: 35.8,
-                recent_form: 9.4,
-                season_average: 8.9,
-                matchup_difficulty: 'neutral',
-                betting_value: 'good',
-                reasoning: 'Chicago allows high rebounding rate to opposing forwards'
-            },
-            {
-                player_id: '4277956',
-                player_name: 'Sabrina Ionescu',
-                team_abbreviation: 'NY',
-                opponent: 'vs CHI',
-                game_time: '7:30 PM ET',
-                stat_type: 'assists',
-                suggested_line: 6.5,
-                predicted_value: 8.2,
-                confidence: 69,
-                recommendation: 'over',
-                expected_value: 7.1,
-                probability_over: 61.8,
-                probability_under: 38.2,
-                recent_form: 7.8,
-                season_average: 7.2,
-                matchup_difficulty: 'favorable',
-                betting_value: 'good',
-                reasoning: 'High pace game expected, strong assist rate vs Chicago'
-            }
-        ];
     }
 
     function getValueColor(value: string): string {

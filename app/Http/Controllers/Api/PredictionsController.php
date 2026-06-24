@@ -345,8 +345,8 @@ class PredictionsController extends Controller
     public function getTodaysBestProps(Request $request)
     {
         try {
-            // Get timezone from request parameter, default to UTC
-            $timezone = $request->get('timezone', 'UTC');
+            // WNBA schedule is US-based; default to Eastern when client omits timezone
+            $timezone = $request->get('timezone', 'America/New_York');
 
             // Validate timezone
             try {
@@ -826,38 +826,43 @@ class PredictionsController extends Controller
                 'utc_end' => $utcEndOfDay->toString(),
             ]);
 
-            // Get all games for today (in user's timezone) that are not completed
+            $userDate = $userToday->toDateString();
+
+            // Match by game_date (calendar day) or game_date_time window for timezone edge cases
             $games = DB::table('wnba_games')
-                ->where('game_date_time', '>=', $utcStartOfDay)
-                ->where('game_date_time', '<=', $utcEndOfDay)
+                ->where(function ($query) use ($utcStartOfDay, $utcEndOfDay, $userDate) {
+                    $query->whereBetween('game_date_time', [$utcStartOfDay, $utcEndOfDay])
+                        ->orWhere('game_date', $userDate);
+                })
                 ->where(function ($query) {
-                    // Include games that are scheduled/upcoming
                     $query->whereIn('status_name', [
                         'STATUS_SCHEDULED', 'SCHEDULED', 'Pre-Game', 'PRE_GAME', 'Pregame',
-                    ])
-                    // OR games that are currently in progress
-                        ->orWhereIn('status_name', [
-                            'STATUS_IN_PROGRESS', 'IN_PROGRESS', 'Live', 'LIVE', 'In Progress',
-                            'STATUS_HALFTIME', 'HALFTIME', 'Half Time', 'Halftime',
-                            'STATUS_END_PERIOD', 'END_PERIOD', 'End of Period', 'End Period',
-                        ]);
+                    ])->orWhereIn('status_name', [
+                        'STATUS_IN_PROGRESS', 'IN_PROGRESS', 'Live', 'LIVE', 'In Progress',
+                        'STATUS_HALFTIME', 'HALFTIME', 'Half Time', 'Halftime',
+                        'STATUS_END_PERIOD', 'END_PERIOD', 'End of Period', 'End Period',
+                    ]);
                 })
-                // Explicitly exclude completed/final games
                 ->whereNotIn('status_name', [
                     'STATUS_FINAL', 'FINAL', 'Final', 'COMPLETED', 'Completed',
                     'STATUS_FINAL_OT', 'FINAL_OT', 'Final OT', 'Final (OT)',
                     'STATUS_POSTPONED', 'POSTPONED', 'Postponed',
                     'STATUS_CANCELED', 'CANCELED', 'Cancelled', 'STATUS_CANCELLED',
                 ])
-                // Extra safety: exclude anything with FINAL or COMPLETED in the name
                 ->where('status_name', 'NOT LIKE', '%FINAL%')
                 ->where('status_name', 'NOT LIKE', '%COMPLETED%')
                 ->where('status_name', 'NOT LIKE', '%POSTPONED%')
                 ->where('status_name', 'NOT LIKE', '%CANCEL%')
-                // Also filter by time: only include games that haven't ended yet
-                // (give 4 hour buffer for typical game length)
-                ->where('game_date_time', '>', $userToday->copy()->subHours(4)->utc())
-                ->select(['id', 'game_id', 'game_date_time', 'status_name'])
+                ->where(function ($query) use ($userToday) {
+                    $liveStatuses = [
+                        'STATUS_IN_PROGRESS', 'IN_PROGRESS', 'Live', 'LIVE', 'In Progress',
+                        'STATUS_HALFTIME', 'HALFTIME', 'Half Time', 'Halftime',
+                        'STATUS_END_PERIOD', 'END_PERIOD', 'End of Period', 'End Period',
+                    ];
+                    $query->whereIn('status_name', $liveStatuses)
+                        ->orWhere('game_date_time', '>', $userToday->copy()->subHours(4)->utc());
+                })
+                ->select(['id', 'game_id', 'game_date', 'game_date_time', 'status_name'])
                 ->orderBy('game_date_time', 'asc')
                 ->get()
                 ->toArray();

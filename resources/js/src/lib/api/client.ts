@@ -110,6 +110,29 @@ export interface Player {
     player_games?: PlayerGame[];
 }
 
+export interface LeagueLeader {
+    player_id: string;
+    name: string;
+    headshot?: string | null;
+    position?: string | null;
+    category: string;
+    category_abbr: string;
+    value: number;
+    games_played: number;
+}
+
+export interface PlayerSpotlight {
+    player_id: string;
+    name: string;
+    headshot?: string | null;
+    position?: string | null;
+    team?: string | null;
+    ppg: number;
+    rpg?: number | null;
+    apg?: number | null;
+    category_abbr?: string;
+}
+
 export interface PlayerGame {
     id: number;
     game_id: number;
@@ -712,6 +735,18 @@ export const api = {
             return fetchApi<PaginatedResponse<Player>>(`/players${query}`, { cacheTtl: 'medium' });
         },
         getSummary: () => fetchApi<ApiResponse<Player[]>>('/players/summary', { cacheTtl: 'long' }),
+        getLeaders: (options?: { season?: number }) => {
+            const params = new URLSearchParams();
+            if (options?.season != null) params.append('season', String(options.season));
+            const qs = params.toString();
+            return fetchApi<{
+                success: boolean;
+                data: {
+                    leaders: LeagueLeader[];
+                    spotlight: PlayerSpotlight | null;
+                };
+            }>(`/players/leaders${qs ? `?${qs}` : ''}`, { cacheTtl: 'medium' });
+        },
         getById: (id: string) => fetchApi<ApiResponse<Player>>(`/players/${id}`, { cacheTtl: 'medium' }),
         getGamelog: (id: string, options?: { season?: number; last_n_games?: number }) => {
             const params = new URLSearchParams();
@@ -841,16 +876,14 @@ export const api = {
             getPropBets: () =>
                 fetchApi<{ success: boolean; data: PropBet[] }>('/wnba/predictions/prop-bets', { cacheTtl: 'short' }),
             getTodaysBest: (timezone?: string) => {
-                // Get user's timezone if not provided
-                const userTimezone = timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+                const userTimezone = timezone || 'America/New_York';
                 const params = new URLSearchParams();
                 params.append('timezone', userTimezone);
 
                 return fetchApi<{ success: boolean; data: TodaysProp[] }>(`/wnba/predictions/todays-best?${params.toString()}`, { cacheTtl: 'short' });
             },
             getTodaysBestProps: (timezone?: string) => {
-                // Get user's timezone if not provided
-                const userTimezone = timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+                const userTimezone = timezone || 'America/New_York';
                 const params = new URLSearchParams();
                 params.append('timezone', userTimezone);
 

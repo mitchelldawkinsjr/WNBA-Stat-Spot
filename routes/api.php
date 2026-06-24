@@ -132,6 +132,7 @@ Route::get('/teams/{teamId}/players', [TeamController::class, 'players']);
 Route::post('/teams/clear-cache', [TeamController::class, 'clearCache']);
 
 Route::get('/players', [PlayerController::class, 'index']);
+Route::get('/players/leaders', [PlayerController::class, 'leaders']);
 Route::get('/players/summary', [PlayerController::class, 'summary']);
 Route::post('/players/clear-cache', [PlayerController::class, 'clearCache']);
 Route::get('/players/{id}/gamelog', [PlayerController::class, 'gamelog']);

@@ -117,6 +117,7 @@
                     home_logo: game.home_team?.logo,
                     away_logo: game.away_team?.logo,
                     game_time: new Date(game.game_date_time || game.game_date).toLocaleTimeString('en-US', {
+                        timeZone: 'America/New_York',
                         hour: 'numeric',
                         minute: '2-digit',
                         timeZoneName: 'short',

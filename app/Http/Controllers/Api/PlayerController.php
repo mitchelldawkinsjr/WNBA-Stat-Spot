@@ -169,6 +169,144 @@ class PlayerController extends Controller
         }
     }
 
+    public function leaders(Request $request): JsonResponse
+    {
+        $request->validate([
+            'season' => 'nullable|integer',
+            'min_games' => 'nullable|integer|min:1|max:40',
+        ]);
+
+        try {
+            if (! Schema::hasTable('wnba_players') || ! Schema::hasTable('wnba_player_games')) {
+                return $this->successResponse(['leaders' => [], 'spotlight' => null], 'Leaders unavailable');
+            }
+
+            $season = (int) ($request->input('season') ?? config('wnba.seasons.current_season'));
+            $minGames = (int) ($request->input('min_games', 5));
+            $cacheKey = "players_leaders_{$season}_{$minGames}";
+
+            $payload = Cache::remember($cacheKey, $this->defaultCacheTtl, function () use ($season, $minGames) {
+                $categories = [
+                    ['column' => 'points', 'label' => 'Points Per Game', 'abbr' => 'PPG'],
+                    ['column' => 'rebounds', 'label' => 'Rebounds Per Game', 'abbr' => 'RPG'],
+                    ['column' => 'assists', 'label' => 'Assists Per Game', 'abbr' => 'APG'],
+                ];
+
+                $leaders = [];
+                foreach ($categories as $category) {
+                    $leader = $this->topSeasonLeader($season, $category['column'], $category['label'], $category['abbr'], $minGames);
+                    if ($leader !== null) {
+                        unset($leader['db_id']);
+                        $leaders[] = $leader;
+                    }
+                }
+
+                $spotlight = null;
+                if ($leaders !== []) {
+                    $topScorerRow = $this->topSeasonLeader($season, 'points', 'Points Per Game', 'PPG', $minGames);
+                    if ($topScorerRow !== null) {
+                        $averages = $this->playerSeasonAverages((int) $topScorerRow['db_id'], $season, $minGames);
+                        $spotlight = [
+                            'player_id' => (string) $topScorerRow['player_id'],
+                            'name' => $topScorerRow['name'],
+                            'headshot' => $topScorerRow['headshot'],
+                            'position' => $topScorerRow['position'],
+                            'team' => $this->playerLatestTeamAbbr((int) $topScorerRow['db_id']),
+                            'ppg' => $averages['points'] ?? $topScorerRow['value'],
+                            'rpg' => $averages['rebounds'] ?? null,
+                            'apg' => $averages['assists'] ?? null,
+                            'category_abbr' => 'PPG',
+                        ];
+                    }
+                }
+
+                return ['leaders' => $leaders, 'spotlight' => $spotlight];
+            });
+
+            return $this->successResponse($payload, 'League leaders retrieved successfully');
+        } catch (\Exception $e) {
+            return $this->handleException($e, 'Retrieving league leaders');
+        }
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function topSeasonLeader(int $season, string $statColumn, string $label, string $abbr, int $minGames): ?array
+    {
+        $allowed = ['points', 'rebounds', 'assists', 'steals', 'blocks'];
+        if (! in_array($statColumn, $allowed, true)) {
+            return null;
+        }
+
+        $row = DB::table('wnba_player_games as pg')
+            ->join('wnba_games as g', 'g.id', '=', 'pg.game_id')
+            ->join('wnba_players as p', 'p.id', '=', 'pg.player_id')
+            ->where('g.season', $season)
+            ->where('pg.did_not_play', false)
+            ->selectRaw(
+                'p.id as db_id, p.athlete_id, p.athlete_display_name, p.athlete_short_name, p.athlete_headshot_href, p.athlete_position_abbreviation, AVG(pg.'.$statColumn.') as avg_stat, COUNT(*) as games_played'
+            )
+            ->groupBy('p.id', 'p.athlete_id', 'p.athlete_display_name', 'p.athlete_short_name', 'p.athlete_headshot_href', 'p.athlete_position_abbreviation')
+            ->havingRaw('COUNT(*) >= ?', [$minGames])
+            ->orderByDesc('avg_stat')
+            ->first();
+
+        if (! $row) {
+            return null;
+        }
+
+        return [
+            'db_id' => (int) $row->db_id,
+            'player_id' => (string) $row->athlete_id,
+            'name' => $row->athlete_short_name ?: $row->athlete_display_name,
+            'headshot' => $row->athlete_headshot_href,
+            'position' => $row->athlete_position_abbreviation,
+            'category' => $label,
+            'category_abbr' => $abbr,
+            'value' => round((float) $row->avg_stat, 1),
+            'games_played' => (int) $row->games_played,
+        ];
+    }
+
+    /**
+     * @return array<string, float|null>
+     */
+    private function playerSeasonAverages(int $playerDbId, int $season, int $minGames): array
+    {
+        $row = DB::table('wnba_player_games as pg')
+            ->join('wnba_games as g', 'g.id', '=', 'pg.game_id')
+            ->where('pg.player_id', $playerDbId)
+            ->where('g.season', $season)
+            ->where('pg.did_not_play', false)
+            ->selectRaw('AVG(pg.points) as points, AVG(pg.rebounds) as rebounds, AVG(pg.assists) as assists, COUNT(*) as games_played')
+            ->havingRaw('COUNT(*) >= ?', [$minGames])
+            ->first();
+
+        if (! $row) {
+            return [];
+        }
+
+        return [
+            'points' => round((float) $row->points, 1),
+            'rebounds' => round((float) $row->rebounds, 1),
+            'assists' => round((float) $row->assists, 1),
+        ];
+    }
+
+    private function playerLatestTeamAbbr(int $playerDbId): ?string
+    {
+        $row = DB::table('wnba_player_games as pg')
+            ->join('wnba_games as g', 'g.id', '=', 'pg.game_id')
+            ->join('wnba_teams as t', 't.team_id', '=', 'pg.team_id')
+            ->where('pg.player_id', $playerDbId)
+            ->orderByDesc('g.game_date')
+            ->select('t.team_abbreviation')
+            ->first();
+
+        return $row?->team_abbreviation;
+    }
+
     public function show(string $id): JsonResponse
     {
         $cacheKey = "player_detail_{$id}";

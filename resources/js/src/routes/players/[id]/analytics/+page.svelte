@@ -15,11 +15,18 @@
     let analyticsSeason = 2026;
     let loading = true;
     let error: string | null = null;
+    let chartStat: 'points' | 'rebounds' | 'assists' = 'points';
+
+    const chartStatLabels: Record<typeof chartStat, string> = {
+        points: 'Points per Game',
+        rebounds: 'Rebounds per Game',
+        assists: 'Assists per Game',
+    };
 
     // Transform game stats data for chart component
     $: chartData = $gameStatsChartData.map(game => ({
         date: game.date,
-        value: game.points // PlayerStatsChart expects 'value' property
+        value: game[chartStat] ?? 0,
     }));
 
     async function loadAnalytics(season = analyticsSeason) {
@@ -164,18 +171,122 @@
 
             <!-- Analytics Grid -->
             <div class="row">
-                <!-- Game Statistics Chart -->
+                <!-- Shooting Statistics (moved up) -->
                 <div class="col-xl-6 col-lg-12">
                     <div class="card">
                         <div class="card-header">
                             <h5 class="card-title mb-0">
-                                <i class="fas fa-chart-line me-2"></i>
-                                Game Statistics
+                                <i class="fas fa-percentage me-2"></i>
+                                Shooting Statistics
                             </h5>
                         </div>
                         <div class="card-body">
+                            {#if $playerAnalytics.shootingEfficiency}
+                                <div class="row g-3">
+                                    {#each Object.entries($playerAnalytics.shootingEfficiency) as [stat, value]}
+                                        {#if typeof value === 'number'}
+                                            <div class="col-md-6">
+                                                <div class="bg-light p-3 rounded">
+                                                    <div class="d-flex justify-content-between align-items-center">
+                                                        <span class="text-muted small text-capitalize">{stat.replace(/_/g, ' ')}</span>
+                                                        <span class="fw-bold">
+                                                            {value.toFixed(1)}{#if stat.includes('percentage')}%{/if}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        {/if}
+                                    {/each}
+                                </div>
+                            {:else}
+                                <div class="text-center py-4">
+                                    <i class="fas fa-percentage text-muted fs-48 mb-3"></i>
+                                    <p class="text-muted mb-0">No shooting efficiency data available</p>
+                                </div>
+                            {/if}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Home vs Away Statistics (moved up) -->
+                <div class="col-xl-6 col-lg-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="card-title mb-0">
+                                <i class="fas fa-map-marker-alt me-2"></i>
+                                Home vs Away Statistics
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            {#if $playerAnalytics.homeAwayPerformance}
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="border-end pe-3">
+                                            <h6 class="text-success mb-3">
+                                                <i class="fas fa-home me-1"></i>
+                                                Home ({$playerAnalytics.homeAwayPerformance.home.games} games)
+                                            </h6>
+                                            <div class="space-y-2">
+                                                {#each Object.entries($playerAnalytics.homeAwayPerformance.home.stats || {}) as [stat, value]}
+                                                    {#if typeof value === 'number' && ['points', 'rebounds', 'assists'].includes(stat)}
+                                                        <div class="d-flex justify-content-between mb-2">
+                                                            <span class="text-muted small text-capitalize">{stat}:</span>
+                                                            <span class="fw-bold">{value.toFixed(1)}</span>
+                                                        </div>
+                                                    {/if}
+                                                {/each}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="ps-3">
+                                            <h6 class="text-primary mb-3">
+                                                <i class="fas fa-plane me-1"></i>
+                                                Away ({$playerAnalytics.homeAwayPerformance.away.games} games)
+                                            </h6>
+                                            <div class="space-y-2">
+                                                {#each Object.entries($playerAnalytics.homeAwayPerformance.away.stats || {}) as [stat, value]}
+                                                    {#if typeof value === 'number' && ['points', 'rebounds', 'assists'].includes(stat)}
+                                                        <div class="d-flex justify-content-between mb-2">
+                                                            <span class="text-muted small text-capitalize">{stat}:</span>
+                                                            <span class="fw-bold">{value.toFixed(1)}</span>
+                                                        </div>
+                                                    {/if}
+                                                {/each}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            {:else}
+                                <div class="text-center py-4">
+                                    <i class="fas fa-map-marker-alt text-muted fs-48 mb-3"></i>
+                                    <p class="text-muted mb-0">No home/away performance data available</p>
+                                </div>
+                            {/if}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Game Statistics Chart -->
+                <div class="col-xl-6 col-lg-12">
+                    <div class="card">
+                        <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+                            <div>
+                                <h5 class="card-title mb-0">
+                                    <i class="fas fa-chart-line me-2"></i>
+                                    Game Statistics
+                                </h5>
+                                <small class="text-muted">Per-game trend for selected stat</small>
+                            </div>
+                            <div class="btn-group btn-group-sm" role="group" aria-label="Chart stat">
+                                <button type="button" class="btn btn-outline-primary" class:active={chartStat === 'points'} on:click={() => chartStat = 'points'}>PTS</button>
+                                <button type="button" class="btn btn-outline-primary" class:active={chartStat === 'rebounds'} on:click={() => chartStat = 'rebounds'}>REB</button>
+                                <button type="button" class="btn btn-outline-primary" class:active={chartStat === 'assists'} on:click={() => chartStat = 'assists'}>AST</button>
+                            </div>
+                        </div>
+                        <div class="card-body">
                             {#if chartData.length > 0}
-                                <PlayerStatsChart data={chartData} />
+                                <PlayerStatsChart data={chartData} statName={chartStatLabels[chartStat]} />
                             {:else}
                                 <div class="text-center py-4">
                                     <i class="fas fa-chart-line text-muted fs-48 mb-3"></i>
@@ -269,102 +380,6 @@
                                 <div class="text-center py-4">
                                     <i class="fas fa-trending-up text-muted fs-48 mb-3"></i>
                                     <p class="text-muted mb-0">No recent form data available</p>
-                                </div>
-                            {/if}
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Shooting Efficiency Stats -->
-                <div class="col-xl-6 col-lg-12">
-                    <div class="card">
-                        <div class="card-header">
-                            <h5 class="card-title mb-0">
-                                <i class="fas fa-percentage me-2"></i>
-                                Shooting Statistics
-                            </h5>
-                        </div>
-                        <div class="card-body">
-                            {#if $playerAnalytics.shootingEfficiency}
-                                <div class="row g-3">
-                                    {#each Object.entries($playerAnalytics.shootingEfficiency) as [stat, value]}
-                                        {#if typeof value === 'number'}
-                                            <div class="col-md-6">
-                                                <div class="bg-light p-3 rounded">
-                                                    <div class="d-flex justify-content-between align-items-center">
-                                                        <span class="text-muted small text-capitalize">{stat.replace(/_/g, ' ')}</span>
-                                                        <span class="fw-bold">
-                                                            {value.toFixed(1)}{#if stat.includes('percentage')}%{/if}
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        {/if}
-                                    {/each}
-                                </div>
-                            {:else}
-                                <div class="text-center py-4">
-                                    <i class="fas fa-percentage text-muted fs-48 mb-3"></i>
-                                    <p class="text-muted mb-0">No shooting efficiency data available</p>
-                                </div>
-                            {/if}
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Home vs Away Stats -->
-                <div class="col-xl-6 col-lg-12">
-                    <div class="card">
-                        <div class="card-header">
-                            <h5 class="card-title mb-0">
-                                <i class="fas fa-map-marker-alt me-2"></i>
-                                Home vs Away Statistics
-                            </h5>
-                        </div>
-                        <div class="card-body">
-                            {#if $playerAnalytics.homeAwayPerformance}
-                                <div class="row">
-                                    <div class="col-md-6">
-                                        <div class="border-end pe-3">
-                                            <h6 class="text-success mb-3">
-                                                <i class="fas fa-home me-1"></i>
-                                                Home ({$playerAnalytics.homeAwayPerformance.home.games} games)
-                                            </h6>
-                                            <div class="space-y-2">
-                                                {#each Object.entries($playerAnalytics.homeAwayPerformance.home.stats || {}) as [stat, value]}
-                                                    {#if typeof value === 'number' && ['points', 'rebounds', 'assists'].includes(stat)}
-                                                        <div class="d-flex justify-content-between mb-2">
-                                                            <span class="text-muted small text-capitalize">{stat}:</span>
-                                                            <span class="fw-bold">{value.toFixed(1)}</span>
-                                                        </div>
-                                                    {/if}
-                                                {/each}
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <div class="ps-3">
-                                            <h6 class="text-primary mb-3">
-                                                <i class="fas fa-plane me-1"></i>
-                                                Away ({$playerAnalytics.homeAwayPerformance.away.games} games)
-                                            </h6>
-                                            <div class="space-y-2">
-                                                {#each Object.entries($playerAnalytics.homeAwayPerformance.away.stats || {}) as [stat, value]}
-                                                    {#if typeof value === 'number' && ['points', 'rebounds', 'assists'].includes(stat)}
-                                                        <div class="d-flex justify-content-between mb-2">
-                                                            <span class="text-muted small text-capitalize">{stat}:</span>
-                                                            <span class="fw-bold">{value.toFixed(1)}</span>
-                                                        </div>
-                                                    {/if}
-                                                {/each}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            {:else}
-                                <div class="text-center py-4">
-                                    <i class="fas fa-map-marker-alt text-muted fs-48 mb-3"></i>
-                                    <p class="text-muted mb-0">No home/away performance data available</p>
                                 </div>
                             {/if}
                         </div>
