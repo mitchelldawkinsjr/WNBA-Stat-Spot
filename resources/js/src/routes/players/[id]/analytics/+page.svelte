@@ -12,7 +12,7 @@
 
     const urlPlayerId = $page.params.id;
     let playerInfo: any = null;
-    let databasePlayerId: string | null = null;
+    let analyticsSeason = 2026;
     let loading = true;
     let error: string | null = null;
 
@@ -22,20 +22,34 @@
         value: game.points // PlayerStatsChart expects 'value' property
     }));
 
+    async function loadAnalytics(season = analyticsSeason) {
+        if (!playerInfo?.athlete_id) {
+            return;
+        }
+
+        await playerAnalytics.fetchAnalytics(playerInfo.athlete_id, { season });
+    }
+
+    async function changeAnalyticsSeason(season: number) {
+        analyticsSeason = season;
+        loading = true;
+        try {
+            await loadAnalytics(season);
+        } finally {
+            loading = false;
+        }
+    }
+
     onMount(async () => {
         try {
             loading = true;
             error = null;
 
-            // First, get the player info to determine the database ID
             const playerResponse = await api.players.getById(urlPlayerId);
             playerInfo = playerResponse.data;
-            databasePlayerId = playerInfo.id.toString();
 
-            // Type safety check - ensure databasePlayerId is not null
-            if (databasePlayerId) {
-                // Now fetch analytics using the database ID
-                await playerAnalytics.fetchAnalytics(databasePlayerId);
+            if (playerInfo?.athlete_id) {
+                await loadAnalytics(analyticsSeason);
             } else {
                 throw new Error('Player ID not found');
             }
@@ -81,9 +95,27 @@
             <!-- Page Title -->
             <div class="row">
                 <div class="col-12">
-                    <div class="page-title-box">
-                        <h4 class="page-title">Player Analytics</h4>
-                        <p class="text-muted mb-0">Comprehensive performance analysis and statistics</p>
+                    <div class="page-title-box d-flex justify-content-between align-items-center flex-wrap gap-2">
+                        <div>
+                            <h4 class="page-title">Player Analytics</h4>
+                            <p class="text-muted mb-0">Comprehensive performance analysis and statistics</p>
+                        </div>
+                        <div class="btn-group btn-group-sm" role="group" aria-label="Season">
+                            <button
+                                type="button"
+                                class="btn btn-outline-primary"
+                                class:active={analyticsSeason === 2026}
+                                disabled={loading || $playerAnalytics.loading}
+                                on:click={() => changeAnalyticsSeason(2026)}
+                            >2026</button>
+                            <button
+                                type="button"
+                                class="btn btn-outline-primary"
+                                class:active={analyticsSeason === 2025}
+                                disabled={loading || $playerAnalytics.loading}
+                                on:click={() => changeAnalyticsSeason(2025)}
+                            >2025</button>
+                        </div>
                     </div>
                 </div>
             </div>

@@ -148,6 +148,92 @@ class Tank01WnbaProvider implements WnbaStatsProvider
     /**
      * @return array<int, array<string, mixed>>
      */
+    public function fetchPlayerInjuries(string $playerId, ?int $daysBack = null): array
+    {
+        $query = ['playerID' => $playerId];
+        if ($daysBack !== null) {
+            $query['daysBack'] = (string) $daysBack;
+        }
+
+        $body = $this->client->get(
+            config('tank01.endpoints.injuries'),
+            $query,
+            (int) config('tank01.cache_ttl.injuries'),
+        );
+
+        return $this->mapper->mapInjuries(is_array($body) ? $body : []);
+    }
+
+    /**
+     * @param  array<string, mixed>  $options
+     * @return array<int, array<string, mixed>>
+     */
+    public function fetchPlayerNews(string $playerId, array $options = []): array
+    {
+        $query = ['playerID' => $playerId];
+        if (isset($options['max_items'])) {
+            $query['maxItems'] = (string) $options['max_items'];
+        }
+
+        $body = $this->client->get(
+            config('tank01.endpoints.news'),
+            $query,
+            (int) config('tank01.cache_ttl.news'),
+        );
+
+        return $this->mapper->mapNews(is_array($body) ? $body : []);
+    }
+
+    /**
+     * @param  array<string, mixed>  $options
+     * @return array<int, array<string, mixed>>
+     */
+    public function fetchLeagueNews(array $options = []): array
+    {
+        $query = [];
+        if (! empty($options['top_news'])) {
+            $query['topNews'] = 'true';
+        } elseif (! empty($options['recent_news'])) {
+            $query['recentNews'] = 'true';
+        } elseif (! empty($options['fantasy_news'])) {
+            $query['fantasyNews'] = 'true';
+        } else {
+            $query['topNews'] = 'true';
+        }
+
+        if (isset($options['max_items'])) {
+            $query['maxItems'] = (string) $options['max_items'];
+        }
+
+        $body = $this->client->get(
+            config('tank01.endpoints.news'),
+            $query,
+            (int) config('tank01.cache_ttl.news'),
+        );
+
+        return $this->mapper->mapNews(is_array($body) ? $body : []);
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public function fetchPlayerInfo(string $playerId, string $statsToGet = 'averages'): ?array
+    {
+        $body = $this->client->get(
+            config('tank01.endpoints.player_info'),
+            [
+                'playerID' => $playerId,
+                'statsToGet' => $statsToGet,
+            ],
+            (int) config('tank01.cache_ttl.player_info'),
+        );
+
+        return $this->mapper->mapPlayerInfo(is_array($body) ? $body : [], $playerId);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
     public function fetchRosterPlayers(): array
     {
         return $this->mapper->mapRosterPlayers($this->fetchTeamsBody());

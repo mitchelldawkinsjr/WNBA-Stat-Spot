@@ -53,15 +53,16 @@ class PredictionsController extends Controller
     /**
      * Get player analytics
      */
-    public function getPlayerAnalytics(int $playerId)
+    public function getPlayerAnalytics(Request $request, string $playerId)
     {
         try {
-            $cacheKey = "player_analytics:v2:{$playerId}";
+            $season = (int) ($request->input('season') ?? config('wnba.seasons.current_season'));
+            $cacheKey = "player_analytics:v3:{$playerId}:{$season}";
 
             return response()->json([
                 'status' => 'success',
-                'data' => Cache::remember($cacheKey, now()->addHours(24), function () use ($playerId) {
-                    return $this->playerAnalytics->getAnalytics($playerId);
+                'data' => Cache::remember($cacheKey, now()->addHours(6), function () use ($playerId, $season) {
+                    return $this->playerAnalytics->getAnalytics($playerId, $season);
                 }),
             ]);
         } catch (\Throwable $e) {

@@ -711,6 +711,61 @@ export const api = {
                 };
             }>(`/players/${id}/gamelog${qs ? `?${qs}` : ''}`, { cacheTtl: 'short' });
         },
+        getOverview: (id: string, options?: { season?: number }) => {
+            const params = new URLSearchParams();
+            if (options?.season != null) params.append('season', String(options.season));
+            const qs = params.toString();
+            return fetchApi<{
+                success: boolean;
+                data: {
+                    provider: string;
+                    season: number;
+                    season_stats: Record<string, string | null> | null;
+                    news: Array<Record<string, unknown>>;
+                    injuries: Array<Record<string, unknown>>;
+                    next_game: Record<string, unknown> | null;
+                    fantasy_outlook: string | null;
+                };
+            }>(`/players/${id}/overview${qs ? `?${qs}` : ''}`, { cacheTtl: 'short' });
+        },
+        getSeasonStats: (id: string, options?: { season?: number }) => {
+            const params = new URLSearchParams();
+            if (options?.season != null) params.append('season', String(options.season));
+            const qs = params.toString();
+            return fetchApi<{
+                success: boolean;
+                data: {
+                    provider: string;
+                    season: number;
+                    season_stats: Record<string, string | null> | null;
+                    splits: Array<Record<string, unknown>>;
+                };
+            }>(`/players/${id}/season-stats${qs ? `?${qs}` : ''}`, { cacheTtl: 'short' });
+        },
+        getNews: (id: string, options?: { limit?: number }) => {
+            const params = new URLSearchParams();
+            if (options?.limit != null) params.append('limit', String(options.limit));
+            const qs = params.toString();
+            return fetchApi<{
+                success: boolean;
+                data: {
+                    provider: string;
+                    items: Array<Record<string, unknown>>;
+                };
+            }>(`/players/${id}/news${qs ? `?${qs}` : ''}`, { cacheTtl: 'short' });
+        },
+        getInjuries: (id: string, options?: { days_back?: number }) => {
+            const params = new URLSearchParams();
+            if (options?.days_back != null) params.append('days_back', String(options.days_back));
+            const qs = params.toString();
+            return fetchApi<{
+                success: boolean;
+                data: {
+                    provider: string;
+                    items: Array<Record<string, unknown>>;
+                };
+            }>(`/players/${id}/injuries${qs ? `?${qs}` : ''}`, { cacheTtl: 'short' });
+        },
         /**
          * Aggregated box-score + trends from DataAggregator (/wnba/data/players/:id).
          * Use this instead of api.wnba.data.getPlayerData — some deployments had `api.wnba.data` stripped/missing at runtime.
@@ -732,6 +787,25 @@ export const api = {
         getAll: () => fetchApi<ApiResponse<Stats[]>>('/stats', { cacheTtl: 'medium' }),
     },
     wnba: {
+        getNews: (options?: { limit?: number; filter?: 'top' | 'recent' | 'fantasy' }) => {
+            const params = new URLSearchParams();
+            if (options?.limit != null) params.append('limit', String(options.limit));
+            if (options?.filter) params.append('filter', options.filter);
+            const qs = params.toString();
+            return fetchApi<{ success: boolean; data: { provider: string; items: Array<Record<string, unknown>> } }>(
+                `/wnba/news${qs ? `?${qs}` : ''}`,
+                { cacheTtl: 'short' }
+            );
+        },
+        getInjuries: () =>
+            fetchApi<{
+                success: boolean;
+                data: {
+                    provider: string;
+                    season: Record<string, unknown> | null;
+                    teams: Array<Record<string, unknown>>;
+                };
+            }>('/wnba/injuries', { cacheTtl: 'short' }),
         predictions: {
             generatePrediction: (data: { player_id: string; stat: string; line: number }) =>
                 fetchApi<{ success: boolean; data: Prediction }>('/wnba/predictions/generate', {

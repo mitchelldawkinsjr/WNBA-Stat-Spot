@@ -7,6 +7,7 @@ use App\Http\Traits\ApiResponseTrait;
 use App\Http\Traits\CacheHelper;
 use App\Models\WnbaPlayer;
 use App\Services\WNBA\Data\PlayerGamelogService;
+use App\Services\WNBA\Data\PlayerIntelService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -101,6 +102,70 @@ class PlayerController extends Controller
             return $this->successResponse($data, 'Player gamelog retrieved successfully');
         } catch (\Exception $e) {
             return $this->handleException($e, 'Retrieving player gamelog');
+        }
+    }
+
+    public function overview(string $id, Request $request, PlayerIntelService $intelService): JsonResponse
+    {
+        $request->validate([
+            'season' => 'nullable|integer',
+        ]);
+
+        try {
+            $season = (int) ($request->input('season') ?? config('wnba.seasons.current_season'));
+            $data = $intelService->overview($id, $season);
+
+            return $this->successResponse($data, 'Player overview retrieved successfully');
+        } catch (\Exception $e) {
+            return $this->handleException($e, 'Retrieving player overview');
+        }
+    }
+
+    public function seasonStats(string $id, Request $request, PlayerIntelService $intelService): JsonResponse
+    {
+        $request->validate([
+            'season' => 'nullable|integer',
+        ]);
+
+        try {
+            $season = (int) ($request->input('season') ?? config('wnba.seasons.current_season'));
+            $data = $intelService->seasonStats($id, $season);
+
+            return $this->successResponse($data, 'Player season stats retrieved successfully');
+        } catch (\Exception $e) {
+            return $this->handleException($e, 'Retrieving player season stats');
+        }
+    }
+
+    public function news(string $id, Request $request, PlayerIntelService $intelService): JsonResponse
+    {
+        $request->validate([
+            'limit' => 'nullable|integer|min:1|max:50',
+        ]);
+
+        try {
+            $limit = $request->input('limit') ? (int) $request->input('limit') : null;
+            $data = $intelService->news($id, $limit);
+
+            return $this->successResponse($data, 'Player news retrieved successfully');
+        } catch (\Exception $e) {
+            return $this->handleException($e, 'Retrieving player news');
+        }
+    }
+
+    public function injuries(string $id, Request $request, PlayerIntelService $intelService): JsonResponse
+    {
+        $request->validate([
+            'days_back' => 'nullable|integer|min:1|max:90',
+        ]);
+
+        try {
+            $daysBack = $request->input('days_back') ? (int) $request->input('days_back') : null;
+            $data = $intelService->injuries($id, $daysBack);
+
+            return $this->successResponse($data, 'Player injuries retrieved successfully');
+        } catch (\Exception $e) {
+            return $this->handleException($e, 'Retrieving player injuries');
         }
     }
 

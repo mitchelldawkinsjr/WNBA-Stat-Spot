@@ -47,11 +47,11 @@ function createPlayerAnalyticsStore() {
 
     return {
         subscribe,
-        fetchAnalytics: async (playerId: string) => {
+        fetchAnalytics: async (playerId: string, options?: { season?: number }) => {
             update(state => ({ ...state, loading: true, error: null }));
 
             try {
-                const response = await api.wnba.analytics.getPlayer(playerId);
+                const response = await api.wnba.analytics.getPlayer(playerId, options);
                 const analytics = response.data;
 
                 // Convert game_log to gameStats format
@@ -144,8 +144,8 @@ export const homeAwayComparison = derived(
         if (!$playerAnalytics.homeAwayPerformance) return null;
 
         return {
-            home: $playerAnalytics.homeAwayPerformance.home || {},
-            away: $playerAnalytics.homeAwayPerformance.away || {}
+            home: $playerAnalytics.homeAwayPerformance.home?.stats || {},
+            away: $playerAnalytics.homeAwayPerformance.away?.stats || {}
         };
     }
 );

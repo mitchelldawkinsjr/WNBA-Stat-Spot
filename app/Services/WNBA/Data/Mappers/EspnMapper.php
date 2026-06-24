@@ -547,4 +547,196 @@ class EspnMapper
 
         return (float) $value;
     }
+
+    /**
+     * @param  array<string, mixed>  $overview
+     * @return array{
+     *     season_stats: array<string, mixed>|null,
+     *     splits: array<int, array<string, mixed>>,
+     *     news: array<int, array<string, mixed>>,
+     *     next_game: array<string, mixed>|null,
+     *     fantasy_outlook: string|null
+     * }
+     */
+    public function mapAthleteOverview(array $overview): array
+    {
+        $statistics = $overview['statistics'] ?? [];
+        $labels = $statistics['labels'] ?? [];
+        $names = $statistics['names'] ?? [];
+
+        $splits = [];
+        foreach ($statistics['splits'] ?? [] as $split) {
+            $stats = [];
+            $values = $split['stats'] ?? [];
+            foreach ($names as $index => $name) {
+                $stats[$name] = $values[$index] ?? null;
+            }
+
+            $splits[] = [
+                'name' => $split['displayName'] ?? $split['type'] ?? null,
+                'labels' => $labels,
+                'stats' => $stats,
+            ];
+        }
+
+        $seasonStats = null;
+        foreach ($splits as $split) {
+            if (($split['name'] ?? '') === 'Regular Season') {
+                $seasonStats = $split['stats'];
+                break;
+            }
+        }
+
+        if ($seasonStats === null && $splits !== []) {
+            $seasonStats = $splits[0]['stats'];
+        }
+
+        $news = [];
+        foreach ($overview['news'] ?? [] as $item) {
+            $news[] = $this->mapNewsItem($item);
+        }
+
+        $nextGame = null;
+        $events = $overview['nextGame']['league']['events'] ?? [];
+        if (is_array($events) && $events !== []) {
+            $event = $events[0];
+            $nextGame = [
+                'game_id' => $event['id'] ?? null,
+                'name' => $event['name'] ?? null,
+                'short_name' => $event['shortName'] ?? null,
+                'date' => $event['date'] ?? null,
+                'venue' => $event['location'] ?? null,
+                'url' => $this->extractEventUrl($event),
+            ];
+        }
+
+        $fantasy = $overview['fantasy']['outlook'] ?? $overview['rotowire']['outlook'] ?? null;
+
+        return [
+            'season_stats' => $seasonStats,
+            'splits' => $splits,
+            'news' => $news,
+            'next_game' => $nextGame,
+            'fantasy_outlook' => is_string($fantasy) ? $fantasy : null,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array<int, array<string, mixed>>
+     */
+    public function mapLeagueNews(array $payload, ?int $limit = null): array
+    {
+        $items = [];
+        foreach ($payload['articles'] ?? [] as $article) {
+            $items[] = $this->mapNewsItem($article);
+        }
+
+        if ($limit !== null) {
+            $items = array_slice($items, 0, $limit);
+        }
+
+        return $items;
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array{
+     *     season: array<string, mixed>|null,
+     *     teams: array<int, array<string, mixed>>
+     * }
+     */
+    public function mapLeagueInjuries(array $payload): array
+    {
+        $teams = [];
+
+        foreach ($payload['injuries'] ?? [] as $teamBlock) {
+            $injuries = [];
+            foreach ($teamBlock['injuries'] ?? [] as $injury) {
+                $athlete = $injury['athlete'] ?? [];
+                $injuries[] = [
+                    'id' => $injury['id'] ?? null,
+                    'status' => $injury['status'] ?? null,
+                    'date' => $injury['date'] ?? null,
+                    'short_comment' => $injury['shortComment'] ?? null,
+                    'long_comment' => $injury['longComment'] ?? null,
+                    'athlete_id' => $athlete['id'] ?? null,
+                    'athlete_display_name' => $athlete['displayName'] ?? null,
+                    'athlete_short_name' => $athlete['shortName'] ?? null,
+                    'athlete_position' => $athlete['position']['abbreviation'] ?? null,
+                    'athlete_headshot' => $athlete['headshot']['href'] ?? null,
+                ];
+            }
+
+            $teams[] = [
+                'team_id' => $teamBlock['id'] ?? null,
+                'team_name' => $teamBlock['displayName'] ?? null,
+                'injuries' => $injuries,
+            ];
+        }
+
+        return [
+            'season' => $payload['season'] ?? null,
+            'teams' => $teams,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array<int, array<string, mixed>>
+     */
+    public function filterPlayerInjuries(array $payload, string $athleteId): array
+    {
+        $mapped = $this->mapLeagueInjuries($payload);
+        $items = [];
+
+        foreach ($mapped['teams'] as $team) {
+            foreach ($team['injuries'] as $injury) {
+                if ((string) ($injury['athlete_id'] ?? '') === $athleteId) {
+                    $items[] = array_merge($injury, [
+                        'team_id' => $team['team_id'],
+                        'team_name' => $team['team_name'],
+                    ]);
+                }
+            }
+        }
+
+        return $items;
+    }
+
+    /**
+     * @param  array<string, mixed>  $item
+     * @return array<string, mixed>
+     */
+    private function mapNewsItem(array $item): array
+    {
+        $image = $item['images'][0]['url'] ?? null;
+        $url = $item['links']['web']['href']
+            ?? $item['links']['api']['self']['href']
+            ?? null;
+
+        return [
+            'id' => $item['id'] ?? $item['nowId'] ?? null,
+            'headline' => $item['headline'] ?? null,
+            'description' => $item['description'] ?? null,
+            'published' => $item['published'] ?? $item['lastModified'] ?? null,
+            'type' => $item['type'] ?? null,
+            'image_url' => $image,
+            'url' => $url,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $event
+     */
+    private function extractEventUrl(array $event): ?string
+    {
+        foreach ($event['links'] ?? [] as $link) {
+            if (in_array('summary', $link['rel'] ?? [], true) && ! empty($link['href'])) {
+                return (string) $link['href'];
+            }
+        }
+
+        return null;
+    }
 }

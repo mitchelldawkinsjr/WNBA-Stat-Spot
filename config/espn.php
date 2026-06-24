@@ -15,5 +15,8 @@ return [
         'summary_live' => (int) env('ESPN_CACHE_SUMMARY_LIVE', 120),
         'gamelog' => (int) env('ESPN_CACHE_GAMELOG', 900),
         'scoreboard' => (int) env('ESPN_CACHE_SCOREBOARD', 300),
+        'overview' => (int) env('ESPN_CACHE_OVERVIEW', 900),
+        'news' => (int) env('ESPN_CACHE_NEWS', 600),
+        'injuries' => (int) env('ESPN_CACHE_INJURIES', 600),
     ],
 ];

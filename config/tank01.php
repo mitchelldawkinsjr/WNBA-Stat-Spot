@@ -14,6 +14,9 @@ return [
         'game_info' => 'getWNBAGameInfo',
         'betting_odds' => 'getWNBABettingOdds',
         'games_for_player' => 'getWNBAGamesForPlayer',
+        'injuries' => 'getWNBAInjuries',
+        'news' => 'getWNBANews',
+        'player_info' => 'getWNBAPlayerInfo',
     ],
 
     'rate_limit' => [
@@ -33,6 +36,9 @@ return [
         'odds' => (int) env('TANK01_CACHE_ODDS', 3600),
         'scoreboard' => (int) env('TANK01_CACHE_SCOREBOARD', 120),
         'games_for_player' => (int) env('TANK01_CACHE_PLAYER_GAMELOG', 900),
+        'injuries' => (int) env('TANK01_CACHE_INJURIES', 1800),
+        'news' => (int) env('TANK01_CACHE_NEWS', 600),
+        'player_info' => (int) env('TANK01_CACHE_PLAYER_INFO', 1800),
     ],
 
     'live_sync' => [

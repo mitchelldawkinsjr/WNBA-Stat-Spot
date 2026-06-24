@@ -69,6 +69,25 @@ class EspnApiClient
         ], (int) config('espn.cache_ttl.gamelog'));
     }
 
+    public function athleteOverview(string $athleteId, int $season): array
+    {
+        return $this->getWeb("athletes/{$athleteId}/overview", [
+            'season' => $season,
+        ], (int) config('espn.cache_ttl.overview'));
+    }
+
+    public function leagueNews(int $limit = 25): array
+    {
+        return $this->getSite('news', [
+            'limit' => $limit,
+        ], (int) config('espn.cache_ttl.news'));
+    }
+
+    public function leagueInjuries(): array
+    {
+        return $this->getSite('injuries', [], (int) config('espn.cache_ttl.injuries'));
+    }
+
     /**
      * @param  array<string, mixed>  $query
      * @return array<string, mixed>

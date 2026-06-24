@@ -436,4 +436,110 @@ class Tank01Mapper
 
         return 'scheduled';
     }
+
+    /**
+     * @param  array<string, mixed>  $body
+     * @return array<int, array<string, mixed>>
+     */
+    public function mapInjuries(array $body): array
+    {
+        $records = [];
+        $items = $body['injuries'] ?? $body;
+
+        if (! is_array($items)) {
+            return [];
+        }
+
+        foreach ($items as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+
+            $records[] = [
+                'player_id' => $item['playerID'] ?? $item['playerId'] ?? null,
+                'player_name' => $item['longName'] ?? $item['playerName'] ?? null,
+                'team_id' => $item['teamID'] ?? null,
+                'team_abbreviation' => $item['teamAbv'] ?? null,
+                'status' => $item['designation'] ?? $item['status'] ?? ($item['injury']['designation'] ?? null),
+                'description' => $item['description'] ?? ($item['injury']['description'] ?? null),
+                'injury_date' => $item['injDate'] ?? $item['injuryDate'] ?? null,
+            ];
+        }
+
+        return $records;
+    }
+
+    /**
+     * @param  array<string, mixed>  $body
+     * @return array<int, array<string, mixed>>
+     */
+    public function mapNews(array $body): array
+    {
+        $records = [];
+        $items = $body['news'] ?? $body['articles'] ?? $body;
+
+        if (! is_array($items)) {
+            return [];
+        }
+
+        foreach ($items as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+
+            $records[] = [
+                'id' => $item['newsID'] ?? $item['id'] ?? null,
+                'headline' => $item['title'] ?? $item['headline'] ?? null,
+                'description' => $item['description'] ?? $item['content'] ?? null,
+                'published' => $item['publishedDate'] ?? $item['published'] ?? $item['date'] ?? null,
+                'url' => $item['link'] ?? $item['url'] ?? null,
+                'player_id' => $item['playerID'] ?? null,
+                'team_id' => $item['teamID'] ?? null,
+            ];
+        }
+
+        return $records;
+    }
+
+    /**
+     * @param  array<string, mixed>  $body
+     * @return array<string, mixed>|null
+     */
+    public function mapPlayerInfo(array $body, string $playerId): ?array
+    {
+        $player = $body[$playerId] ?? $body['player'] ?? null;
+
+        if ($player === null && isset($body['body']) && is_array($body['body'])) {
+            $player = $body['body'][$playerId] ?? null;
+        }
+
+        if (! is_array($player)) {
+            foreach ($body as $key => $value) {
+                if (is_array($value) && (($value['playerID'] ?? null) === $playerId)) {
+                    $player = $value;
+                    break;
+                }
+            }
+        }
+
+        if (! is_array($player)) {
+            return null;
+        }
+
+        $stats = $player['stats'] ?? $player['seasonStats'] ?? [];
+
+        return [
+            'player_id' => $player['playerID'] ?? $playerId,
+            'name' => $player['longName'] ?? $player['playerName'] ?? null,
+            'position' => $player['pos'] ?? null,
+            'jersey' => $player['jerseyNum'] ?? null,
+            'team_id' => $player['teamID'] ?? null,
+            'team_abbreviation' => $player['teamAbv'] ?? null,
+            'injury' => [
+                'status' => $player['injury']['designation'] ?? null,
+                'description' => $player['injury']['description'] ?? null,
+            ],
+            'season_stats' => is_array($stats) ? $stats : [],
+        ];
+    }
 }

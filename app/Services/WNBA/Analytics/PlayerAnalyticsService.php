@@ -3,7 +3,9 @@
 namespace App\Services\WNBA\Analytics;
 
 use App\Models\WnbaGame;
+use App\Models\WnbaPlayer;
 use App\Models\WnbaPlayerGame;
+use App\Services\WNBA\Data\PlayerGamelogService;
 use App\Utils\StatisticsCalculator;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
@@ -11,6 +13,9 @@ use Illuminate\Support\Facades\Log;
 
 class PlayerAnalyticsService
 {
+    public function __construct(
+        private PlayerGamelogService $gamelogService
+    ) {}
     /**
      * Get player's recent performance trend (last N games)
      */
@@ -463,42 +468,56 @@ class PlayerAnalyticsService
     }
 
     /**
-     * Get comprehensive analytics for a player
+     * Get comprehensive analytics for a player (DB-backed with live ESPN/Tank01 fallback).
      */
-    public function getAnalytics(int $playerId): array
+    public function getAnalytics(int|string $playerId, ?int $season = null): array
     {
+        $season = $season ?? (int) config('wnba.seasons.current_season');
+
         try {
-            return [
-                'player_id' => $playerId,
-                'recent_form' => $this->getRecentForm($playerId),
-                'opponent_adjusted_stats' => $this->getOpponentAdjustedStats($playerId, 1), // Default opponent
-                'home_away_performance' => $this->getHomeAwayPerformance($playerId),
-                'clutch_performance' => $this->getClutchPerformance($playerId),
-                'shooting_efficiency' => $this->getShootingEfficiency($playerId),
-                'rebounding_rates' => $this->getReboundingRates($playerId),
-                'game_context' => $this->getGameContext(1, $playerId), // Default game
-                'summary' => [
-                    'total_games' => 0,
-                    'avg_points' => 0,
-                    'avg_rebounds' => 0,
-                    'avg_assists' => 0,
-                    'field_goal_percentage' => 0,
-                    'three_point_percentage' => 0,
-                    'free_throw_percentage' => 0,
-                ],
-            ];
+            $player = $this->resolvePlayer($playerId);
+            $dbId = $player?->id ?? (is_numeric((string) $playerId) ? (int) $playerId : null);
+
+            if ($dbId !== null && $this->seasonGamesQuery($dbId, $season)->exists()) {
+                return $this->buildSeasonAnalytics($dbId, $season, 'database');
+            }
+
+            $externalId = $player
+                ? (string) ($player->espn_athlete_id ?? $player->athlete_id)
+                : (string) $playerId;
+
+            $liveRows = $this->fetchLiveGamelogRows($externalId, $season);
+            if ($liveRows !== []) {
+                return $this->buildLiveAnalytics($liveRows, $dbId ?? $externalId, $season);
+            }
+
+            if ($dbId !== null) {
+                return $this->buildSeasonAnalytics($dbId, $season, 'database', false);
+            }
+
+            return $this->emptyAnalyticsResponse($playerId, $season);
         } catch (\Throwable $e) {
             Log::error('Failed to get player analytics', [
                 'player_id' => $playerId,
+                'season' => $season,
                 'error' => $e->getMessage(),
             ]);
 
             return [
                 'player_id' => $playerId,
+                'season' => $season,
                 'error' => 'Failed to retrieve analytics',
                 'message' => $e->getMessage(),
             ];
         }
+    }
+
+    /**
+     * @deprecated Use getAnalytics() — kept for callers passing only DB id.
+     */
+    public function getAnalyticsForDbPlayer(int $playerId): array
+    {
+        return $this->getAnalytics($playerId);
     }
 
     // Private helper methods
@@ -844,8 +863,10 @@ class PlayerAnalyticsService
     private function calculateShootingConsistency($games): float
     {
         $fgPercentages = $games->map(function ($game) {
-            return $game->field_goals_attempted > 0 ?
-                ($game->field_goals_made / $game->field_goals_attempted) * 100 : 0;
+            $attempted = $this->statValue($game, 'field_goals_attempted');
+            $made = $this->statValue($game, 'field_goals_made');
+
+            return $attempted > 0 ? ($made / $attempted) * 100 : 0;
         })->filter(function ($pct) {
             return $pct > 0;
         });
@@ -897,5 +918,371 @@ class PlayerAnalyticsService
     {
         // Implementation of getHomeAway method
         return 'home'; // Placeholder
+    }
+
+    private function resolvePlayer(int|string $playerId): ?WnbaPlayer
+    {
+        if (is_numeric((string) $playerId)) {
+            $byId = WnbaPlayer::find((int) $playerId);
+            if ($byId) {
+                return $byId;
+            }
+        }
+
+        return WnbaPlayer::findByExternalId((string) $playerId);
+    }
+
+    private function seasonGamesQuery(int $dbId, int $season, bool $filterSeason = true)
+    {
+        $query = WnbaPlayerGame::with(['game', 'team'])
+            ->where('player_id', $dbId);
+
+        if ($filterSeason) {
+            $query->whereHas('game', function ($q) use ($season) {
+                $q->where('season', (string) $season);
+            });
+        }
+
+        return $query;
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function fetchLiveGamelogRows(string $externalId, int $season): array
+    {
+        try {
+            $payload = $this->gamelogService->fetch($externalId, $season, 50);
+
+            return array_values(array_filter(
+                $payload['games'] ?? [],
+                fn (array $game) => ($game['points'] ?? null) !== null || ($game['minutes'] ?? 0) > 0
+            ));
+        } catch (\Throwable $e) {
+            Log::warning('Live gamelog fetch failed for player analytics', [
+                'player_id' => $externalId,
+                'season' => $season,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [];
+        }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function buildSeasonAnalytics(int $dbId, int $season, string $source, bool $filterSeason = true): array
+    {
+        $games = $this->seasonGamesQuery($dbId, $season, $filterSeason)
+            ->get()
+            ->sortByDesc(fn (WnbaPlayerGame $pg) => $pg->game?->game_date)
+            ->values();
+
+        $recent = $games->take(10);
+        $averages = $this->calculateAverageStats($games);
+        $shooting = $this->getShootingEfficiencyFromCollection($games);
+
+        return [
+            'player_id' => $dbId,
+            'season' => $season,
+            'source' => $source,
+            'recent_form' => [
+                'games_analyzed' => $recent->count(),
+                'date_range' => $this->dateRangeFromDbGames($recent),
+                'averages' => $this->calculateAverageStats($recent),
+                'trends' => $this->calculateTrends($recent),
+                'consistency' => $this->calculateConsistency($recent),
+                'game_log' => $this->formatGameLog($recent),
+            ],
+            'opponent_adjusted_stats' => $this->getOpponentAdjustedStats($dbId, 1),
+            'home_away_performance' => $this->getHomeAwayPerformanceFromCollection($games),
+            'clutch_performance' => $this->getClutchPerformance($dbId),
+            'shooting_efficiency' => $shooting,
+            'rebounding_rates' => $this->getReboundingRates($dbId),
+            'game_context' => $this->getGameContext(1, $dbId),
+            'summary' => $this->buildSummary($games->count(), $averages, $shooting),
+        ];
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $rows
+     * @return array<string, mixed>
+     */
+    private function buildLiveAnalytics(array $rows, int|string $playerId, int $season): array
+    {
+        $games = collect($rows);
+        $recent = $games->take(10);
+        $averages = $this->calculateAverageStats($games);
+        $shooting = $this->getShootingEfficiencyFromCollection($games);
+
+        return [
+            'player_id' => $playerId,
+            'season' => $season,
+            'source' => 'espn',
+            'recent_form' => [
+                'games_analyzed' => $recent->count(),
+                'date_range' => $this->dateRangeFromLiveRows($recent->all()),
+                'averages' => $this->calculateAverageStats($recent),
+                'trends' => $this->calculateTrends($recent),
+                'consistency' => $this->calculateConsistency($recent),
+                'game_log' => $this->formatLiveGameLog($recent->all()),
+            ],
+            'opponent_adjusted_stats' => $this->getEmptyOpponentAdjustedStats(),
+            'home_away_performance' => $this->getHomeAwayPerformanceFromLiveRows($rows),
+            'clutch_performance' => $this->getEmptyClutchPerformance(),
+            'shooting_efficiency' => $shooting,
+            'rebounding_rates' => $this->getEmptyReboundingRates(),
+            'game_context' => $this->getDefaultGameContext(),
+            'summary' => $this->buildSummary($games->count(), $averages, $shooting),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function emptyAnalyticsResponse(int|string $playerId, int $season): array
+    {
+        return [
+            'player_id' => $playerId,
+            'season' => $season,
+            'source' => 'none',
+            'recent_form' => $this->getEmptyFormData(),
+            'opponent_adjusted_stats' => $this->getEmptyOpponentAdjustedStats(),
+            'home_away_performance' => $this->getEmptyHomeAwayPerformance(),
+            'clutch_performance' => $this->getEmptyClutchPerformance(),
+            'shooting_efficiency' => $this->getEmptyShootingData(),
+            'rebounding_rates' => $this->getEmptyReboundingRates(),
+            'game_context' => $this->getDefaultGameContext(),
+            'summary' => [
+                'total_games' => 0,
+                'avg_points' => 0,
+                'avg_rebounds' => 0,
+                'avg_assists' => 0,
+                'field_goal_percentage' => 0,
+                'three_point_percentage' => 0,
+                'free_throw_percentage' => 0,
+            ],
+        ];
+    }
+
+    private function getShootingEfficiencyFromCollection(Collection $games): array
+    {
+        if ($games->isEmpty()) {
+            return $this->getEmptyShootingData();
+        }
+
+        $attempted = (float) $games->sum('field_goals_attempted');
+        if ($attempted <= 0) {
+            return $this->getEmptyShootingData();
+        }
+
+        return [
+            'field_goal_percentage' => round(($games->sum('field_goals_made') / $attempted) * 100, 1),
+            'three_point_percentage' => round(
+                ($games->sum('three_point_field_goals_made') / max(1, $games->sum('three_point_field_goals_attempted'))) * 100,
+                1
+            ),
+            'free_throw_percentage' => round(
+                ($games->sum('free_throws_made') / max(1, $games->sum('free_throws_attempted'))) * 100,
+                1
+            ),
+            'true_shooting_percentage' => $this->calculateTrueShootingPercentage($games),
+            'effective_field_goal_percentage' => $this->calculateEffectiveFieldGoalPercentage($games),
+            'shot_distribution' => [
+                'two_point_attempts_per_game' => round($games->avg('field_goals_attempted') - $games->avg('three_point_field_goals_attempted'), 1),
+                'three_point_attempts_per_game' => round((float) $games->avg('three_point_field_goals_attempted'), 1),
+                'free_throw_attempts_per_game' => round((float) $games->avg('free_throws_attempted'), 1),
+                'three_point_rate' => round(($games->sum('three_point_field_goals_attempted') / max(1, $attempted)) * 100, 1),
+            ],
+            'shooting_consistency' => $this->calculateShootingConsistency($games),
+        ];
+    }
+
+    private function getHomeAwayPerformanceFromCollection(Collection $games): array
+    {
+        if ($games->isEmpty()) {
+            return $this->getEmptyHomeAwayPerformance();
+        }
+
+        $first = $games->first();
+        if ($first instanceof WnbaPlayerGame) {
+            $homeGames = $games->filter(function (WnbaPlayerGame $pg) {
+                $row = $pg->game?->gameTeams?->firstWhere('team_id', $pg->team_id);
+
+                return $row && $row->home_away === 'home';
+            })->values();
+
+            $awayGames = $games->filter(function (WnbaPlayerGame $pg) {
+                $row = $pg->game?->gameTeams?->firstWhere('team_id', $pg->team_id);
+
+                return $row && $row->home_away === 'away';
+            })->values();
+
+            return [
+                'home' => [
+                    'games' => $homeGames->count(),
+                    'stats' => $this->calculateAverageStats($homeGames),
+                    'win_percentage' => $this->calculateWinPercentage($homeGames),
+                ],
+                'away' => [
+                    'games' => $awayGames->count(),
+                    'stats' => $this->calculateAverageStats($awayGames),
+                    'win_percentage' => $this->calculateWinPercentage($awayGames),
+                ],
+                'differential' => $this->calculateStatDifferential(
+                    $this->calculateAverageStats($homeGames),
+                    $this->calculateAverageStats($awayGames)
+                ),
+            ];
+        }
+
+        return $this->getHomeAwayPerformanceFromLiveRows($games->all());
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $rows
+     */
+    private function getHomeAwayPerformanceFromLiveRows(array $rows): array
+    {
+        $games = collect($rows);
+        $home = $games->filter(fn (array $g) => ($g['home_away'] ?? '') === 'home')->values();
+        $away = $games->filter(fn (array $g) => ($g['home_away'] ?? '') === 'away')->values();
+
+        return [
+            'home' => [
+                'games' => $home->count(),
+                'stats' => $this->calculateAverageStats($home),
+                'win_percentage' => 0,
+            ],
+            'away' => [
+                'games' => $away->count(),
+                'stats' => $this->calculateAverageStats($away),
+                'win_percentage' => 0,
+            ],
+        ];
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $rows
+     * @return array<int, array<string, mixed>>
+     */
+    private function formatLiveGameLog(array $rows): array
+    {
+        return array_map(function (array $game) {
+            return [
+                'date' => $game['game_date'] ?? null,
+                'opponent' => $game['opponent_team_abbreviation'] ?? $game['opponent_team_name'] ?? 'Opponent',
+                'minutes' => $game['minutes'] ?? 0,
+                'points' => $game['points'] ?? 0,
+                'rebounds' => $game['rebounds'] ?? 0,
+                'assists' => $game['assists'] ?? 0,
+                'steals' => $game['steals'] ?? 0,
+                'blocks' => $game['blocks'] ?? 0,
+                'turnovers' => $game['turnovers'] ?? 0,
+                'fg_made_attempted' => ($game['field_goals_made'] ?? 0).'/'.($game['field_goals_attempted'] ?? 0),
+                'three_pt_made_attempted' => ($game['three_point_field_goals_made'] ?? 0).'/'.($game['three_point_field_goals_attempted'] ?? 0),
+                'ft_made_attempted' => ($game['free_throws_made'] ?? 0).'/'.($game['free_throws_attempted'] ?? 0),
+            ];
+        }, $rows);
+    }
+
+    private function dateRangeFromDbGames(Collection $games): ?array
+    {
+        $first = $games->first();
+        $last = $games->last();
+        $from = $last?->game?->game_date?->format('Y-m-d');
+        $to = $first?->game?->game_date?->format('Y-m-d');
+
+        return ($from && $to) ? ['from' => $from, 'to' => $to] : null;
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $rows
+     */
+    private function dateRangeFromLiveRows(array $rows): ?array
+    {
+        if ($rows === []) {
+            return null;
+        }
+
+        $dates = array_values(array_filter(array_column($rows, 'game_date')));
+        if ($dates === []) {
+            return null;
+        }
+
+        sort($dates);
+
+        return ['from' => $dates[0], 'to' => $dates[count($dates) - 1]];
+    }
+
+    /**
+     * @param  array<string, mixed>  $averages
+     * @param  array<string, mixed>  $shooting
+     * @return array<string, mixed>
+     */
+    private function buildSummary(int $totalGames, array $averages, array $shooting): array
+    {
+        return [
+            'total_games' => $totalGames,
+            'avg_points' => $averages['points'] ?? 0,
+            'avg_rebounds' => $averages['rebounds'] ?? 0,
+            'avg_assists' => $averages['assists'] ?? 0,
+            'field_goal_percentage' => $shooting['field_goal_percentage'] ?? 0,
+            'three_point_percentage' => $shooting['three_point_percentage'] ?? 0,
+            'free_throw_percentage' => $shooting['free_throw_percentage'] ?? 0,
+        ];
+    }
+
+    private function getEmptyHomeAwayPerformance(): array
+    {
+        return [
+            'home' => ['games' => 0, 'stats' => [], 'win_percentage' => 0],
+            'away' => ['games' => 0, 'stats' => [], 'win_percentage' => 0],
+        ];
+    }
+
+    private function getEmptyOpponentAdjustedStats(): array
+    {
+        return [
+            'vs_opponent' => ['games' => 0, 'stats' => []],
+            'vs_others' => ['games' => 0, 'stats' => []],
+            'differential' => [],
+            'opponent_defensive_rating' => 100.0,
+        ];
+    }
+
+    private function getEmptyClutchPerformance(): array
+    {
+        return [
+            'clutch_games' => 0,
+            'clutch_stats' => [],
+            'non_clutch_stats' => [],
+        ];
+    }
+
+    private function getDefaultGameContext(): array
+    {
+        return [
+            'game_id' => null,
+            'game_date' => null,
+            'season_type' => 'Regular Season',
+            'player_team_id' => null,
+            'opponent_team_id' => null,
+            'home_away' => 'home',
+            'rest_days' => 2,
+            'pace_factor' => 1.0,
+            'opponent_defense_rating' => 100.0,
+            'projected_minutes' => 30.0,
+        ];
+    }
+
+    private function statValue(mixed $row, string $key): float
+    {
+        if (is_array($row)) {
+            return (float) ($row[$key] ?? 0);
+        }
+
+        return (float) ($row->{$key} ?? 0);
     }
 }

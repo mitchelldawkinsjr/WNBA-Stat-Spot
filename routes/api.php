@@ -14,6 +14,7 @@ use App\Http\Controllers\Api\PredictionTestingController;
 use App\Http\Controllers\Api\PredictionsController;
 use App\Http\Controllers\Api\OddsController;
 use App\Http\Controllers\Api\HealthController;
+use App\Http\Controllers\Api\WnbaIntelController;
 
 Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
     return $request->user();
@@ -134,6 +135,10 @@ Route::get('/players', [PlayerController::class, 'index']);
 Route::get('/players/summary', [PlayerController::class, 'summary']);
 Route::post('/players/clear-cache', [PlayerController::class, 'clearCache']);
 Route::get('/players/{id}/gamelog', [PlayerController::class, 'gamelog']);
+Route::get('/players/{id}/overview', [PlayerController::class, 'overview']);
+Route::get('/players/{id}/season-stats', [PlayerController::class, 'seasonStats']);
+Route::get('/players/{id}/news', [PlayerController::class, 'news']);
+Route::get('/players/{id}/injuries', [PlayerController::class, 'injuries']);
 Route::get('/players/{id}', [PlayerController::class, 'show']);
 
 Route::get('/games', [GameController::class, 'index']);
@@ -141,6 +146,9 @@ Route::get('/stats', [StatsController::class, 'index']);
 
 // WNBA Analytics and Predictions API Routes
 Route::prefix('wnba')->group(function () {
+    Route::get('/news', [WnbaIntelController::class, 'news']);
+    Route::get('/injuries', [WnbaIntelController::class, 'injuries']);
+
     // Predictions
     Route::prefix('predictions')->group(function () {
         Route::post('/generate', [PredictionsController::class, 'generatePrediction']);

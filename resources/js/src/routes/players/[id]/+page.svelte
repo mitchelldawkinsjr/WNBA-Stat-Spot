@@ -55,6 +55,11 @@
     let gamelogSeason = 2026;
     let gamelogLoading = false;
     let gamelogGames: PlayerGame[] = [];
+    let intelLoading = false;
+    let playerNews: Array<Record<string, unknown>> = [];
+    let playerInjuries: Array<Record<string, unknown>> = [];
+    let liveSeasonStats: Record<string, string | null> | null = null;
+    let nextGame: Record<string, unknown> | null = null;
     let predictionEngineRef: any;
 
     // Prop Scanner state
@@ -433,12 +438,32 @@
 
     async function changeGamelogSeason(season: number) {
         gamelogSeason = season;
-        await loadGamelog(season);
+        await Promise.all([loadGamelog(season), loadPlayerIntel(season)]);
+    }
+
+    async function loadPlayerIntel(season = gamelogSeason) {
+        try {
+            intelLoading = true;
+            const response = await api.players.getOverview(playerId, { season });
+            if (response.success && response.data) {
+                liveSeasonStats = response.data.season_stats;
+                playerNews = response.data.news ?? [];
+                playerInjuries = response.data.injuries ?? [];
+                nextGame = response.data.next_game;
+            }
+        } catch {
+            playerNews = [];
+            playerInjuries = [];
+            liveSeasonStats = null;
+            nextGame = null;
+        } finally {
+            intelLoading = false;
+        }
     }
 
     onMount(async () => {
         await loadPlayer();
-        await loadGamelog();
+        await Promise.all([loadGamelog(), loadPlayerIntel()]);
         await loadPropScannerData();
         await loadHistoricalTestResults();
     });
@@ -527,6 +552,11 @@
                                         <div class="col-auto">
                                             <span class="badge bg-info">{gameStats.length} Games Played</span>
                                         </div>
+                                        {#if playerInjuries.length > 0}
+                                            <div class="col-auto">
+                                                <span class="badge bg-danger">{playerInjuries[0].status ?? 'Injured'}</span>
+                                            </div>
+                                        {/if}
                                     </div>
                                 </div>
                             </div>
@@ -534,6 +564,93 @@
                     </div>
                 </div>
             </div>
+
+            {#if nextGame}
+                <div class="row mb-4">
+                    <div class="col-12">
+                        <div class="alert alert-info mb-0">
+                            <strong>Next game:</strong> {nextGame.name ?? nextGame.short_name}
+                            {#if nextGame.date}
+                                — {new Date(String(nextGame.date)).toLocaleString()}
+                            {/if}
+                            {#if nextGame.venue}
+                                <span class="text-muted">({nextGame.venue})</span>
+                            {/if}
+                        </div>
+                    </div>
+                </div>
+            {/if}
+
+            {#if liveSeasonStats && !averages}
+                <div class="row mb-4">
+                    <div class="col-12">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5 class="card-title mb-0">Season Stats (ESPN)</h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="row g-3 text-center">
+                                    <div class="col-md-2 col-4"><strong>{liveSeasonStats.avgPoints ?? '—'}</strong><div class="text-muted small">PPG</div></div>
+                                    <div class="col-md-2 col-4"><strong>{liveSeasonStats.avgRebounds ?? '—'}</strong><div class="text-muted small">RPG</div></div>
+                                    <div class="col-md-2 col-4"><strong>{liveSeasonStats.avgAssists ?? '—'}</strong><div class="text-muted small">APG</div></div>
+                                    <div class="col-md-2 col-4"><strong>{liveSeasonStats.gamesPlayed ?? '—'}</strong><div class="text-muted small">GP</div></div>
+                                    <div class="col-md-2 col-4"><strong>{liveSeasonStats.avgMinutes ?? '—'}</strong><div class="text-muted small">MIN</div></div>
+                                    <div class="col-md-2 col-4"><strong>{liveSeasonStats.fieldGoalPct ?? '—'}%</strong><div class="text-muted small">FG%</div></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            {/if}
+
+            {#if playerInjuries.length > 0}
+                <div class="row mb-4">
+                    <div class="col-12">
+                        <div class="card border-danger">
+                            <div class="card-header bg-danger bg-opacity-10">
+                                <h5 class="card-title mb-0 text-danger">Injury Report</h5>
+                            </div>
+                            <div class="card-body">
+                                {#each playerInjuries as injury}
+                                    <div class="mb-2">
+                                        <span class="badge bg-danger me-2">{injury.status ?? 'Unknown'}</span>
+                                        <span>{injury.short_comment ?? injury.description ?? 'No details'}</span>
+                                        {#if injury.date}
+                                            <small class="text-muted d-block">{injury.date}</small>
+                                        {/if}
+                                    </div>
+                                {/each}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            {/if}
+
+            {#if playerNews.length > 0}
+                <div class="row mb-4">
+                    <div class="col-12">
+                        <div class="card">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h5 class="card-title mb-0">News</h5>
+                                {#if intelLoading}<span class="spinner-border spinner-border-sm text-muted"></span>{/if}
+                            </div>
+                            <div class="list-group list-group-flush">
+                                {#each playerNews.slice(0, 8) as item}
+                                    <div class="list-group-item">
+                                        <div class="fw-semibold">{item.headline}</div>
+                                        {#if item.description && item.description !== item.headline}
+                                            <p class="mb-1 text-muted small">{item.description}</p>
+                                        {/if}
+                                        {#if item.published}
+                                            <small class="text-muted">{new Date(String(item.published)).toLocaleString()}</small>
+                                        {/if}
+                                    </div>
+                                {/each}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            {/if}
 
             <!-- Season Averages -->
             {#if averages}

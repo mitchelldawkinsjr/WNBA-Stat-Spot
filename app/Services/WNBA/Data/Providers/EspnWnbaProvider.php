@@ -118,6 +118,49 @@ class EspnWnbaProvider implements WnbaStatsProvider
     }
 
     /**
+     * @return array{
+     *     season_stats: array<string, mixed>|null,
+     *     splits: array<int, array<string, mixed>>,
+     *     news: array<int, array<string, mixed>>,
+     *     next_game: array<string, mixed>|null,
+     *     fantasy_outlook: string|null
+     * }
+     */
+    public function fetchAthleteOverview(string $athleteId, int $season): array
+    {
+        $payload = $this->client->athleteOverview($athleteId, $season);
+
+        return $this->mapper->mapAthleteOverview($payload);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function fetchLeagueNews(int $limit = 25): array
+    {
+        return $this->mapper->mapLeagueNews($this->client->leagueNews($limit), $limit);
+    }
+
+    /**
+     * @return array{
+     *     season: array<string, mixed>|null,
+     *     teams: array<int, array<string, mixed>>
+     * }
+     */
+    public function fetchLeagueInjuries(): array
+    {
+        return $this->mapper->mapLeagueInjuries($this->client->leagueInjuries());
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function fetchPlayerInjuries(string $athleteId): array
+    {
+        return $this->mapper->filterPlayerInjuries($this->client->leagueInjuries(), $athleteId);
+    }
+
+    /**
      * @return array<int, array<string, mixed>>
      */
     public function fetchRosterPlayers(string $teamId): array
