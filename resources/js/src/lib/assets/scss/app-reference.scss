@@ -46,5 +46,10 @@
 // Plugins
 @import 'plugins/simplebar';
 
+// Design system (Stitch / ProCourts)
+@import 'design-system/tokens';
+@import 'design-system/components';
+@import 'design-system/topbar';
+
 // Custom
 @import "custom/svelte";
