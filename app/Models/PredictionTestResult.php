@@ -139,7 +139,7 @@ class PredictionTestResult extends Model
         ->toArray();
     }
 
-    public static function getPlayerRankings(string $statType = null): \Illuminate\Database\Eloquent\Collection
+    public static function getPlayerRankings(?string $statType = null): \Illuminate\Database\Eloquent\Collection
     {
         $query = static::selectRaw('
             player_id,
@@ -158,7 +158,7 @@ class PredictionTestResult extends Model
         }
 
         return $query->orderByDesc('avg_accuracy')
-            ->having('test_count', '>=', 1)
+            ->havingRaw('COUNT(*) >= 1')
             ->get();
     }
 

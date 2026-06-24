@@ -42,4 +42,23 @@ return [
         'current_season' => (int) env('WNBA_CURRENT_SEASON', 2026),
         'current_season_label' => env('WNBA_CURRENT_SEASON_LABEL', '2026-2027'),
     ],
+
+    'teams' => [
+        // Provider abbreviations mapped to ESPN canonical values used in wnba_teams.
+        'abbreviation_aliases' => [
+            'LAS' => 'LA',   // Los Angeles Sparks (Tank01)
+            'LVA' => 'LV',   // Las Vegas Aces (Tank01 / odds)
+            'NYL' => 'NY',   // New York Liberty (Tank01)
+            'WAS' => 'WSH',  // Washington Mystics (Tank01)
+            'CONN' => 'CON', // Connecticut Sun (legacy)
+            'GSV' => 'GS',   // Golden State Valkyries (alternate)
+            'PHO' => 'PHX',  // Phoenix Mercury (legacy)
+        ],
+
+        // All-star / exhibition national teams — hide from league team lists.
+        'excluded_team_ids' => [
+            '17475', // Japan
+            '17476', // Nigeria
+        ],
+    ],
 ];

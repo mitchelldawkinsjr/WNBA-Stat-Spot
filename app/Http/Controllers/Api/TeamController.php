@@ -28,7 +28,7 @@ class TeamController extends Controller
                 ], 'Database is still being set up. Please try again in a few minutes.');
             }
 
-            $query = WnbaTeam::query();
+            $query = WnbaTeam::query()->league();
 
             if ($request->has('search')) {
                 $search = $request->get('search');
@@ -117,6 +117,7 @@ class TeamController extends Controller
             return WnbaTeam::select([
                 'id', 'team_id', 'team_abbreviation', 'team_display_name', 'team_logo',
             ])
+                ->league()
                 ->orderBy('team_display_name')
                 ->get();
         });

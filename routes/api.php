@@ -143,6 +143,7 @@ Route::get('/players/{id}/injuries', [PlayerController::class, 'injuries']);
 Route::get('/players/{id}', [PlayerController::class, 'show']);
 
 Route::get('/games', [GameController::class, 'index']);
+Route::get('/games/{gameId}/preview', [GameController::class, 'preview']);
 Route::get('/games/{gameId}', [GameController::class, 'show']);
 Route::get('/stats', [StatsController::class, 'index']);
 

@@ -7,6 +7,7 @@ use App\Models\WnbaPlayer;
 use App\Models\WnbaTeam;
 use App\Services\WNBA\Data\Providers\EspnWnbaProvider;
 use App\Services\WNBA\Data\Providers\Tank01WnbaProvider;
+use App\Services\WNBA\Data\Support\TeamCatalog;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
@@ -43,7 +44,12 @@ class EntityMergeService
 
     foreach (WnbaTeam::query()->get(['team_id', 'espn_team_id', 'tank01_team_id', 'team_abbreviation']) as $team) {
       $canonical = (string) $team->team_id;
-      $this->teamByAbv[strtoupper((string) $team->team_abbreviation)] = $canonical;
+      $canonicalAbv = TeamCatalog::canonicalAbbreviation((string) $team->team_abbreviation);
+      $this->teamByAbv[$canonicalAbv] = $canonical;
+
+      foreach (TeamCatalog::aliasesFor($canonicalAbv) as $alias) {
+        $this->teamByAbv[$alias] = $canonical;
+      }
 
       if ($team->espn_team_id) {
         $this->teamByEspn[(string) $team->espn_team_id] = $canonical;
@@ -117,25 +123,17 @@ class EntityMergeService
   {
     $espnTeams = app(EspnWnbaProvider::class)->fetchTeams((int) config('wnba.seasons.current_season'));
     $tank01Teams = $this->safeTank01Teams();
-    $tank01ByAbv = [];
-
-    foreach ($tank01Teams as $team) {
-      $abv = strtoupper((string) ($team['team_abbreviation'] ?? ''));
-      if ($abv !== '') {
-        $tank01ByAbv[$abv] = $team;
-      }
-    }
 
     $merged = 0;
 
     foreach ($espnTeams as $espnTeam) {
-      $abv = strtoupper((string) ($espnTeam['team_abbreviation'] ?? ''));
+      $abv = TeamCatalog::canonicalAbbreviation((string) ($espnTeam['team_abbreviation'] ?? ''));
       $espnId = (string) ($espnTeam['team_id'] ?? '');
       if ($espnId === '') {
         continue;
       }
 
-      $tank01Team = $tank01ByAbv[$abv] ?? null;
+      $tank01Team = TeamCatalog::matchTank01Team($espnTeam, $tank01Teams);
       $tank01Id = $tank01Team ? (string) ($tank01Team['team_id'] ?? '') : null;
       $canonicalId = $espnId;
 
@@ -153,6 +151,11 @@ class EntityMergeService
         'team_location' => $espnTeam['team_location'] ?? $tank01Team['team_location'] ?? 'Unknown',
         'team_abbreviation' => $abv ?: 'UNK',
         'team_display_name' => $espnTeam['team_display_name'] ?? $tank01Team['team_display_name'] ?? 'Unknown Team',
+        'team_uid' => $espnTeam['team_uid'] ?? null,
+        'team_slug' => $espnTeam['team_slug'] ?? null,
+        'team_logo' => $espnTeam['team_logo'] ?? null,
+        'team_color' => $espnTeam['team_color'] ?? null,
+        'team_alternate_color' => $espnTeam['team_alternate_color'] ?? null,
       ];
 
       if ($existing && $existing->team_id !== $canonicalId) {
@@ -164,6 +167,12 @@ class EntityMergeService
 
       $merged++;
     }
+
+    WnbaTeam::query()
+      ->whereNull('espn_team_id')
+      ->whereIn('team_id', collect($espnTeams)->pluck('team_id')->filter()->all())
+      ->get()
+      ->each(fn (WnbaTeam $team) => $team->update(['espn_team_id' => $team->team_id]));
 
     return $merged;
   }
@@ -178,7 +187,7 @@ class EntityMergeService
     $tank01Teams = $this->safeTank01Teams($season);
     $tank01AbvById = [];
     foreach ($tank01Teams as $team) {
-      $tank01AbvById[(string) ($team['team_id'] ?? '')] = strtoupper((string) ($team['team_abbreviation'] ?? ''));
+      $tank01AbvById[(string) ($team['team_id'] ?? '')] = TeamCatalog::canonicalAbbreviation((string) ($team['team_abbreviation'] ?? ''));
     }
 
     foreach ($this->safeTank01RosterPlayers() as $player) {
@@ -198,7 +207,7 @@ class EntityMergeService
       }
 
       $canonicalTeamId = $this->resolveTeamId($espnTeamId, 'espn');
-      $teamAbv = strtoupper((string) ($team['team_abbreviation'] ?? ''));
+      $teamAbv = TeamCatalog::canonicalAbbreviation((string) ($team['team_abbreviation'] ?? ''));
 
       foreach ($espn->fetchRosterPlayers($espnTeamId) as $espnPlayer) {
         $espnId = (string) ($espnPlayer['athlete_id'] ?? '');
@@ -254,8 +263,8 @@ class EntityMergeService
     foreach ($tank01Schedule as $game) {
       $key = $this->gameMatchKey(
         (string) ($game['game_date'] ?? ''),
-        strtoupper((string) ($game['home_team_abbreviation'] ?? '')),
-        strtoupper((string) ($game['away_team_abbreviation'] ?? '')),
+        (string) ($game['home_team_abbreviation'] ?? ''),
+        (string) ($game['away_team_abbreviation'] ?? ''),
       );
       if ($key !== '') {
         $tank01ByKey[$key] = $game;
@@ -272,8 +281,8 @@ class EntityMergeService
 
       $key = $this->gameMatchKey(
         (string) ($espnGame['game_date'] ?? ''),
-        strtoupper((string) ($espnGame['home_team_abbreviation'] ?? '')),
-        strtoupper((string) ($espnGame['away_team_abbreviation'] ?? '')),
+        (string) ($espnGame['home_team_abbreviation'] ?? ''),
+        (string) ($espnGame['away_team_abbreviation'] ?? ''),
       );
       $tank01Game = $tank01ByKey[$key] ?? null;
       $tank01Id = $tank01Game ? (string) ($tank01Game['game_id'] ?? '') : null;
@@ -427,6 +436,8 @@ class EntityMergeService
   private function gameMatchKey(string $date, string $homeAbv, string $awayAbv): string
   {
     $date = substr($date, 0, 10);
+    $homeAbv = TeamCatalog::canonicalAbbreviation($homeAbv);
+    $awayAbv = TeamCatalog::canonicalAbbreviation($awayAbv);
 
     return $date.'|'.$homeAbv.'|'.$awayAbv;
   }

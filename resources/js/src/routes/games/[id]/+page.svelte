@@ -2,21 +2,31 @@
     import { onMount } from 'svelte';
     import { page } from '$app/stores';
     import { api } from '$lib/api/client';
-    import type { Game, GameBoxScorePlayer } from '$lib/api/client';
+    import type { Game, GameBoxScorePlayer, GamePreview } from '$lib/api/client';
     import DefaultLayout from '$lib/layouts/DefaultLayout.svelte';
     import PageHeader from '$lib/components/ui/PageHeader.svelte';
     import StatusBadge from '$lib/components/ui/StatusBadge.svelte';
     import LoadingSpinner from '$lib/components/LoadingSpinner.svelte';
     import ErrorMessage from '$lib/components/ErrorMessage.svelte';
+    import GamePreviewPanel from '$lib/components/GamePreviewPanel.svelte';
 
     let game: Game | null = null;
+    let preview: GamePreview | null = null;
     let boxScore: GameBoxScorePlayer[] = [];
     let loading = true;
+    let previewLoading = true;
     let error: string | null = null;
+    let previewError: string | null = null;
+    let activeTab: 'preview' | 'boxscore' = 'preview';
 
     $: gameId = $page.params.id;
+    $: isScheduled = game?.status_name === 'STATUS_SCHEDULED' || !game?.status_name;
+    $: showPreviewTab = game?.status_name !== 'STATUS_FINAL' || preview !== null;
 
-    onMount(() => loadGame());
+    onMount(() => {
+        void loadGame();
+        void loadPreview();
+    });
 
     async function loadGame() {
         if (!gameId) return;
@@ -26,12 +36,34 @@
             const response = await api.games.getById(gameId, { season: 2026 });
             game = response.data;
             boxScore = response.data.box_score ?? [];
+            if (response.data.status_name === 'STATUS_FINAL' && boxScore.length > 0) {
+                activeTab = 'boxscore';
+            }
         } catch (e) {
             error = e instanceof Error ? e.message : 'Failed to load game';
             game = null;
             boxScore = [];
         } finally {
             loading = false;
+        }
+    }
+
+    async function loadPreview() {
+        if (!gameId) return;
+        previewLoading = true;
+        previewError = null;
+        try {
+            const response = await api.games.getPreview(gameId, { season: 2026 });
+            preview = response.data;
+            if (preview?.error && !preview.home_team) {
+                previewError = preview.error;
+                preview = null;
+            }
+        } catch (e) {
+            previewError = e instanceof Error ? e.message : 'Failed to load game preview';
+            preview = null;
+        } finally {
+            previewLoading = false;
         }
     }
 
@@ -59,6 +91,12 @@
         return game.away_team_score ?? game.away_team?.score ?? '–';
     }
 
+    function teamRecord(side: 'home' | 'away'): string | null {
+        const teamPreview = side === 'home' ? preview?.home_team : preview?.away_team;
+        if (!teamPreview) return null;
+        return `${teamPreview.record.wins}-${teamPreview.record.losses}`;
+    }
+
     function formatStatus(status: string | null | undefined): string {
         if (!status) return 'Scheduled';
         if (status === 'STATUS_FINAL') return 'Final';
@@ -73,7 +111,7 @@
 </svelte:head>
 
 <DefaultLayout>
-    <PageHeader title="Game Details" subtitle="Box score and matchup information">
+    <PageHeader title="Game Preview" subtitle="Data-driven matchup analysis and prediction">
         <svelte:fragment slot="actions">
             <a href="/games" class="btn btn-outline-primary btn-sm">← All Games</a>
         </svelte:fragment>
@@ -108,7 +146,12 @@
                                             {#if teamLogo('away')}
                                                 <img src={teamLogo('away')} alt={teamAbbr('away')} style="width:32px;height:32px;object-fit:contain;" />
                                             {/if}
-                                            <span class="fw-semibold">{teamAbbr('away')}</span>
+                                            <div>
+                                                <span class="fw-semibold">{teamAbbr('away')}</span>
+                                                {#if teamRecord('away')}
+                                                    <div class="small text-muted">{teamRecord('away')}</div>
+                                                {/if}
+                                            </div>
                                         </div>
                                         <span class="ds-stat-value fs-3">{teamScore('away')}</span>
                                     </div>
@@ -122,7 +165,12 @@
                                             {#if teamLogo('home')}
                                                 <img src={teamLogo('home')} alt={teamAbbr('home')} style="width:32px;height:32px;object-fit:contain;" />
                                             {/if}
-                                            <span class="fw-semibold">{teamAbbr('home')}</span>
+                                            <div>
+                                                <span class="fw-semibold">{teamAbbr('home')}</span>
+                                                {#if teamRecord('home')}
+                                                    <div class="small text-muted">{teamRecord('home')}</div>
+                                                {/if}
+                                            </div>
                                         </div>
                                         <span class="ds-stat-value fs-3">{teamScore('home')}</span>
                                     </div>
@@ -132,45 +180,86 @@
                     </div>
                 </div>
 
-                <div class="card mt-4" id="box-score">
-                    <div class="card-header border-0">
-                        <h3 class="ds-headline-sm mb-0">Box Score</h3>
-                    </div>
-                    <div class="card-body">
-                        {#if boxScore.length > 0}
-                            <div class="table-responsive">
-                                <table class="table table-sm table-hover mb-0">
-                                    <thead>
-                                        <tr>
-                                            <th>Player</th>
-                                            <th>Team</th>
-                                            <th>MIN</th>
-                                            <th>PTS</th>
-                                            <th>REB</th>
-                                            <th>AST</th>
-                                            <th>FG</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {#each boxScore as row}
-                                            <tr>
-                                                <td>{row.player_name ?? '—'}</td>
-                                                <td>{row.team_abbreviation ?? '—'}</td>
-                                                <td>{row.minutes ?? '—'}</td>
-                                                <td><strong>{row.points}</strong></td>
-                                                <td>{row.rebounds}</td>
-                                                <td>{row.assists}</td>
-                                                <td><small>{row.field_goals_made}/{row.field_goals_attempted}</small></td>
-                                            </tr>
-                                        {/each}
-                                    </tbody>
-                                </table>
-                            </div>
-                        {:else}
-                            <p class="ds-text-muted mb-0">Box score not available yet for this game.</p>
+                {#if showPreviewTab || boxScore.length > 0}
+                    <ul class="nav nav-tabs mt-4" role="tablist">
+                        {#if showPreviewTab}
+                            <li class="nav-item" role="presentation">
+                                <button
+                                    class="nav-link"
+                                    class:active={activeTab === 'preview'}
+                                    type="button"
+                                    on:click={() => (activeTab = 'preview')}
+                                >
+                                    Preview & Prediction
+                                </button>
+                            </li>
                         {/if}
+                        {#if boxScore.length > 0 || !isScheduled}
+                            <li class="nav-item" role="presentation">
+                                <button
+                                    class="nav-link"
+                                    class:active={activeTab === 'boxscore'}
+                                    type="button"
+                                    on:click={() => (activeTab = 'boxscore')}
+                                >
+                                    Box Score
+                                </button>
+                            </li>
+                        {/if}
+                    </ul>
+                {/if}
+
+                {#if activeTab === 'preview'}
+                    {#if previewLoading}
+                        <div class="mt-4"><LoadingSpinner /></div>
+                    {:else if previewError}
+                        <div class="mt-4"><ErrorMessage message={previewError} /></div>
+                    {:else if preview?.home_team}
+                        <div class="mt-4">
+                            <GamePreviewPanel {preview} />
+                        </div>
+                    {/if}
+                {:else if activeTab === 'boxscore'}
+                    <div class="card mt-4" id="box-score">
+                        <div class="card-header border-0">
+                            <h3 class="ds-headline-sm mb-0">Box Score</h3>
+                        </div>
+                        <div class="card-body">
+                            {#if boxScore.length > 0}
+                                <div class="table-responsive">
+                                    <table class="table table-sm table-hover mb-0">
+                                        <thead>
+                                            <tr>
+                                                <th>Player</th>
+                                                <th>Team</th>
+                                                <th>MIN</th>
+                                                <th>PTS</th>
+                                                <th>REB</th>
+                                                <th>AST</th>
+                                                <th>FG</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {#each boxScore as row}
+                                                <tr>
+                                                    <td>{row.player_name ?? '—'}</td>
+                                                    <td>{row.team_abbreviation ?? '—'}</td>
+                                                    <td>{row.minutes ?? '—'}</td>
+                                                    <td><strong>{row.points}</strong></td>
+                                                    <td>{row.rebounds}</td>
+                                                    <td>{row.assists}</td>
+                                                    <td><small>{row.field_goals_made}/{row.field_goals_attempted}</small></td>
+                                                </tr>
+                                            {/each}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            {:else}
+                                <p class="ds-text-muted mb-0">Box score not available yet for this game.</p>
+                            {/if}
+                        </div>
                     </div>
-                </div>
+                {/if}
             </div>
 
             <div class="col-lg-4">
@@ -188,6 +277,24 @@
                         {/if}
                     </div>
                 </div>
+
+                {#if preview?.prediction && activeTab === 'preview'}
+                    <div class="card mt-4">
+                        <div class="card-header border-0">
+                            <h3 class="ds-headline-sm mb-0">Quick Pick</h3>
+                        </div>
+                        <div class="card-body">
+                            <p class="fw-bold fs-5 mb-1">{preview.prediction.predicted_winner_label}</p>
+                            <p class="ds-text-muted small mb-2">
+                                {preview.prediction.win_probability.home}% / {preview.prediction.win_probability.away}%
+                                ({teamAbbr('home')} / {teamAbbr('away')})
+                            </p>
+                            <p class="mb-0 small">
+                                Projected: {teamAbbr('away')} {preview.prediction.projected_score.away} – {teamAbbr('home')} {preview.prediction.projected_score.home}
+                            </p>
+                        </div>
+                    </div>
+                {/if}
             </div>
         </div>
     {/if}

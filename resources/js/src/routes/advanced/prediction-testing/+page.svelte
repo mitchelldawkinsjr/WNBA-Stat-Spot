@@ -1,5 +1,6 @@
 <script lang="ts">
     import { onMount } from 'svelte';
+    import { page } from '$app/stores';
     import { api } from '$lib/api/client';
     import DefaultLayout from "$lib/layouts/DefaultLayout.svelte";
     import type {
@@ -51,30 +52,73 @@
     let testingProgress = '';
     let selectedTestResult: HistoricalTestResult | null = null;
     let showDetailModal = false;
+    let selectedPlayerId = '';
+    let selectedPlayerName = '';
 
     const statTypes = ['points', 'rebounds', 'assists', 'steals', 'blocks'];
 
     onMount(async () => {
         mounted = true;
+
+        const playerParam = $page.url.searchParams.get('player');
+        if (playerParam) {
+            selectedPlayerId = playerParam;
+            resultsFilters.player_id = playerParam;
+            activeTab = 'results';
+            await loadSelectedPlayer(playerParam);
+        }
+
         await loadDashboardData();
     });
+
+    async function loadSelectedPlayer(playerId: string) {
+        try {
+            const response = await api.players.getById(playerId);
+            selectedPlayerName = response.data?.athlete_display_name ?? '';
+        } catch {
+            selectedPlayerName = '';
+        }
+    }
 
     async function loadDashboardData() {
         try {
             loading = true;
             error = '';
 
-            // Load all dashboard data in parallel
-            const [statusResponse, resultsResponse, leaderboardResponse] = await Promise.all([
+            const [statusResponse, resultsResponse, leaderboardResponse] = await Promise.allSettled([
                 api.wnba.testing.getHistoricalTestingStatus(),
-                api.wnba.testing.getHistoricalResults({ limit: 10, sort_by: 'tested_at', sort_order: 'desc' }),
+                api.wnba.testing.getHistoricalResults({
+                    limit: 10,
+                    sort_by: 'tested_at',
+                    sort_order: 'desc',
+                    ...(selectedPlayerId ? { player_id: selectedPlayerId } : {})
+                }),
                 api.wnba.testing.getHistoricalLeaderboard({ limit: 10 })
             ]);
 
-            testingStatus = statusResponse.data;
-            recentResults = resultsResponse.data.results;
-            analytics = resultsResponse.data.analytics;
-            leaderboard = leaderboardResponse.data.leaderboard;
+            if (statusResponse.status === 'fulfilled') {
+                testingStatus = statusResponse.value.data;
+            }
+
+            if (resultsResponse.status === 'fulfilled') {
+                recentResults = resultsResponse.value.data.results;
+                analytics = resultsResponse.value.data.analytics;
+            } else {
+                console.error('Results loading error:', resultsResponse.reason);
+            }
+
+            if (leaderboardResponse.status === 'fulfilled') {
+                leaderboard = leaderboardResponse.value.data.leaderboard;
+            } else {
+                console.error('Leaderboard loading error:', leaderboardResponse.reason);
+            }
+
+            const failures = [statusResponse, resultsResponse, leaderboardResponse]
+                .filter((response) => response.status === 'rejected');
+
+            if (failures.length === 3) {
+                throw failures[0].reason;
+            }
 
         } catch (err) {
             error = err instanceof Error ? err.message : 'Failed to load dashboard data';
@@ -237,6 +281,27 @@
                 </div>
             </div>
         </div>
+
+        {#if selectedPlayerId}
+            <div class="row mb-4">
+                <div class="col-12">
+                    <div class="alert alert-info d-flex justify-content-between align-items-center mb-0" role="alert">
+                        <div>
+                            <i class="fas fa-user me-2"></i>
+                            Showing prediction test results
+                            {#if selectedPlayerName}
+                                for <strong>{selectedPlayerName}</strong>
+                            {:else}
+                                for player <strong>{selectedPlayerId}</strong>
+                            {/if}
+                        </div>
+                        <a href="/players/{selectedPlayerId}" class="btn btn-sm btn-outline-primary">
+                            View Player Profile
+                        </a>
+                    </div>
+                </div>
+            </div>
+        {/if}
 
         {#if error}
             <div class="row mb-4">

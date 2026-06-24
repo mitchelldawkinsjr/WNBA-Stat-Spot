@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\WnbaPlayerGame;
+use App\Services\WNBA\Analytics\GamePreviewService;
 use App\Services\WNBA\Data\GameScheduleService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -62,6 +63,30 @@ class GameController extends Controller
         return response()->json([
             'data' => $game,
             'message' => 'Game retrieved successfully',
+        ]);
+    }
+
+    public function preview(string $gameId, Request $request, GamePreviewService $previewService): JsonResponse
+    {
+        $request->validate([
+            'season' => 'nullable|integer',
+        ]);
+
+        $season = (int) ($request->input('season') ?? config('wnba.seasons.current_season'));
+        $preview = $previewService->buildPreview($gameId, $season);
+
+        if (isset($preview['error']) && ! isset($preview['home_team'])) {
+            $status = $preview['error'] === 'Game not found' ? 404 : 422;
+
+            return response()->json([
+                'message' => $preview['error'],
+                'data' => $preview,
+            ], $status);
+        }
+
+        return response()->json([
+            'data' => $preview,
+            'message' => 'Game preview generated successfully',
         ]);
     }
 

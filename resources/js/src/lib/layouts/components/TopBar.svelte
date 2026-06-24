@@ -5,6 +5,7 @@
     import { page } from '$app/stores';
     import { TOP_NAV_ITEMS } from '$lib/assets/data/top-nav-items';
     import { MENU_ITEMS } from '$lib/assets/data/menu-items';
+    import { layout, toggleTheme } from '$lib/stores/layout';
     import {
         Dropdown,
         DropdownItem,
@@ -12,6 +13,8 @@
         DropdownToggle
     } from '@sveltestrap/sveltestrap';
     import {toggleDocumentAttribute} from "$lib/helpers/layout";
+
+    export let onOpenThemeSettings: (() => void) | undefined = undefined;
 
     const moreLinks = MENU_ITEMS.flatMap((item) => {
         if (item.isTitle) return [];
@@ -78,6 +81,26 @@
             </nav>
 
             <div class="ds-topbar__actions">
+                <button
+                    type="button"
+                    class="topbar-button"
+                    aria-label={$layout.theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+                    on:click={toggleTheme}
+                >
+                    <DsIcon name={$layout.theme === 'dark' ? 'light_mode' : 'dark_mode'} size={22} />
+                </button>
+
+                {#if onOpenThemeSettings}
+                    <button
+                        type="button"
+                        class="topbar-button d-none d-md-inline-flex"
+                        aria-label="Open theme settings"
+                        on:click={onOpenThemeSettings}
+                    >
+                        <DsIcon name="palette" size={22} />
+                    </button>
+                {/if}
+
                 <a href="/players" class="topbar-button d-none d-md-inline-flex" aria-label="Search players">
                     <DsIcon name="search" size={22} />
                 </a>

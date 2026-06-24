@@ -1,0 +1,10 @@
+---
+description: Production server access via SSH (ssh vps)
+alwaysApply: true
+---
+
+# Production server (VPS)
+
+- **Shell access to production**: use the host alias **`vps`** — the command is **`ssh vps`** (SSH config entry, not a literal hostname).
+- When suggesting deploy checks, logs, or server commands, assume the user reaches the box with **`ssh vps`** unless they specify otherwise.
+- Do not invent a different SSH target for "production" unless the user explicitly names one.

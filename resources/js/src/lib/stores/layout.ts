@@ -1,5 +1,5 @@
 import {persisted} from 'svelte-persisted-store';
-import {type Writable} from 'svelte/store';
+import {get, type Writable} from 'svelte/store';
 import {toggleDocumentAttribute} from "$lib/helpers/layout";
 
 type LayoutType = {
@@ -42,6 +42,13 @@ export const setTheme = (nTheme: LayoutType['theme']) => updateLayout('theme', n
 export const setTopBarColor = (nColor: LayoutType['topBarColor']) => updateLayout('topBarColor', nColor, 'data-topbar-color');
 export const setLeftSideBarColor = (nColor: LayoutType['leftSideBarColor']) => updateLayout('leftSideBarColor', nColor, 'data-menu-color');
 export const setLeftSideBarSize = (nSize: LayoutType['leftSideBarSize']) => updateLayout('leftSideBarSize', nSize, 'data-menu-size');
+
+export const toggleTheme = () => {
+    const next = get(layout).theme === 'dark' ? 'light' : 'dark';
+    setTheme(next);
+    setTopBarColor(next);
+    setLeftSideBarColor(next);
+};
 
 export const initLayout = () => {
     setTheme(currentTheme);

@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Services\WNBA\Data\Support\TeamCatalog;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
@@ -21,6 +23,11 @@ class WnbaTeam extends Model
         'team_color',
         'team_alternate_color',
     ];
+
+    public function scopeLeague(Builder $query): Builder
+    {
+        return $query->whereNotIn('team_id', TeamCatalog::excludedTeamIds());
+    }
 
     public function gameTeams(): HasMany
     {

@@ -232,6 +232,75 @@ export interface GameBoxScorePlayer {
     starter: boolean;
 }
 
+export interface GamePreviewPlayer {
+    player_id: number;
+    name: string;
+    position: string | null;
+    headshot: string | null;
+    season: { games_played: number; ppg: number; rpg: number; apg: number; mpg: number };
+    last_5: { ppg: number; rpg: number; apg: number; trend: string };
+    vs_opponent: { ppg: number | null; games: number };
+    game_log: Array<Record<string, unknown>>;
+}
+
+export interface GamePreviewTeam {
+    team_id: number;
+    name: string;
+    abbreviation: string;
+    logo: string | null;
+    is_home: boolean;
+    record: { wins: number; losses: number; win_pct: number };
+    season_stats: Record<string, number>;
+    advanced_stats: Record<string, number>;
+    efficiency: Record<string, number>;
+    pace: Record<string, number | string>;
+    defense: Record<string, number>;
+    home_away_splits: Record<string, Record<string, number>>;
+    context_split: Record<string, number>;
+    recent_form: Record<string, Record<string, number>>;
+    recent_games: Array<{
+        date: string;
+        opponent: string;
+        points_scored: number;
+        points_allowed: number;
+        result: 'W' | 'L';
+        home_away: string;
+        point_differential: number;
+    }>;
+    key_players: GamePreviewPlayer[];
+}
+
+export interface GamePreview {
+    game: Record<string, unknown>;
+    home_team: GamePreviewTeam;
+    away_team: GamePreviewTeam;
+    head_to_head: {
+        total_games: number;
+        home_team_wins: number;
+        away_team_wins: number;
+        avg_total_points: number;
+        avg_margin: number;
+        recent_meetings: Array<Record<string, unknown>>;
+    };
+    comparison: {
+        radar: { labels: string[]; home: number[]; away: number[] };
+        table: Array<{ stat: string; home: string | number; away: string | number }>;
+    };
+    prediction: {
+        predicted_winner: 'home' | 'away';
+        predicted_winner_label: string;
+        win_probability: { home: number; away: number };
+        projected_score: { home: number; away: number; total: number };
+        projected_spread: number;
+        projected_pace: number;
+        confidence: number;
+        factors: Array<{ factor: string; edge: number; favors: string }>;
+    };
+    analysis: { summary: string; bullets: string[] };
+    generated_at: string;
+    error?: string;
+}
+
 export interface Stats extends PlayerGame {
     player?: Player;
     team?: Team;
@@ -841,6 +910,15 @@ export const api = {
             if (options?.live === false) params.append('live', '0');
             const qs = params.toString();
             return fetchApi<{ data: Game; message?: string }>(`/games/${encodeURIComponent(gameId)}${qs ? `?${qs}` : ''}`, { cacheTtl: 'short' });
+        },
+        getPreview: (gameId: string, options?: { season?: number }) => {
+            const params = new URLSearchParams();
+            if (options?.season != null) params.append('season', String(options.season));
+            const qs = params.toString();
+            return fetchApi<{ data: GamePreview; message?: string }>(
+                `/games/${encodeURIComponent(gameId)}/preview${qs ? `?${qs}` : ''}`,
+                { cacheTtl: 'medium' }
+            );
         },
     },
     stats: {

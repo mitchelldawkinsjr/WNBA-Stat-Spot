@@ -472,7 +472,7 @@ class PredictionTestingController extends Controller
                     DB::raw('SUM(total_predictions) as total_predictions')
                 ])
                 ->groupBy('player_name')
-                ->having('test_count', '>=', 3) // At least 3 tests
+                ->havingRaw('COUNT(*) >= 3') // At least 3 tests
                 ->orderBy('avg_accuracy', 'desc')
                 ->limit(10)
                 ->get()
@@ -858,7 +858,7 @@ class PredictionTestingController extends Controller
                 AVG(confidence_score) as avg_confidence
             ')
             ->groupBy(['player_id', 'player_name', 'player_position', 'stat_type'])
-            ->having('test_count', '>=', 1)
+            ->havingRaw('COUNT(*) >= 1')
             ->orderByDesc('avg_accuracy');
 
             if ($statType) {
