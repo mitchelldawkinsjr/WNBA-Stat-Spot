@@ -1,0 +1,13 @@
+{
+  "statusCode": 200,
+  "body": [
+    {
+      "gameID": "20240625_MIN@NYL",
+      "gameDate": "20240625",
+      "away": "MIN",
+      "home": "NYL",
+      "gameStatus": "Scheduled",
+      "gameTime": "7:00p ET"
+    }
+  ]
+}

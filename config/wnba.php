@@ -142,6 +142,13 @@ return [
 
     'data_source' => [
         'provider' => env('WNBA_DATA_PROVIDER', 'sportsblaze'),
+        'routing' => [
+            'bulk_import' => env('WNBA_BULK_PROVIDER', env('WNBA_DATA_PROVIDER', 'sportsdataverse')),
+            'incremental' => env('WNBA_INCREMENTAL_PROVIDER', env('WNBA_DATA_PROVIDER', 'espn')),
+            'live_sync' => env('WNBA_LIVE_PROVIDER', 'tank01'),
+            'player_gamelog' => env('WNBA_GAMELOG_PROVIDER', 'espn'),
+            'play_by_play' => env('WNBA_PBP_PROVIDER', 'sportsdataverse'),
+        ],
         // v1 JSON API (schedule, boxscores) — requires ?key= per docs.sportsblaze.com
         'base_url' => rtrim(env('SPORTSBLAZE_WNBA_BASE_URL', 'https://api.sportsblaze.com'), '/'),
         // Public cache API (seasons list) — no auth per documentation.sportsblaze.com/seasons

@@ -21,12 +21,20 @@ Schedule::command('test:scheduler')
     ->description('Test scheduler every minute')
     ->withoutOverlapping();
 
-// Import WNBA data daily at 2 AM
-Schedule::command('app:import-wnba-data --force')
+// Incremental WNBA import daily at 2 AM (quota-safe for Tank01)
+Schedule::command('app:import-wnba-data')
     ->dailyAt('02:00')
-    ->description('Import WNBA data daily')
+    ->description('Incremental WNBA data import')
     ->withoutOverlapping()
     ->onOneServer();
+
+// Live sync on game days (budget-capped)
+Schedule::command('app:sync-wnba-live')
+    ->everyThirtyMinutes()
+    ->between('17:00', '23:59')
+    ->description('Live WNBA sync via Tank01')
+    ->withoutOverlapping()
+    ->when(fn () => config('wnba.features.enable_live_updates') || config('tank01.live_sync.enabled'));
 
 // Run queue health check every 30 minutes
 Schedule::command('queue:health-check')

@@ -2,6 +2,13 @@
 
 namespace App\Providers;
 
+use App\Contracts\WnbaStatsProvider;
+use App\Services\WNBA\Data\Providers\EspnWnbaProvider;
+use App\Services\WNBA\Data\Providers\SportsBlazeWnbaProvider;
+use App\Services\WNBA\Data\Providers\SportsDataverseWnbaProvider;
+use App\Services\WNBA\Data\Providers\Tank01WnbaProvider;
+use App\Services\WNBA\Data\WnbaProviderResolver;
+use App\Services\WnbaDataService;
 use Illuminate\Support\ServiceProvider;
 use App\Services\WNBA\Analytics\PlayerAnalyticsService;
 use App\Services\WNBA\Analytics\TeamAnalyticsService;
@@ -24,6 +31,18 @@ class WnbaServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        $this->app->singleton(WnbaProviderResolver::class);
+
+        $this->app->bind(WnbaStatsProvider::class, function ($app) {
+            return $app->make(WnbaProviderResolver::class)->make(
+                (string) config('wnba.data_source.provider', 'tank01')
+            );
+        });
+
+        $this->app->singleton(WnbaDataService::class, function ($app) {
+            return new WnbaDataService($app->make(WnbaStatsProvider::class));
+        });
+
         // Register Math services as singletons
         $this->app->singleton(BayesianCalculator::class);
         $this->app->singleton(PoissonCalculator::class);

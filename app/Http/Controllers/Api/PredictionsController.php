@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Services\Odds\OddsApiService;
+use App\Services\Odds\OddsService;
 use App\Services\WNBA\Analytics\GameAnalyticsService;
 use App\Services\WNBA\Analytics\PlayerAnalyticsService;
 use App\Services\WNBA\Analytics\TeamAnalyticsService;
@@ -30,7 +30,7 @@ class PredictionsController extends Controller
 
     private DataAggregatorService $dataAggregator;
 
-    private OddsApiService $oddsApi;
+    private OddsService $oddsApi;
 
     public function __construct(
         PropsPredictionService $propsPrediction,
@@ -39,7 +39,7 @@ class PredictionsController extends Controller
         TeamAnalyticsService $teamAnalytics,
         GameAnalyticsService $gameAnalytics,
         DataAggregatorService $dataAggregator,
-        OddsApiService $oddsApi
+        OddsService $oddsApi
     ) {
         $this->propsPrediction = $propsPrediction;
         $this->statisticalEngine = $statisticalEngine;

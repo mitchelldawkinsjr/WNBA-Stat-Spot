@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Services\RapidApi\Tank01UsageTracker;
 use App\Services\WNBA\Data\DataAggregatorService;
 use App\Services\WnbaDataService;
 use Illuminate\Http\JsonResponse;
@@ -561,5 +562,14 @@ class DataAggregatorController extends Controller
                 'error' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    public function getApiQuota(Tank01UsageTracker $usageTracker): JsonResponse
+    {
+        return response()->json([
+            'success' => true,
+            'provider' => config('wnba.data_source.provider'),
+            'data' => $usageTracker->getUsageStats(),
+        ]);
     }
 }

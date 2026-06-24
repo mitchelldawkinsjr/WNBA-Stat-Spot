@@ -11,6 +11,8 @@ return [
     |
     */
 
+    'provider' => env('ODDS_PROVIDER', 'tank01'),
+
     'api_key' => env('ODDS_API_KEY', null),
     'base_url' => env('ODDS_API_BASE_URL', 'https://api.the-odds-api.com/v4'),
 

@@ -1,0 +1,105 @@
+{
+  "statusCode": 200,
+  "body": {
+    "gameID": "20240624_WAS@LAS",
+    "gameStatus": "Completed",
+    "gameStatusCode": "2",
+    "gameDate": "20240624",
+    "away": "WAS",
+    "home": "LAS",
+    "teamIDAway": "12",
+    "teamIDHome": "1",
+    "awayPts": "78",
+    "homePts": "82",
+    "lineScore": {
+      "WAS": { "1": 20, "2": 18, "3": 22, "4": 18, "total": 78 },
+      "LAS": { "1": 22, "2": 19, "3": 20, "4": 21, "total": 82 }
+    },
+    "playerStats": {
+      "WAS": {
+        "94144265527": {
+          "playerID": "94144265527",
+          "longName": "Elena Delle Donne",
+          "team": "WAS",
+          "teamID": "12",
+          "mins": "32",
+          "pts": "24",
+          "reb": "8",
+          "ast": "4",
+          "stl": "1",
+          "blk": "2",
+          "TOV": "2",
+          "fgm": "9",
+          "fga": "16",
+          "tptfgm": "2",
+          "tptfga": "5",
+          "ftm": "4",
+          "fta": "4",
+          "OffReb": "1",
+          "DefReb": "7",
+          "plusMinus": "+6",
+          "starter": "1"
+        }
+      },
+      "LAS": {
+        "94144265528": {
+          "playerID": "94144265528",
+          "longName": "Dearica Hamby",
+          "team": "LAS",
+          "teamID": "1",
+          "mins": "34",
+          "pts": "22",
+          "reb": "10",
+          "ast": "3",
+          "stl": "2",
+          "blk": "1",
+          "TOV": "1",
+          "fgm": "8",
+          "fga": "14",
+          "tptfgm": "1",
+          "tptfga": "3",
+          "ftm": "5",
+          "fta": "6",
+          "OffReb": "3",
+          "DefReb": "7",
+          "plusMinus": "+8",
+          "starter": "1"
+        }
+      }
+    },
+    "teamStats": {
+      "WAS": {
+        "fgm": "30",
+        "fga": "68",
+        "tptfgm": "8",
+        "tptfga": "24",
+        "ftm": "10",
+        "fta": "12",
+        "reb": "35",
+        "OffReb": "8",
+        "DefReb": "27",
+        "ast": "18",
+        "stl": "6",
+        "blk": "4",
+        "TOV": "12",
+        "pf": "18"
+      },
+      "LAS": {
+        "fgm": "32",
+        "fga": "70",
+        "tptfgm": "7",
+        "tptfga": "22",
+        "ftm": "11",
+        "fta": "14",
+        "reb": "38",
+        "OffReb": "10",
+        "DefReb": "28",
+        "ast": "20",
+        "stl": "8",
+        "blk": "5",
+        "TOV": "10",
+        "pf": "16"
+      }
+    }
+  }
+}

@@ -1,0 +1,51 @@
+{
+  "statusCode": 200,
+  "body": [
+    {
+      "teamID": "1",
+      "teamAbv": "LAS",
+      "teamCity": "Los Angeles",
+      "teamName": "Sparks",
+      "wins": "5",
+      "losses": "3",
+      "conference": "Western",
+      "schedule": {
+        "20240624_WAS@LAS": {
+          "gameID": "20240624_WAS@LAS",
+          "gameDate": "20240624",
+          "away": "WAS",
+          "home": "LAS",
+          "teamIDAway": "12",
+          "teamIDHome": "1",
+          "gameStatus": "Completed",
+          "gameStatusCode": "2",
+          "awayPts": "78",
+          "homePts": "82"
+        }
+      },
+      "roster": [
+        {
+          "playerID": "94144265527",
+          "longName": "Dearica Hamby",
+          "pos": "F",
+          "jerseyNum": "5",
+          "injury": {
+            "designation": "",
+            "description": ""
+          }
+        }
+      ]
+    },
+    {
+      "teamID": "12",
+      "teamAbv": "WAS",
+      "teamCity": "Washington",
+      "teamName": "Mystics",
+      "wins": "4",
+      "losses": "4",
+      "conference": "Eastern",
+      "schedule": {},
+      "roster": []
+    }
+  ]
+}

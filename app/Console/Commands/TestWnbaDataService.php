@@ -29,7 +29,7 @@ class TestWnbaDataService extends Command
     {
         $this->info('Testing WnbaDataService...');
 
-        $service = new WnbaDataService;
+        $service = app(WnbaDataService::class);
 
         // Test 1: Test helper methods with mock data
         $this->info('1. Testing helper methods...');

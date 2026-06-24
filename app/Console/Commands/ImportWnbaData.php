@@ -2,6 +2,9 @@
 
 namespace App\Console\Commands;
 
+use App\Contracts\WnbaStatsProvider;
+use App\Models\WnbaGame;
+use App\Services\WNBA\Data\WnbaProviderResolver;
 use App\Services\WnbaDataService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Artisan;
@@ -17,6 +20,8 @@ class ImportWnbaData extends Command
      */
     protected $signature = 'app:import-wnba-data
                             {--force : Clear existing WNBA rows and reimport from scratch}
+                            {--incremental : Only fetch games missing from the database (default for Tank01)}
+                            {--confirm-quota : Acknowledge Tank01 API quota cost for --force imports}
                             {--if-empty : Skip import when wnba_players already has data (unless --force)}
                             {--with-pbp : Include play-by-play CSV (very large; needs high PHP memory_limit)}';
 
@@ -35,8 +40,32 @@ class ImportWnbaData extends Command
         $this->info('🏀 Starting comprehensive WNBA data import...');
         $this->newLine();
 
-        $service = new WnbaDataService();
         $force = $this->option('force');
+        $incremental = $this->option('incremental') || ! $force;
+
+        $providerName = app(WnbaProviderResolver::class)->resolveForImport(
+            $incremental,
+            (bool) $this->option('with-pbp')
+        )->name();
+        config(['wnba.data_source.provider' => $providerName]);
+        app()->forgetInstance(WnbaStatsProvider::class);
+        app()->forgetInstance(WnbaDataService::class);
+
+        $service = app(WnbaDataService::class);
+        $this->info("Using WNBA data provider: {$providerName}");
+
+        $service->setImportOptions([
+            'incremental' => $incremental,
+            'force' => $force,
+        ]);
+
+        if ($service->getProviderName() === 'tank01' && $force && ! $this->option('confirm-quota')) {
+            $estimated = $service->estimateImportCost();
+            $this->error("Tank01 --force import may use ~{$estimated} API calls.");
+            $this->error('Re-run with --confirm-quota to proceed, or use default incremental import.');
+
+            return 1;
+        }
 
         try {
             if ($this->option('if-empty') && ! $force && Schema::hasTable('wnba_players')) {
@@ -110,14 +139,59 @@ class ImportWnbaData extends Command
             }
 
         } catch (\Exception $e) {
-            $this->error('❌ Import failed: ' . $e->getMessage());
-            $this->error('Stack trace: ' . $e->getTraceAsString());
+            if (config('wnba.data_source.fallback_to_sportsdataverse') && $service->getProviderName() === 'tank01') {
+                $this->warn('Tank01 import failed; attempting SportsDataverse fallback...');
+                config(['wnba.data_source.provider' => 'sportsdataverse']);
+                app()->forgetInstance(\App\Services\WnbaDataService::class);
+                app()->forgetInstance(\App\Contracts\WnbaStatsProvider::class);
+                $fallback = app(WnbaDataService::class);
+                $fallback->setImportOptions(['incremental' => false, 'force' => $force]);
+
+                return $this->runImport($fallback, $force);
+            }
+
+            $this->error('❌ Import failed: '.$e->getMessage());
+            $this->error('Stack trace: '.$e->getTraceAsString());
+
             return 1;
         }
 
         $this->info('🎉 WNBA data import completed successfully!');
         $this->info('💡 You can now access the analytics dashboard and prediction engine.');
+
         return 0;
+    }
+
+    private function runImport(WnbaDataService $service, bool $force): int
+    {
+        try {
+            if ($force) {
+                $this->clearExistingData();
+            }
+
+            $teamDataPath = $service->downloadTeamData();
+            $service->saveTeamData($service->parseTeamData($teamDataPath));
+
+            $schedulePath = $service->downloadTeamScheduleData();
+            $service->saveTeamScheduleData($service->parseTeamScheduleData($schedulePath));
+
+            if ($this->option('with-pbp')) {
+                $pbpPath = $service->downloadPbpData();
+                $service->savePbpData($service->parsePbpData($pbpPath));
+            }
+
+            $boxScorePath = $service->downloadBoxScoreData();
+            $service->saveBoxScoreData($service->parseBoxScoreData($boxScorePath));
+
+            $this->displayImportSummary();
+            $this->info('🎉 WNBA data import completed successfully via fallback provider.');
+
+            return 0;
+        } catch (\Exception $e) {
+            $this->error('❌ Fallback import failed: '.$e->getMessage());
+
+            return 1;
+        }
     }
 
     /**

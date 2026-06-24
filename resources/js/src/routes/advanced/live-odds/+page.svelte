@@ -254,7 +254,7 @@
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
                             <h4 class="page-title">Live WNBA Odds</h4>
-                            <p class="text-muted mb-0">Real-time betting odds powered by The Odds API</p>
+                            <p class="text-muted mb-0">Real-time betting odds powered by Tank01 (RapidAPI)</p>
                         </div>
                         <div class="d-flex gap-2">
                             <button
@@ -290,9 +290,9 @@
                         <strong>Notice:</strong> {error}
                         <br>
                         <small class="text-muted mt-2 d-block">
-                            To use live odds, please add your API key from <a href="https://the-odds-api.com/" target="_blank">The Odds API</a> to your .env file:
+                            To use live odds, add your RapidAPI key for Tank01 WNBA to your .env file:
                             <br>
-                            <code>ODDS_API_KEY=your_api_key_here</code>
+                            <code>RAPIDAPI_KEY=your_rapidapi_key_here</code>
                         </small>
                     </div>
                 </div>
@@ -568,14 +568,14 @@
                             <p class="text-muted mb-3">This could be because:</p>
                             <ul class="list-unstyled text-muted">
                                 <li>• No WNBA games are currently scheduled</li>
-                                <li>• Your Odds API key is not configured</li>
+                                <li>• Your RapidAPI key is not configured</li>
                                 <li>• The API service is temporarily unavailable</li>
                             </ul>
                             <p class="text-muted mb-0">
                                 <small>
                                     To configure your API key, add <code>ODDS_API_KEY=your_key</code> to your .env file
                                     <br>
-                                    Get your free API key at <a href="https://the-odds-api.com/" target="_blank">The Odds API</a>
+                                    Get your API key at <a href="https://rapidapi.com/tank01/api/tank01-wnba-live-in-game-real-time-statistics-wnba" target="_blank">Tank01 WNBA on RapidAPI</a>
                                 </small>
                             </p>
                         </div>

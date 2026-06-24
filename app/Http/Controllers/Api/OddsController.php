@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Traits\ApiResponseTrait;
 use App\Http\Traits\CacheHelper;
-use App\Services\Odds\OddsApiService;
+use App\Services\Odds\OddsService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Cache;
@@ -15,9 +15,9 @@ class OddsController extends Controller
 {
     use ApiResponseTrait, CacheHelper;
 
-    private OddsApiService $oddsApi;
+    private OddsService $oddsApi;
 
-    public function __construct(OddsApiService $oddsApi)
+    public function __construct(OddsService $oddsApi)
     {
         $this->oddsApi = $oddsApi;
     }

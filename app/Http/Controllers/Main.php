@@ -13,7 +13,7 @@ class Main extends Controller
 
     private function loadAllData()
     {
-        $wnbaDataService = new WnbaDataService();
+        $wnbaDataService = app(WnbaDataService::class);
         $wnba_team_data_path =$wnbaDataService->downloadTeamData();
         $wnba_team_schedule_data_path = $wnbaDataService->downloadTeamScheduleData();
         $wnba_pbp_data_path = $wnbaDataService->downloadPbpData();
@@ -25,7 +25,7 @@ class Main extends Controller
 
     private function saveAllData()
     {
-        $wnbaDataService = new WnbaDataService();
+        $wnbaDataService = app(WnbaDataService::class);
         $wnbaDataService->saveBoxScoreData($this->wnbaPbpData);
         $wnbaDataService->saveTeamScheduleData($this->wnbaTeamScheduleData);
         $wnbaDataService->saveTeamData($this->wnbaTeamData);

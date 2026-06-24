@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Contracts\WnbaStatsProvider;
 use App\Models\WnbaGame;
 use App\Models\WnbaGameTeam;
 use App\Models\WnbaPlay;
@@ -25,8 +26,13 @@ class WnbaDataService
     /** @var int Season year used in default GitHub CSV URLs and local cache filenames (see WNBA_CURRENT_SEASON). */
     private int $dataSeasonYear;
 
-    public function __construct()
-    {
+    /** @var array<string, mixed> */
+    private array $importOptions = ['incremental' => true, 'force' => false];
+
+    public function __construct(
+        private ?WnbaStatsProvider $provider = null
+    ) {
+        $this->provider = $provider ?? app(WnbaStatsProvider::class);
         $this->dataSeasonYear = (int) config('wnba.seasons.current_season');
         $y = $this->dataSeasonYear;
 
@@ -53,11 +59,54 @@ class WnbaDataService
     }
 
     /**
-     * Fetch available seasons from the public cache API (documentation.sportsblaze.com/seasons).
+     * @param  array<string, mixed>  $options
+     */
+    public function setImportOptions(array $options): void
+    {
+        $this->importOptions = array_merge($this->importOptions, $options);
+    }
+
+    public function getProviderName(): string
+    {
+        return $this->provider->name();
+    }
+
+    public function estimateImportCost(): int
+    {
+        if ($this->provider->name() !== 'tank01') {
+            return 0;
+        }
+
+        $schedule = $this->provider->fetchSchedule($this->dataSeasonYear, $this->importOptions);
+        $missing = 0;
+        foreach ($schedule as $game) {
+            $gameId = $game['game_id'] ?? null;
+            if (! $gameId) {
+                continue;
+            }
+            $gameModel = WnbaGame::where('game_id', $gameId)->first();
+            if (! $gameModel || ! WnbaPlayerGame::where('game_id', $gameModel->id)->exists()) {
+                $missing++;
+            }
+        }
+
+        return 1 + $missing;
+    }
+
+    /**
+     * Fetch available seasons from the configured provider.
      *
      * @return array<int, array{year: int, season: string}>
      */
     public function fetchAvailableSeasons(): array
+    {
+        return $this->provider->fetchAvailableSeasons();
+    }
+
+    /**
+     * @deprecated Use provider pipeline via download methods
+     */
+    public function fetchAvailableSeasonsLegacy(): array
     {
         $league = $this->sportsBlazeLeagueId();
         $cacheBase = rtrim((string) config('wnba.data_source.cache_base_url'), '/');
@@ -80,6 +129,27 @@ class WnbaDataService
     private function sportsBlazeV1Path(string $suffix): string
     {
         return $this->sportsBlazeLeagueId().'/v1/'.ltrim($suffix, '/');
+    }
+
+    private function usesProviderPipeline(): bool
+    {
+        return in_array($this->provider->name(), ['tank01', 'sportsblaze', 'sportsdataverse', 'espn'], true);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function recordsFromStorage(string $path): array
+    {
+        $content = Storage::get($path);
+        if ($this->isJsonContent($content)) {
+            $decoded = json_decode($content, true) ?: [];
+            if (isset($decoded['records']) && is_array($decoded['records'])) {
+                return $decoded['records'];
+            }
+        }
+
+        return [];
     }
 
     private function feedUrl(string $feed, string $sportsBlazePath, string $legacyUrl): string
@@ -369,6 +439,14 @@ class WnbaDataService
 
     public function downloadBoxScoreData(): string
     {
+        if ($this->usesProviderPipeline()) {
+            $records = $this->provider->fetchPlayerBoxscores($this->dataSeasonYear, $this->importOptions);
+            $path = "wnba/player_box_{$this->dataSeasonYear}.json";
+            Storage::put($path, json_encode(['records' => $records]));
+
+            return $path;
+        }
+
         if (config('wnba.data_source.provider') === 'sportsblaze') {
             $games = $this->fetchSportsBlazeCompletedGameBoxscores();
             $path = "wnba/player_box_{$this->dataSeasonYear}.json";
@@ -386,6 +464,14 @@ class WnbaDataService
 
     public function downloadTeamData(): string
     {
+        if ($this->usesProviderPipeline()) {
+            $records = $this->provider->fetchTeamBoxscores($this->dataSeasonYear, $this->importOptions);
+            $path = "wnba/team_box_{$this->dataSeasonYear}.json";
+            Storage::put($path, json_encode(['records' => $records]));
+
+            return $path;
+        }
+
         if (config('wnba.data_source.provider') === 'sportsblaze') {
             $games = $this->fetchSportsBlazeCompletedGameBoxscores();
             $path = "wnba/team_box_{$this->dataSeasonYear}.json";
@@ -403,6 +489,14 @@ class WnbaDataService
 
     public function downloadTeamScheduleData(): string
     {
+        if ($this->usesProviderPipeline()) {
+            $records = $this->provider->fetchSchedule($this->dataSeasonYear, $this->importOptions);
+            $path = "wnba/team_schedule_{$this->dataSeasonYear}.json";
+            Storage::put($path, json_encode(['records' => $records]));
+
+            return $path;
+        }
+
         return $this->downloadFeed(
             $this->wnbaTeamScheduleUrl,
             "wnba/team_schedule_{$this->dataSeasonYear}.csv",
@@ -412,6 +506,20 @@ class WnbaDataService
 
     public function downloadPbpData(): string
     {
+        if ($this->usesProviderPipeline()) {
+            if (! $this->provider->supportsPlayByPlay()) {
+                throw new \Exception('Current provider does not support play-by-play. Use WNBA_DATA_PROVIDER=sportsdataverse --with-pbp.');
+            }
+
+            if ($this->provider instanceof \App\Services\WNBA\Data\Providers\SportsDataverseWnbaProvider) {
+                $records = $this->provider->fetchPlayByPlay($this->dataSeasonYear);
+                $path = "wnba/play_by_play_{$this->dataSeasonYear}.json";
+                Storage::put($path, json_encode(['records' => $records]));
+
+                return $path;
+            }
+        }
+
         return $this->downloadFeed(
             $this->wnbaPbpUrl,
             "wnba/play_by_play_{$this->dataSeasonYear}.csv",
@@ -421,6 +529,11 @@ class WnbaDataService
 
     public function parseBoxScoreData(string $path): array
     {
+        $records = $this->recordsFromStorage($path);
+        if (! empty($records)) {
+            return $records;
+        }
+
         $csvContent = Storage::get($path);
         if ($this->isJsonContent($csvContent)) {
             return $this->parseSportsBlazeBoxScores(json_decode($csvContent, true) ?: []);
@@ -496,6 +609,11 @@ class WnbaDataService
 
     public function parseTeamData(string $path): array
     {
+        $records = $this->recordsFromStorage($path);
+        if (! empty($records)) {
+            return $records;
+        }
+
         $csvContent = Storage::get($path);
         if ($this->isJsonContent($csvContent)) {
             return $this->parseSportsBlazeTeamBoxScores(json_decode($csvContent, true) ?: []);
@@ -556,6 +674,11 @@ class WnbaDataService
 
     public function parseTeamScheduleData(string $path): array
     {
+        $records = $this->recordsFromStorage($path);
+        if (! empty($records)) {
+            return $records;
+        }
+
         $csvContent = Storage::get($path);
         if ($this->isJsonContent($csvContent)) {
             return $this->parseSportsBlazeSchedule(json_decode($csvContent, true) ?: []);
@@ -612,6 +735,11 @@ class WnbaDataService
 
     public function parsePbpData(string $path): array
     {
+        $records = $this->recordsFromStorage($path);
+        if (! empty($records)) {
+            return $records;
+        }
+
         $csvContent = Storage::get($path);
 
         $csv = Reader::createFromString($csvContent);

@@ -163,6 +163,7 @@ Route::prefix('wnba')->group(function () {
         Route::post('/import/force', [DataAggregatorController::class, 'forceImportData']);
         Route::get('/import/status', [DataAggregatorController::class, 'getImportStatus']);
         Route::get('/stats/summary', [DataAggregatorController::class, 'getDataSummary']);
+        Route::get('/quota', [DataAggregatorController::class, 'getApiQuota']);
 
         // Individual data type imports
         Route::post('/import/teams', [DataAggregatorController::class, 'importTeams']);

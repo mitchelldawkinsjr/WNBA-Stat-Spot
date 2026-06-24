@@ -1,0 +1,36 @@
+{
+  "statusCode": 200,
+  "body": [
+    {
+      "gameID": "20240625_MIN@NYL",
+      "gameDate": "20240625",
+      "away": "MIN",
+      "home": "NYL",
+      "teamIDAway": "8",
+      "teamIDHome": "5",
+      "sportsbooks": {
+        "draftkings": {
+          "moneyline": { "away": "+145", "home": "-165" },
+          "spread": { "away": "+3.5", "home": "-3.5", "awayOdds": "-110", "homeOdds": "-110" },
+          "total": { "over": "o164.5", "under": "u164.5", "overOdds": "-110", "underOdds": "-110" }
+        },
+        "fanduel": {
+          "moneyline": { "away": "+150", "home": "-170" },
+          "spread": { "away": "+3.5", "home": "-3.5", "awayOdds": "-108", "homeOdds": "-112" },
+          "total": { "over": "o165.0", "under": "u165.0", "overOdds": "-110", "underOdds": "-110" }
+        }
+      },
+      "playerProps": {
+        "94144265527": {
+          "playerID": "94144265527",
+          "longName": "Napheesa Collier",
+          "props": {
+            "points": { "line": "18.5", "over": "-115", "under": "-105" },
+            "rebounds": { "line": "7.5", "over": "-110", "under": "-110" },
+            "assists": { "line": "3.5", "over": "+100", "under": "-120" }
+          }
+        }
+      }
+    }
+  ]
+}
