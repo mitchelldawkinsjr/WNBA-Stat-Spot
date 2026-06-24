@@ -9,6 +9,7 @@ use App\Models\WnbaPlay;
 use App\Models\WnbaPlayer;
 use App\Models\WnbaPlayerGame;
 use App\Models\WnbaTeam;
+use App\Services\WNBA\Data\EntityMergeService;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use League\Csv\Reader;
@@ -134,6 +135,123 @@ class WnbaDataService
     private function usesProviderPipeline(): bool
     {
         return in_array($this->provider->name(), ['tank01', 'sportsblaze', 'sportsdataverse', 'espn'], true);
+    }
+
+    public function usesBatchedProviderImport(): bool
+    {
+        return $this->usesProviderPipeline() && $this->provider->supportsBatchedBoxScoreImport();
+    }
+
+    /**
+     * @return array{games_processed: int, records_saved: int}
+     */
+    public function importBoxScoresInBatches(?int $batchSize = null): array
+    {
+        $batchSize = $batchSize ?? (int) config('wnba.import.game_batch_size', 10);
+        $gameIds = $this->provider->pendingBoxScoreGameIds($this->dataSeasonYear, $this->importOptions);
+        $gamesProcessed = 0;
+        $recordsSaved = 0;
+
+        foreach (array_chunk($gameIds, max(1, $batchSize)) as $chunk) {
+            $records = $this->provider->fetchPlayerBoxscores(
+                $this->dataSeasonYear,
+                array_merge($this->importOptions, ['game_ids' => $chunk]),
+            );
+            $this->saveBoxScoreData($records);
+            $gamesProcessed += count($chunk);
+            $recordsSaved += count($records);
+            unset($records);
+            gc_collect_cycles();
+        }
+
+        return [
+            'games_processed' => $gamesProcessed,
+            'records_saved' => $recordsSaved,
+        ];
+    }
+
+    /**
+     * @return array{games_processed: int, records_saved: int}
+     */
+    public function importTeamBoxScoresInBatches(?int $batchSize = null): array
+    {
+        $batchSize = $batchSize ?? (int) config('wnba.import.game_batch_size', 10);
+        $gameIds = $this->provider->pendingBoxScoreGameIds($this->dataSeasonYear, $this->importOptions);
+        $gamesProcessed = 0;
+        $recordsSaved = 0;
+
+        foreach (array_chunk($gameIds, max(1, $batchSize)) as $chunk) {
+            $records = $this->provider->fetchTeamBoxscores(
+                $this->dataSeasonYear,
+                array_merge($this->importOptions, ['game_ids' => $chunk]),
+            );
+            $this->saveTeamData($records);
+            $gamesProcessed += count($chunk);
+            $recordsSaved += count($records);
+            unset($records);
+            gc_collect_cycles();
+        }
+
+        return [
+            'games_processed' => $gamesProcessed,
+            'records_saved' => $recordsSaved,
+        ];
+    }
+
+    public function importEspnScheduleByTeam(int $season): int
+    {
+        if ($this->provider->name() !== 'espn') {
+            $records = $this->provider->fetchSchedule($season, $this->importOptions);
+            $this->saveTeamScheduleData($records);
+
+            return count($records);
+        }
+
+        $espn = $this->provider;
+        $client = app(\App\Services\WNBA\Data\Support\EspnApiClient::class);
+        $mapper = new \App\Services\WNBA\Data\Mappers\EspnMapper($season);
+        $saved = 0;
+
+        foreach ($mapper->teamIds($client->teams()) as $teamId) {
+            try {
+                $schedule = $client->teamSchedule($teamId, $season);
+                $records = $mapper->mapSchedule($schedule['events'] ?? []);
+                $this->saveTeamScheduleData($records);
+                $saved += count($records);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('ESPN per-team schedule import failed', [
+                    'team_id' => $teamId,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
+            unset($schedule, $records);
+            gc_collect_cycles();
+        }
+
+        return $saved;
+    }
+
+    private function mergeService(): EntityMergeService
+    {
+        return app(EntityMergeService::class);
+    }
+
+    private function normalizeSeasonType(mixed $value): int
+    {
+        if (is_numeric($value)) {
+            return (int) $value;
+        }
+
+        $label = strtolower((string) $value);
+        if (str_contains($label, 'pre')) {
+            return 1;
+        }
+        if (str_contains($label, 'post') || str_contains($label, 'playoff')) {
+            return 3;
+        }
+
+        return 2;
     }
 
     /**
@@ -810,7 +928,12 @@ class WnbaDataService
 
     public function saveBoxScoreData(array $records): void
     {
+        $merge = $this->mergeService();
+        $provider = $this->getProviderName();
+
         foreach ($records as $record) {
+            $record = $merge->normalizeBoxScoreRecord($record, $provider);
+
             // Skip records with missing required fields
             if (empty($record['game_id']) || empty($record['team_id']) || empty($record['athlete_id'])) {
                 continue;
@@ -820,8 +943,10 @@ class WnbaDataService
             $game = WnbaGame::updateOrCreate(
                 ['game_id' => $record['game_id']],
                 [
+                    'espn_game_id' => $record['espn_game_id'] ?? null,
+                    'tank01_game_id' => $record['tank01_game_id'] ?? null,
                     'season' => $record['season'],
-                    'season_type' => $record['season_type'],
+                    'season_type' => $this->normalizeSeasonType($record['season_type'] ?? null),
                     'game_date' => $record['game_date'],
                     'game_date_time' => $record['game_date_time'],
                 ]
@@ -831,6 +956,8 @@ class WnbaDataService
             $team = WnbaTeam::updateOrCreate(
                 ['team_id' => $record['team_id']],
                 [
+                    'espn_team_id' => $merge->looksLikeEspnTeamId((string) $record['team_id']) ? $record['team_id'] : ($record['espn_team_id'] ?? null),
+                    'tank01_team_id' => $record['tank01_team_id'] ?? null,
                     'team_name' => $record['team_name'] ?? 'Unknown Team',
                     'team_location' => $record['team_location'] ?? 'Unknown',
                     'team_abbreviation' => $record['team_abbreviation'] ?? 'UNK',
@@ -863,17 +990,19 @@ class WnbaDataService
             }
 
             // Create or update player
-            $player = WnbaPlayer::updateOrCreate(
-                ['athlete_id' => $record['athlete_id']],
-                [
-                    'athlete_display_name' => $record['athlete_display_name'] ?? 'Unknown Player',
-                    'athlete_short_name' => $record['athlete_short_name'] ?? 'Unknown',
-                    'athlete_jersey' => $record['athlete_jersey'] ?? null,
-                    'athlete_headshot_href' => $record['athlete_headshot_href'] ?? null,
-                    'athlete_position_name' => $record['athlete_position_name'] ?? null,
-                    'athlete_position_abbreviation' => $record['athlete_position_abbreviation'] ?? null,
-                ]
-            );
+            $playerLookup = ['athlete_id' => $record['athlete_id']];
+            $playerPayload = [
+                'espn_athlete_id' => $record['espn_athlete_id'] ?? ($merge->looksLikeEspnPlayerId((string) $record['athlete_id']) ? $record['athlete_id'] : null),
+                'tank01_player_id' => $record['tank01_player_id'] ?? ($merge->looksLikeTank01PlayerId((string) $record['athlete_id']) ? $record['athlete_id'] : null),
+                'athlete_display_name' => $record['athlete_display_name'] ?? 'Unknown Player',
+                'athlete_short_name' => $record['athlete_short_name'] ?? 'Unknown',
+                'athlete_jersey' => $record['athlete_jersey'] ?? null,
+                'athlete_headshot_href' => $record['athlete_headshot_href'] ?? null,
+                'athlete_position_name' => $record['athlete_position_name'] ?? null,
+                'athlete_position_abbreviation' => $record['athlete_position_abbreviation'] ?? null,
+            ];
+
+            $player = WnbaPlayer::updateOrCreate($playerLookup, $playerPayload);
 
             // Create or update player game
             WnbaPlayerGame::updateOrCreate(
@@ -928,7 +1057,7 @@ class WnbaDataService
                 ['game_id' => $record['game_id']],
                 [
                     'season' => $record['season'],
-                    'season_type' => $record['season_type'],
+                    'season_type' => $this->normalizeSeasonType($record['season_type'] ?? null),
                     'game_date' => $record['game_date'],
                     'game_date_time' => $record['game_date_time'],
                 ]
@@ -999,13 +1128,20 @@ class WnbaDataService
 
     public function saveTeamScheduleData(array $records): void
     {
+        $merge = $this->mergeService();
+        $provider = $this->getProviderName();
+
         foreach ($records as $record) {
+            $record = $merge->normalizeScheduleRecord($record, $provider);
+
             // Create or update game
             $game = WnbaGame::updateOrCreate(
                 ['game_id' => $record['game_id']],
                 [
+                    'espn_game_id' => $record['espn_game_id'] ?? null,
+                    'tank01_game_id' => $record['tank01_game_id'] ?? null,
                     'season' => $record['season'],
-                    'season_type' => $record['season_type'],
+                    'season_type' => $this->normalizeSeasonType($record['season_type'] ?? null),
                     'game_date' => $record['game_date'],
                     'game_date_time' => $record['game_date_time'],
                     'venue_id' => $record['venue_id'],
@@ -1133,7 +1269,7 @@ class WnbaDataService
                 ['game_id' => $record['game_id']],
                 [
                     'season' => $record['season'],
-                    'season_type' => $record['season_type'],
+                    'season_type' => $this->normalizeSeasonType($record['season_type'] ?? null),
                     'game_date' => $record['game_date'],
                     'game_date_time' => $record['game_date_time'],
                 ]

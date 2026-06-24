@@ -6,7 +6,7 @@ use App\Contracts\WnbaStatsProvider;
 use App\Http\Controllers\Controller;
 use App\Services\RapidApi\Tank01UsageTracker;
 use App\Services\WNBA\Data\DataAggregatorService;
-use App\Services\WNBA\Data\PlayerGamelogService;
+use App\Services\WNBA\Data\EntityMergeService;
 use App\Services\WNBA\Data\WnbaProviderResolver;
 use App\Services\WnbaDataService;
 use Illuminate\Http\JsonResponse;
@@ -22,7 +22,6 @@ class DataAggregatorController extends Controller
         private DataAggregatorService $dataAggregator,
         private WnbaDataService $wnbaDataService,
         private WnbaProviderResolver $providerResolver,
-        private PlayerGamelogService $playerGamelogService,
     ) {}
 
     /**
@@ -349,7 +348,7 @@ class DataAggregatorController extends Controller
 
         try {
             // Convert athlete_id to internal player_id if needed
-            $player = \App\Models\WnbaPlayer::where('athlete_id', (string) $playerId)->first();
+            $player = \App\Models\WnbaPlayer::findByExternalId((string) $playerId);
 
             if (! $player) {
                 return response()->json([
@@ -539,7 +538,7 @@ class DataAggregatorController extends Controller
 
         try {
             // Convert athlete_id to internal player_id if needed
-            $player = \App\Models\WnbaPlayer::where('athlete_id', (string) $playerId)->first();
+            $player = \App\Models\WnbaPlayer::findByExternalId((string) $playerId);
 
             if (! $player) {
                 return response()->json([
@@ -574,53 +573,6 @@ class DataAggregatorController extends Controller
         }
     }
 
-    /**
-     * Get live player gamelog from configured stats provider.
-     */
-    public function getPlayerGamelog(Request $request, string $playerId): JsonResponse
-    {
-        $validator = Validator::make($request->all(), [
-            'season' => 'nullable|integer',
-            'last_n_games' => 'nullable|integer|min:1|max:50',
-            'provider' => 'nullable|string|in:espn,tank01',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json([
-                'success' => false,
-                'errors' => $validator->errors(),
-            ], 422);
-        }
-
-        try {
-            $season = (int) ($request->input('season') ?? config('wnba.seasons.current_season'));
-            $lastNGames = $request->input('last_n_games') ? (int) $request->input('last_n_games') : null;
-
-            $data = $this->playerGamelogService->fetch(
-                $playerId,
-                $season,
-                $lastNGames,
-                $request->input('provider'),
-            );
-
-            return response()->json([
-                'success' => true,
-                'data' => $data,
-            ]);
-        } catch (\Exception $e) {
-            Log::error('Player gamelog fetch failed', [
-                'player_id' => $playerId,
-                'error' => $e->getMessage(),
-            ]);
-
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to fetch player gamelog',
-                'error' => $e->getMessage(),
-            ], 500);
-        }
-    }
-
     public function getApiQuota(Tank01UsageTracker $usageTracker): JsonResponse
     {
         return response()->json([
@@ -629,6 +581,29 @@ class DataAggregatorController extends Controller
             'routing' => config('wnba.data_source.routing'),
             'tank01' => $usageTracker->getUsageStats(),
         ]);
+    }
+
+    public function syncIdentities(Request $request, EntityMergeService $merge): JsonResponse
+    {
+        $season = (int) ($request->input('season') ?? config('wnba.seasons.current_season'));
+
+        try {
+            $stats = $merge->syncAll($season);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Provider identity mappings synced',
+                'data' => $stats,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Identity sync failed', ['error' => $e->getMessage()]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Identity sync failed',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
     }
 
     private function importService(bool $incremental = true): WnbaDataService

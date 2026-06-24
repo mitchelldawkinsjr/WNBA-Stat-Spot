@@ -9,6 +9,8 @@ class WnbaGame extends Model
 {
     protected $fillable = [
         'game_id',
+        'espn_game_id',
+        'tank01_game_id',
         'season',
         'season_type',
         'game_date',

@@ -266,27 +266,27 @@
                     <div class="card-body">
                         <div class="row g-3">
                             <div class="col-12">
-                                <a href="/advanced/monte-carlo" class="text-decoration-none">
+                                <a href="/advanced/live-odds" class="text-decoration-none">
                                     <div class="d-flex align-items-center p-3 border rounded hover-shadow">
                                         <div class="avatar-sm bg-danger bg-opacity-10 rounded-circle d-flex align-items-center justify-content-center me-3">
-                                            <i class="fas fa-dice text-danger fs-18"></i>
+                                            <i class="fas fa-bolt text-danger fs-18"></i>
                                         </div>
                                         <div>
-                                            <h6 class="mb-1">Monte Carlo Simulations</h6>
-                                            <small class="text-muted">Run thousands of probability simulations</small>
+                                            <h6 class="mb-1">Live Odds</h6>
+                                            <small class="text-muted">Real-time prop lines and market movement</small>
                                         </div>
                                     </div>
                                 </a>
                             </div>
                             <div class="col-12">
-                                <a href="/advanced/betting-analytics" class="text-decoration-none">
+                                <a href="/advanced/prop-scanner" class="text-decoration-none">
                                     <div class="d-flex align-items-center p-3 border rounded hover-shadow">
                                         <div class="avatar-sm bg-success bg-opacity-10 rounded-circle d-flex align-items-center justify-content-center me-3">
-                                            <i class="fas fa-calculator text-success fs-18"></i>
+                                            <i class="fas fa-radar text-success fs-18"></i>
                                         </div>
                                         <div>
-                                            <h6 class="mb-1">Betting Analytics</h6>
-                                            <small class="text-muted">Expected value & bankroll management</small>
+                                            <h6 class="mb-1">Prop Scanner</h6>
+                                            <small class="text-muted">Scan players for profitable prop opportunities</small>
                                         </div>
                                     </div>
                                 </a>
@@ -305,14 +305,14 @@
                                 </a>
                             </div>
                             <div class="col-12">
-                                <a href="/advanced/data-quality" class="text-decoration-none">
+                                <a href="/advanced/prediction-testing" class="text-decoration-none">
                                     <div class="d-flex align-items-center p-3 border rounded hover-shadow">
                                         <div class="avatar-sm bg-info bg-opacity-10 rounded-circle d-flex align-items-center justify-content-center me-3">
-                                            <i class="fas fa-shield-alt text-info fs-18"></i>
+                                            <i class="fas fa-history text-info fs-18"></i>
                                         </div>
                                         <div>
-                                            <h6 class="mb-1">Data Quality</h6>
-                                            <small class="text-muted">Monitor data completeness & accuracy</small>
+                                            <h6 class="mb-1">Historical Testing</h6>
+                                            <small class="text-muted">Backtest predictions against actual results</small>
                                         </div>
                                     </div>
                                 </a>
@@ -353,11 +353,11 @@
                                 </a>
                             </div>
                             <div class="col-md-4">
-                                <a href="/methodology/monte-carlo" class="text-decoration-none">
+                                <a href="/advanced/model-validation" class="text-decoration-none">
                                     <div class="text-center p-3 border rounded hover-shadow">
-                                        <i class="fas fa-random text-danger fs-24 mb-2"></i>
-                                        <h6 class="mb-1">Monte Carlo</h6>
-                                        <small class="text-muted">Simulation methodology & implementation</small>
+                                        <i class="fas fa-check-circle text-warning fs-24 mb-2"></i>
+                                        <h6 class="mb-1">Model Validation</h6>
+                                        <small class="text-muted">Prediction accuracy & calibration</small>
                                     </div>
                                 </a>
                             </div>

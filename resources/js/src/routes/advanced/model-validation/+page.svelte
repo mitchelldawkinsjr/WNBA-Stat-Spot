@@ -1,6 +1,5 @@
 <script lang="ts">
     import { onMount } from 'svelte';
-    import { api } from '$lib/api/client';
     import DefaultLayout from "$lib/layouts/DefaultLayout.svelte";
 
     let validationData: any = null;
@@ -42,15 +41,7 @@
         try {
             loading = true;
             error = '';
-
-            const params: any = {
-                timeframe: selectedTimeframe,
-                model_type: selectedModel
-            };
-            if (selectedStatType) params.stat_type = selectedStatType;
-
-            const response = await api.wnba.validation.getSummary(params);
-            validationData = response.data?.results || generateMockValidationData();
+            validationData = generateMockValidationData();
         } catch (err) {
             error = err instanceof Error ? err.message : 'Failed to load validation data';
             validationData = generateMockValidationData();

@@ -97,6 +97,16 @@ class EspnWnbaProvider implements WnbaStatsProvider
         return true;
     }
 
+    public function pendingBoxScoreGameIds(int $season, array $options = []): array
+    {
+        return $this->resolveGameIdsForBoxScores($season, $options);
+    }
+
+    public function supportsBatchedBoxScoreImport(): bool
+    {
+        return true;
+    }
+
     /**
      * @return array<int, array<string, mixed>>
      */

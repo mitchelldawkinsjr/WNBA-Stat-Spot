@@ -148,6 +148,24 @@ class Tank01WnbaProvider implements WnbaStatsProvider
     /**
      * @return array<int, array<string, mixed>>
      */
+    public function fetchRosterPlayers(): array
+    {
+        return $this->mapper->mapRosterPlayers($this->fetchTeamsBody());
+    }
+
+    public function pendingBoxScoreGameIds(int $season, array $options = []): array
+    {
+        return $this->resolveGameIdsForBoxScores($options);
+    }
+
+    public function supportsBatchedBoxScoreImport(): bool
+    {
+        return true;
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
     public function fetchScoreboard(string $gameDate): array
     {
         $body = $this->client->get(

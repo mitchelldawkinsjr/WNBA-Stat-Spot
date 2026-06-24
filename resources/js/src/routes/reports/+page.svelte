@@ -191,14 +191,14 @@
                         <div class="card-body">
                             <div class="row g-3">
                                 <div class="col-md-4">
-                                    <a href="/reports/analytics" class="text-decoration-none">
+                                    <a href="/advanced/model-validation" class="text-decoration-none">
                                         <div class="card bg-primary bg-gradient text-white h-100">
                                             <div class="card-body">
                                                 <div class="d-flex align-items-center">
                                                     <i class="fas fa-chart-bar fs-24 me-3"></i>
                                                     <div>
-                                                        <h6 class="card-title text-white mb-1">Advanced Analytics</h6>
-                                                        <p class="card-text text-white-50 mb-0">Deep dive into player and team metrics</p>
+                                                        <h6 class="card-title text-white mb-1">Model Validation</h6>
+                                                        <p class="card-text text-white-50 mb-0">Analyze prediction accuracy & calibration</p>
                                                     </div>
                                                 </div>
                                             </div>

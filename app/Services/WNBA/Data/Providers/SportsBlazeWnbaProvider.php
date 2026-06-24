@@ -51,4 +51,14 @@ class SportsBlazeWnbaProvider implements WnbaStatsProvider
     {
         return false;
     }
+
+    public function pendingBoxScoreGameIds(int $season, array $options = []): array
+    {
+        return [];
+    }
+
+    public function supportsBatchedBoxScoreImport(): bool
+    {
+        return false;
+    }
 }

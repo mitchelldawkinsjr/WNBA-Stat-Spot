@@ -391,9 +391,9 @@
                                 </a>
                             </div>
                             <div class="col-md-3 col-6 mb-2">
-                                <a href="/advanced/betting-analytics" class="quick-action-btn">
-                                    <i class="mdi mdi-chart-bar"></i>
-                                    <span>Analytics</span>
+                                <a href="/advanced/live-odds" class="quick-action-btn">
+                                    <i class="mdi mdi-lightning-bolt"></i>
+                                    <span>Live Odds</span>
                                 </a>
                             </div>
                         </div>

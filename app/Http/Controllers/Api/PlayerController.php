@@ -124,6 +124,8 @@ class PlayerController extends Controller
                 'playerGames.game:id,game_id,game_date,season'
             ])
             ->where('athlete_id', $id)
+            ->orWhere('espn_athlete_id', $id)
+            ->orWhere('tank01_player_id', $id)
             ->first();
         });
 

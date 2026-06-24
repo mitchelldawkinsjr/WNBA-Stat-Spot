@@ -261,11 +261,11 @@
                                         Full Prediction Engine
                                     </a>
                                     <a
-                                        href="/advanced/betting-analytics"
+                                        href="/advanced/live-odds"
                                         class="btn btn-sm btn-outline-success"
                                     >
-                                        <i class="fas fa-chart-line me-1"></i>
-                                        Betting Analytics
+                                        <i class="fas fa-bolt me-1"></i>
+                                        Live Odds
                                     </a>
                                 </div>
                             </div>

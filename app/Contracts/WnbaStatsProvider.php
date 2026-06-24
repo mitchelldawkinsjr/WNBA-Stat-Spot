@@ -38,4 +38,12 @@ interface WnbaStatsProvider
     public function supportsPlayByPlay(): bool;
 
     public function supportsIncremental(): bool;
+
+    /**
+     * @param  array<string, mixed>  $options
+     * @return array<int, string>
+     */
+    public function pendingBoxScoreGameIds(int $season, array $options = []): array;
+
+    public function supportsBatchedBoxScoreImport(): bool;
 }

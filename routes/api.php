@@ -10,9 +10,6 @@ use App\Http\Controllers\Api\GameController;
 use App\Http\Controllers\Api\StatsController;
 use App\Http\Controllers\Api\DataAggregatorController;
 use App\Http\Controllers\Api\PropScannerController;
-use App\Http\Controllers\WnbaPredictionsController;
-use App\Http\Controllers\Api\BettingAnalyticsController;
-use App\Http\Controllers\Api\DataQualityController;
 use App\Http\Controllers\Api\PredictionTestingController;
 use App\Http\Controllers\Api\PredictionsController;
 use App\Http\Controllers\Api\OddsController;
@@ -29,16 +26,13 @@ Route::get('/test', function () {
         'message' => 'API is working',
         'timestamp' => now()->toISOString(),
         'php_version' => PHP_VERSION,
-        'laravel_version' => app()->version()
+        'laravel_version' => app()->version(),
     ]);
 });
 
 // Health check endpoints for CI/CD monitoring
 Route::get('/health', [HealthController::class, 'health']);
 Route::get('/health/detailed', [HealthController::class, 'detailed']);
-Route::get('/health/database', [HealthController::class, 'database']);
-Route::get('/health/cache', [HealthController::class, 'cache']);
-Route::get('/health/queue', [HealthController::class, 'queue']);
 
 // Database setup status endpoint
 Route::get('/status', function () {
@@ -147,7 +141,7 @@ Route::prefix('wnba')->group(function () {
     // Predictions
     Route::prefix('predictions')->group(function () {
         Route::post('/generate', [PredictionsController::class, 'generatePrediction']);
-        Route::get('/prop-bets', [WnbaPredictionsController::class, 'getPropBets']);
+        Route::get('/prop-bets', [PredictionsController::class, 'getPropBets']);
         Route::get('/todays-best', [PredictionsController::class, 'getTodaysBestProps']);
     });
 
@@ -165,6 +159,7 @@ Route::prefix('wnba')->group(function () {
         Route::get('/import/status', [DataAggregatorController::class, 'getImportStatus']);
         Route::get('/stats/summary', [DataAggregatorController::class, 'getDataSummary']);
         Route::get('/quota', [DataAggregatorController::class, 'getApiQuota']);
+        Route::post('/sync-identities', [DataAggregatorController::class, 'syncIdentities']);
 
         // Individual data type imports
         Route::post('/import/teams', [DataAggregatorController::class, 'importTeams']);
@@ -172,7 +167,6 @@ Route::prefix('wnba')->group(function () {
         Route::post('/import/games', [DataAggregatorController::class, 'importGames']);
         Route::post('/import/stats', [DataAggregatorController::class, 'importPlayerStats']);
 
-        Route::get('/players/{playerId}/gamelog', [DataAggregatorController::class, 'getPlayerGamelog']);
         Route::get('/players/{playerId}', [DataAggregatorController::class, 'getPlayerData']);
         Route::get('/players/{playerId}/props', [DataAggregatorController::class, 'getPropData']);
         Route::get('/teams/{teamId}', [DataAggregatorController::class, 'getTeamData']);
@@ -192,21 +186,10 @@ Route::prefix('wnba')->group(function () {
     Route::prefix('prop-scanner')->group(function () {
         Route::get('/scan-all', [PropScannerController::class, 'scanAll']);
         Route::get('/scan-player/{playerId}', [PropScannerController::class, 'scanPlayer']);
-        Route::get('/player/{playerId}', [PropScannerController::class, 'scanPlayer']);
         Route::get('/game/{gameId}', [PropScannerController::class, 'scanGame']);
         Route::post('/scan', [PropScannerController::class, 'scan']);
         Route::get('/results/{gameId}', [PropScannerController::class, 'getResults']);
         Route::get('/status/{gameId}', [PropScannerController::class, 'getStatus']);
-    });
-
-    // Betting Analytics
-    Route::prefix('betting')->group(function () {
-        Route::get('/analytics', [BettingAnalyticsController::class, 'getAnalytics']);
-    });
-
-    // Data Quality
-    Route::prefix('quality')->group(function () {
-        Route::get('/metrics', [DataQualityController::class, 'getMetrics']);
     });
 
     // Testing & Validation

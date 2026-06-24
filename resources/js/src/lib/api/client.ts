@@ -808,18 +808,6 @@ export const api = {
                 return fetchApi<{ success: boolean; data: GameAnalytics }>(`/wnba/analytics/game/${gameId}`, { cacheTtl: 'medium' });
             },
         },
-        validation: {
-            getSummary: (params?: { stat_type?: string; player_category?: string; season?: number; validation_type?: string }) => {
-                const query = params ? `?${new URLSearchParams(params as any).toString()}` : '';
-                return fetchApi<{ success: boolean; data: any }>(`/wnba/validation${query}`, { cacheTtl: 'long' });
-            },
-        },
-        betting: {
-            getAnalytics: (params?: { timeframe?: string; bet_type?: string }) => {
-                const query = params ? `?${new URLSearchParams(params as any).toString()}` : '';
-                return fetchApi<{ success: boolean; data: any }>(`/wnba/betting/analytics${query}`, { cacheTtl: 'medium' });
-            },
-        },
         /** @deprecated Prefer `api.players.getAggregatedData` — some builds dropped nested `api.wnba.data`. */
         data: {
             getPlayerData: (playerId: string, options?: { season?: number; last_n_games?: number }) =>
@@ -833,20 +821,6 @@ export const api = {
                     `/wnba/data/teams/${teamId}${qs ? `?${qs}` : ''}`,
                     { cacheTtl: 'medium' }
                 );
-            },
-        },
-        dataQuality: {
-            getMetrics: (params?: { timeframe?: string; source?: string }) => {
-                const query = params ? `?${new URLSearchParams(params as any).toString()}` : '';
-                return fetchApi<{ success: boolean; data: any }>(`/wnba/data-quality/metrics${query}`, { cacheTtl: 'short' });
-            },
-        },
-        monteCarlo: {
-            runSimulation: (params: { player_id: string; stat_type: string; simulations: number; confidence_level: number; scenario: string }) => {
-                return fetchApi<{ success: boolean; data: any }>(`/wnba/monte-carlo/run`, {
-                    method: 'POST',
-                    body: JSON.stringify(params)
-                });
             },
         },
         propScanner: {

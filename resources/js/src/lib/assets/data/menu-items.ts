@@ -12,8 +12,6 @@ export const MENU_ITEMS: MenuItemType[] = [
         label: 'Dashboard',
         url: '/',
     },
-
-    // AI/ML PREDICTIONS - Main section
     {
         key: 'predictions-section',
         label: 'AI PREDICTIONS',
@@ -43,8 +41,6 @@ export const MENU_ITEMS: MenuItemType[] = [
         label: 'Live Odds',
         url: '/advanced/live-odds',
     },
-
-    // DATA SOURCES
     {
         key: 'data-overview',
         label: 'DATA',
@@ -80,8 +76,6 @@ export const MENU_ITEMS: MenuItemType[] = [
         label: 'Statistics',
         url: '/stats',
     },
-
-    // ANALYTICS & REPORTS
     {
         key: 'analytics-reports',
         label: 'ANALYTICS',
@@ -104,22 +98,8 @@ export const MENU_ITEMS: MenuItemType[] = [
                 url: '/reports/teams',
                 parentKey: 'reports',
             },
-            {
-                key: 'model-validation-reports',
-                label: 'Model Performance',
-                url: '/reports/analytics',
-                parentKey: 'reports',
-            },
         ],
     },
-    {
-        key: 'betting-analytics',
-        icon: 'iconamoon:chart-line-duotone',
-        label: 'Betting Analytics',
-        url: '/advanced/betting-analytics',
-    },
-
-    // ADVANCED TOOLS
     {
         key: 'advanced-tools',
         label: 'ADVANCED TOOLS',
@@ -138,25 +118,11 @@ export const MENU_ITEMS: MenuItemType[] = [
         url: '/advanced/prediction-testing',
     },
     {
-        key: 'monte-carlo',
-        icon: 'iconamoon:dice-duotone',
-        label: 'Monte Carlo Sims',
-        url: '/advanced/monte-carlo',
-    },
-    {
-        key: 'data-quality',
-        icon: 'iconamoon:check-circle-duotone',
-        label: 'Data Quality',
-        url: '/advanced/data-quality',
-    },
-    {
         key: 'data-management',
         icon: 'iconamoon:database-duotone',
         label: 'Data Management',
         url: '/advanced/data-management',
     },
-
-    // SYSTEM & DOCUMENTATION
     {
         key: 'system-section',
         label: 'SYSTEM',
@@ -179,12 +145,6 @@ export const MENU_ITEMS: MenuItemType[] = [
                 url: '/methodology/prop-analysis',
                 parentKey: 'methodology',
             },
-            {
-                key: 'monte-carlo-methodology',
-                label: 'Monte Carlo Methods',
-                url: '/methodology/monte-carlo',
-                parentKey: 'methodology',
-            },
         ],
     },
     {
@@ -194,4 +154,3 @@ export const MENU_ITEMS: MenuItemType[] = [
         url: '/advanced',
     },
 ];
-

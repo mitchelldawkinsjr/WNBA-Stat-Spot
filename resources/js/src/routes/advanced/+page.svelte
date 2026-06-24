@@ -43,28 +43,20 @@
             metrics: ["Pace Factor", "Net Rating", "SOS Analysis"]
         },
         {
-            title: "Betting Analytics",
-            description: "Expected value calculations, ROI tracking, and bankroll management",
-            icon: "fas fa-coins",
+            title: "Historical Testing",
+            description: "Backtest predictions against actual results and track accuracy over time",
+            icon: "fas fa-history",
             color: "secondary",
-            href: "/advanced/betting-analytics",
-            metrics: ["ROI: +8.7%", "Kelly %: 2.3%", "Sharpe: 1.42"]
+            href: "/advanced/prediction-testing",
+            metrics: ["Backtests", "Hit Rate", "Calibration"]
         },
         {
-            title: "Data Quality",
-            description: "Data completeness analysis, reliability metrics, and source validation",
-            icon: "fas fa-database",
-            color: "primary",
-            href: "/advanced/data-quality",
-            metrics: ["Completeness: 94.1%", "Freshness: 98.7%", "Accuracy: 99.2%"]
-        },
-        {
-            title: "Monte Carlo Simulations",
-            description: "Run thousands of game simulations for probability distributions",
-            icon: "fas fa-dice",
+            title: "Live Odds",
+            description: "Real-time prop lines and market movement from Tank01",
+            icon: "fas fa-bolt",
             color: "danger",
-            href: "/advanced/monte-carlo",
-            metrics: ["10K Simulations", "95% Confidence", "Variance Analysis"]
+            href: "/advanced/live-odds",
+            metrics: ["Live Lines", "Market EV", "Line Movement"]
         }
     ];
 </script>
@@ -175,29 +167,29 @@
                                 </a>
                             </div>
                             <div class="col-md-3">
-                                <a href="/advanced/betting-analytics" class="btn btn-outline-warning w-100">
-                                    <i class="fas fa-calculator me-2"></i>
-                                    EV Calculator
+                                <a href="/advanced/live-odds" class="btn btn-outline-warning w-100">
+                                    <i class="fas fa-bolt me-2"></i>
+                                    Live Odds
                                 </a>
                             </div>
                             <div class="col-md-3">
-                                <a href="/advanced/monte-carlo" class="btn btn-outline-info w-100">
-                                    <i class="fas fa-random me-2"></i>
-                                    Run Simulation
+                                <a href="/advanced/prediction-testing" class="btn btn-outline-info w-100">
+                                    <i class="fas fa-history me-2"></i>
+                                    Historical Testing
                                 </a>
                             </div>
                         </div>
                         <div class="row g-3 mt-2">
                             <div class="col-md-6">
-                                <a href="/advanced/data-quality" class="btn btn-outline-secondary w-100">
-                                    <i class="fas fa-search me-2"></i>
-                                    Data Quality Audit
+                                <a href="/advanced/data-management" class="btn btn-outline-secondary w-100">
+                                    <i class="fas fa-database me-2"></i>
+                                    Data Management
                                 </a>
                             </div>
                             <div class="col-md-6">
-                                <a href="/reports/analytics" class="btn btn-outline-primary w-100">
+                                <a href="/advanced/model-validation" class="btn btn-outline-primary w-100">
                                     <i class="fas fa-chart-line me-2"></i>
-                                    Analytics Dashboard
+                                    Model Validation
                                 </a>
                             </div>
                         </div>
@@ -242,26 +234,26 @@
             {/each}
         </div>
 
-        <!-- New cards -->
+        <!-- Additional tools -->
         <div class="row mt-4">
             <div class="col-lg-4 col-md-6">
                 <div class="card h-100">
                     <div class="card-body">
                         <div class="d-flex align-items-center mb-3">
                             <div class="avatar-sm bg-warning bg-opacity-10 rounded-circle d-flex align-items-center justify-content-center me-3">
-                                <i class="fas fa-chart-area text-warning fs-18"></i>
+                                <i class="fas fa-bolt text-warning fs-18"></i>
                             </div>
                             <div>
-                                <h5 class="card-title mb-1">Monte Carlo Simulations</h5>
-                                <p class="text-muted mb-0">Statistical modeling</p>
+                                <h5 class="card-title mb-1">Live Odds</h5>
+                                <p class="text-muted mb-0">Real-time prop markets</p>
                             </div>
                         </div>
-                        <p class="text-muted mb-3">Run thousands of game simulations to understand probability distributions and scenario analysis for player performance.</p>
+                        <p class="text-muted mb-3">Compare live prop lines against model projections to spot value before tip-off.</p>
                         <div class="d-flex gap-2">
-                            <a href="/advanced/monte-carlo" class="btn btn-warning btn-sm">
-                                <i class="fas fa-play me-1"></i>Run Simulation
+                            <a href="/advanced/live-odds" class="btn btn-warning btn-sm">
+                                <i class="fas fa-play me-1"></i>View Odds
                             </a>
-                            <a href="/methodology/monte-carlo" class="btn btn-outline-warning btn-sm">
+                            <a href="/methodology/prop-analysis" class="btn btn-outline-warning btn-sm">
                                 <i class="fas fa-book me-1"></i>Learn More
                             </a>
                         </div>

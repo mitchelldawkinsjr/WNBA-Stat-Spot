@@ -378,26 +378,6 @@
                                 </a>
                             </div>
 
-                            <div class="col-md-6">
-                                <a href="/methodology/monte-carlo" class="text-decoration-none">
-                                    <div class="card border h-100">
-                                        <div class="card-body">
-                                            <div class="d-flex align-items-start">
-                                                <div class="avatar-sm bg-warning bg-opacity-10 rounded-circle d-flex align-items-center justify-content-center me-3">
-                                                    <i class="fas fa-dice text-warning fs-18"></i>
-                                                </div>
-                                                <div>
-                                                    <h6 class="card-title">Monte Carlo Simulations</h6>
-                                                    <p class="text-muted small mb-0">
-                                                        Computational probability, random sampling, uncertainty quantification,
-                                                        and scenario analysis through simulation.
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </a>
-                            </div>
                         </div>
                     </div>
                 </div>

@@ -1981,4 +1981,37 @@ class PredictionsController extends Controller
             return 'UNK';
         }
     }
+
+    public function getPropBets(): \Illuminate\Http\JsonResponse
+    {
+        try {
+            $propBets = [
+                [
+                    'id' => 1,
+                    'player_id' => '3149391',
+                    'player_name' => 'A\'ja Wilson',
+                    'team_abbreviation' => 'LV',
+                    'stat_type' => 'points',
+                    'line' => 22.5,
+                    'over_odds' => -110,
+                    'under_odds' => -110,
+                    'sportsbook' => 'DraftKings',
+                    'game_date' => now()->addDay()->format('Y-m-d'),
+                ],
+            ];
+
+            return response()->json([
+                'success' => true,
+                'data' => $propBets,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to get prop bets', ['error' => $e->getMessage()]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to retrieve prop bets',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
 }

@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Contracts\WnbaStatsProvider;
 use App\Models\WnbaGame;
+use App\Services\WNBA\Data\EntityMergeService;
 use App\Services\WNBA\Data\WnbaProviderResolver;
 use App\Services\WnbaDataService;
 use Illuminate\Console\Command;
@@ -23,7 +24,8 @@ class ImportWnbaData extends Command
                             {--incremental : Only fetch games missing from the database (default for Tank01)}
                             {--confirm-quota : Acknowledge Tank01 API quota cost for --force imports}
                             {--if-empty : Skip import when wnba_players already has data (unless --force)}
-                            {--with-pbp : Include play-by-play CSV (very large; needs high PHP memory_limit)}';
+                            {--with-pbp : Include play-by-play CSV (very large; needs high PHP memory_limit)}
+                            {--batch-size= : Games per batch for ESPN/Tank01 imports (default from config)}';
 
     /**
      * The console command description.
@@ -37,6 +39,11 @@ class ImportWnbaData extends Command
      */
     public function handle()
     {
+        $memoryLimit = (string) config('wnba.import.memory_limit', '512M');
+        if ($memoryLimit !== '') {
+            ini_set('memory_limit', $memoryLimit);
+        }
+
         $this->info('🏀 Starting comprehensive WNBA data import...');
         $this->newLine();
 
@@ -91,20 +98,35 @@ class ImportWnbaData extends Command
                 $this->newLine();
             }
 
-            // Step 1: Import team data
-            $this->info('📊 Step 1: Downloading and importing team data...');
-            $teamDataPath = $service->downloadTeamData();
-            $teamData = $service->parseTeamData($teamDataPath);
-            $service->saveTeamData($teamData);
-            $this->info('✅ Team data imported successfully.');
+            // Step 1: Import schedule first (box score batches need game IDs)
+            $this->info('📅 Step 1: Downloading and importing game schedule data...');
+            $batchSize = $this->option('batch-size') ? (int) $this->option('batch-size') : null;
+            if (config('wnba.import.sync_identities', true)) {
+                $teamMappings = app(EntityMergeService::class)->syncTeamMappings();
+                $this->line("   🔗 Synced {$teamMappings} team identity mappings.");
+            }
+            if ($providerName === 'espn') {
+                $scheduleCount = $service->importEspnScheduleByTeam((int) config('wnba.seasons.current_season'));
+                $this->info("✅ Game schedule data imported ({$scheduleCount} events).");
+            } else {
+                $teamSchedulePath = $service->downloadTeamScheduleData();
+                $teamScheduleData = $service->parseTeamScheduleData($teamSchedulePath);
+                $service->saveTeamScheduleData($teamScheduleData);
+                $this->info('✅ Game schedule data imported successfully.');
+            }
             $this->newLine();
 
-            // Step 2: Import team schedule/game data
-            $this->info('📅 Step 2: Downloading and importing game schedule data...');
-            $teamSchedulePath = $service->downloadTeamScheduleData();
-            $teamScheduleData = $service->parseTeamScheduleData($teamSchedulePath);
-            $service->saveTeamScheduleData($teamScheduleData);
-            $this->info('✅ Game schedule data imported successfully.');
+            // Step 2: Import team box score data
+            $this->info('📊 Step 2: Downloading and importing team data...');
+            if ($service->usesBatchedProviderImport()) {
+                $teamBatch = $service->importTeamBoxScoresInBatches($batchSize);
+                $this->info("✅ Team data imported ({$teamBatch['records_saved']} records from {$teamBatch['games_processed']} games).");
+            } else {
+                $teamDataPath = $service->downloadTeamData();
+                $teamData = $service->parseTeamData($teamDataPath);
+                $service->saveTeamData($teamData);
+                $this->info('✅ Team data imported successfully.');
+            }
             $this->newLine();
 
             // Step 3: Play-by-play (optional — full-season PBP CSV is huge and often exceeds default PHP memory)
@@ -122,10 +144,22 @@ class ImportWnbaData extends Command
 
             // Step 4: Import player/box score data (contains player stats)
             $this->info('🏀 Step 4: Downloading player boxscore data...');
-            $boxScorePath = $service->downloadBoxScoreData();
-            $boxScoreData = $service->parseBoxScoreData($boxScorePath);
-            $service->saveBoxScoreData($boxScoreData);
-            $this->info('✅ Player boxscore data imported successfully.');
+            if (config('wnba.import.sync_identities', true)) {
+                $season = (int) config('wnba.seasons.current_season');
+                $merge = app(EntityMergeService::class);
+                $playersSynced = $merge->syncPlayerMappings($season);
+                $gamesSynced = $merge->syncGameMappings($season);
+                $this->line("   🔗 Synced {$playersSynced} player and {$gamesSynced} game identity mappings.");
+            }
+            if ($service->usesBatchedProviderImport()) {
+                $playerBatch = $service->importBoxScoresInBatches($batchSize);
+                $this->info("✅ Player boxscore data imported ({$playerBatch['records_saved']} records from {$playerBatch['games_processed']} games).");
+            } else {
+                $boxScorePath = $service->downloadBoxScoreData();
+                $boxScoreData = $service->parseBoxScoreData($boxScorePath);
+                $service->saveBoxScoreData($boxScoreData);
+                $this->info('✅ Player boxscore data imported successfully.');
+            }
             $this->newLine();
 
             // Display summary

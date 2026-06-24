@@ -3,7 +3,6 @@
 namespace App\Services\Odds;
 
 use App\Contracts\OddsProvider;
-use Carbon\Carbon;
 
 /**
  * Facade delegating to the configured OddsProvider implementation.
@@ -11,8 +10,7 @@ use Carbon\Carbon;
 class OddsService
 {
     public function __construct(
-        private OddsProvider $provider,
-        private OddsApiService $legacyOddsApi
+        private OddsProvider $provider
     ) {}
 
     public function providerName(): string
@@ -56,19 +54,11 @@ class OddsService
 
     public function getEvents(string $sport = 'basketball_wnba'): array
     {
-        if ($this->provider->name() === 'odds_api') {
-            return $this->legacyOddsApi->getEvents($sport);
-        }
-
         return $this->provider->getWnbaEvents();
     }
 
     public function getEventPlayerProps(string $eventId, array $options = []): array
     {
-        if ($this->provider->name() === 'odds_api') {
-            return $this->legacyOddsApi->getEventPlayerProps($eventId, $options);
-        }
-
         $props = $this->provider->getWnbaPlayerProps($options);
 
         return array_values(array_filter($props, fn (array $prop) => ($prop['event_id'] ?? '') === $eventId));
@@ -76,19 +66,11 @@ class OddsService
 
     public function getAvailablePlayerPropMarkets(): array
     {
-        if ($this->provider->name() === 'odds_api') {
-            return $this->legacyOddsApi->getAvailablePlayerPropMarkets();
-        }
-
         return config('odds-api.wnba_player_props', []);
     }
 
     public function getBestPlayerPropOdds(string $playerName, string $statType, $line = null): array
     {
-        if ($this->provider->name() === 'odds_api') {
-            return $this->legacyOddsApi->getBestPlayerPropOdds($playerName, $statType, $line);
-        }
-
         $playerProps = $this->provider->getWnbaPlayerProps([
             'player_name' => $playerName,
             'markets' => [$statType],
@@ -124,12 +106,8 @@ class OddsService
         return $bestOdds;
     }
 
-    public function getHistoricalOdds(string $sport, Carbon $date): array
+    public function getHistoricalOdds(string $sport, \Carbon\Carbon $date): array
     {
-        if ($this->provider->name() === 'odds_api') {
-            return $this->legacyOddsApi->getHistoricalOdds($sport, $date);
-        }
-
         return [];
     }
 
@@ -146,8 +124,5 @@ class OddsService
     public function clearCache(): void
     {
         $this->provider->clearCache();
-        if ($this->provider->name() === 'odds_api') {
-            $this->legacyOddsApi->clearCache();
-        }
     }
 }

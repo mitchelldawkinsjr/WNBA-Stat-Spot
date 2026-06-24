@@ -51,6 +51,16 @@ class SportsDataverseWnbaProvider implements WnbaStatsProvider
         return false;
     }
 
+    public function pendingBoxScoreGameIds(int $season, array $options = []): array
+    {
+        return [];
+    }
+
+    public function supportsBatchedBoxScoreImport(): bool
+    {
+        return false;
+    }
+
     /**
      * @return array<int, array<string, mixed>>
      */
