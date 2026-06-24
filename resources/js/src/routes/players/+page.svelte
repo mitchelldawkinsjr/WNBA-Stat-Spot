@@ -1,8 +1,11 @@
 <script lang="ts">
     import { onMount } from 'svelte';
     import { api } from '$lib/api/client';
-    import DefaultLayout from "$lib/layouts/DefaultLayout.svelte";
-    import LoadingError from '$lib/components/LoadingError.svelte';
+    import DefaultLayout from '$lib/layouts/DefaultLayout.svelte';
+    import ErrorMessage from '$lib/components/ErrorMessage.svelte';
+    import DsSearchInput from '$lib/components/ui/DsSearchInput.svelte';
+    import DsChip from '$lib/components/ui/DsChip.svelte';
+    import DsIcon from '$lib/components/ui/DsIcon.svelte';
 
     interface Player {
         id: number;
@@ -13,20 +16,34 @@
         athlete_headshot_href: string | null;
         athlete_position_name: string | null;
         athlete_position_abbreviation: string | null;
-        created_at: string;
-        updated_at: string;
     }
 
     let players: Player[] = [];
     let loading = true;
     let error: string | null = null;
     let searchTerm = '';
-    let viewMode: 'cards' | 'table' = 'cards';
+    let positionFilter = 'all';
 
-    $: filteredPlayers = players.filter(player =>
-        player.athlete_display_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (player.athlete_position_name && player.athlete_position_name.toLowerCase().includes(searchTerm.toLowerCase()))
-    );
+    const positionChips = [
+        { key: 'all', label: 'All Players' },
+        { key: 'G', label: 'Guards' },
+        { key: 'F', label: 'Forwards' },
+        { key: 'C', label: 'Centers' },
+    ];
+
+    $: filteredPlayers = players.filter((player) => {
+        const matchesSearch =
+            player.athlete_display_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (player.athlete_position_name?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false);
+        const pos = player.athlete_position_abbreviation ?? '';
+        const matchesPosition =
+            positionFilter === 'all' ||
+            pos === positionFilter ||
+            (positionFilter === 'G' && ['G', 'PG', 'SG'].includes(pos)) ||
+            (positionFilter === 'F' && ['F', 'PF', 'SF'].includes(pos)) ||
+            (positionFilter === 'C' && pos === 'C');
+        return matchesSearch && matchesPosition;
+    });
 
     onMount(async () => {
         try {
@@ -40,255 +57,215 @@
     });
 </script>
 
+<svelte:head>
+    <title>Players | WNBA Stat Spot</title>
+</svelte:head>
+
 <DefaultLayout>
-    <div class="container-xxl">
-        <div class="row">
-            <div class="col-12">
-                <div class="page-title-box">
-                    <div class="page-title-right">
-                        <a href="/" class="btn btn-outline-primary">
-                            ← Back to Dashboard
-                        </a>
-                    </div>
-                    <h4 class="page-title">WNBA Players</h4>
-                </div>
-            </div>
+    <section class="ds-players-page">
+        <h1 class="ds-players-title">League Players</h1>
+
+        <div class="mb-4">
+            <DsSearchInput bind:value={searchTerm} placeholder="Search players, teams, or positions…" />
         </div>
 
-        <!-- Controls -->
-        <div class="row mb-3">
-            <div class="col-md-8">
-                <div class="card">
-                    <div class="card-body">
-                        <div class="input-group">
-                            <span class="input-group-text">
-                                <i class="fas fa-search"></i>
-                            </span>
-                            <input
-                                type="text"
-                                class="form-control"
-                                placeholder="Search players by name or position..."
-                                bind:value={searchTerm}
-                            />
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="card">
-                    <div class="card-body">
-                        <div class="btn-group w-100" role="group">
-                            <button
-                                type="button"
-                                class="btn {viewMode === 'cards' ? 'btn-success' : 'btn-outline-success'}"
-                                on:click={() => viewMode = 'cards'}
-                            >
-                                <i class="fas fa-th-large me-1"></i>Cards
-                            </button>
-                            <button
-                                type="button"
-                                class="btn {viewMode === 'table' ? 'btn-success' : 'btn-outline-success'}"
-                                on:click={() => viewMode = 'table'}
-                            >
-                                <i class="fas fa-table me-1"></i>Table
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
+        <div class="ds-chip-row mb-4">
+            {#each positionChips as chip}
+                <DsChip
+                    label={chip.label}
+                    active={positionFilter === chip.key}
+                    on:click={() => (positionFilter = chip.key)}
+                />
+            {/each}
         </div>
 
-        <LoadingError
-            {loading}
-            {error}
-            loadingText="Loading players..."
-            retryAction={() => {
-                loading = true;
-                error = null;
-                onMount();
-            }}
-        />
-
-        {#if !loading && !error}
-            {#if viewMode === 'table'}
-            <!-- Table View -->
-            <div class="row">
-                <div class="col-12">
-                    <div class="card">
-                        <div class="card-header">
-                            <h5 class="card-title mb-0">Players ({filteredPlayers.length})</h5>
-                        </div>
-                        <div class="card-body">
-                            {#if filteredPlayers.length > 0}
-                                <div class="table-responsive">
-                                    <table class="table table-striped table-hover">
-                                        <thead>
-                                            <tr>
-                                                <th>Player</th>
-                                                <th>Position</th>
-                                                <th>Jersey</th>
-                                                <th>Athlete ID</th>
-                                                <th class="text-center">Actions</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {#each filteredPlayers as player}
-                                                <tr>
-                                                    <td>
-                                                        <div class="d-flex align-items-center">
-                                                            <div class="avatar-xs bg-success bg-opacity-10 rounded-circle d-flex align-items-center justify-content-center me-2">
-                                                                {#if player.athlete_headshot_href}
-                                                                    <img src={player.athlete_headshot_href} alt={player.athlete_display_name} class="rounded-circle" style="width: 24px; height: 24px; object-fit: cover;" />
-                                                                {:else}
-                                                                    <i class="fas fa-user text-success fs-12"></i>
-                                                                {/if}
-                                                            </div>
-                                                            <div>
-                                                                <div class="fw-semibold">{player.athlete_display_name}</div>
-                                                                <small class="text-muted">{player.athlete_short_name}</small>
-                                                            </div>
-                                                        </div>
-                                                    </td>
-                                                    <td>
-                                                        <span class="badge bg-info">{player.athlete_position_abbreviation || 'N/A'}</span>
-                                                        {#if player.athlete_position_name}
-                                                            <br><small class="text-muted">{player.athlete_position_name}</small>
-                                                        {/if}
-                                                    </td>
-                                                    <td>
-                                                        <span class="badge bg-secondary">#{player.athlete_jersey || 'N/A'}</span>
-                                                    </td>
-                                                    <td>
-                                                        <small class="text-muted">{player.athlete_id}</small>
-                                                    </td>
-                                                    <td class="text-center align-middle">
-                                                        <div
-                                                            class="d-inline-flex flex-wrap gap-2 justify-content-center player-table-actions"
-                                                        >
-                                                            <a
-                                                                href="/players/{player.athlete_id}/data"
-                                                                class="btn btn-outline-success btn-sm"
-                                                                title="Data"
-                                                                ><i class="fas fa-database"></i></a
-                                                            >
-                                                            <a
-                                                                href="/players/{player.athlete_id}/analytics"
-                                                                class="btn btn-success btn-sm"
-                                                                title="Analytics"
-                                                                ><i class="fas fa-chart-line"></i></a
-                                                            >
-                                                            <a
-                                                                href="/players/{player.athlete_id}"
-                                                                class="btn btn-outline-secondary btn-sm"
-                                                                title="Profile"
-                                                                ><i class="fas fa-eye"></i></a
-                                                            >
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            {/each}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            {:else}
-                                <div class="text-center py-4">
-                                    <div class="avatar-lg bg-light rounded-circle d-flex align-items-center justify-content-center mx-auto mb-3">
-                                        <i class="fas fa-search text-muted fs-24"></i>
-                                    </div>
-                                    <h5 class="mb-2">No Players Found</h5>
-                                    <p class="text-muted mb-0">No players match your search criteria.</p>
-                                </div>
-                            {/if}
-                        </div>
-                    </div>
-                </div>
-            </div>
+        {#if loading}
+            <p class="ds-text-muted">Loading players…</p>
+        {:else if error}
+            <ErrorMessage message={error} />
         {:else}
-            <!-- Card View -->
-            <div class="row">
-                {#each filteredPlayers as player}
-                    <div class="col-xl-3 col-md-6 mb-4">
-                        <div class="card">
-                            <div class="card-body">
-                                <div class="d-flex align-items-center mb-3">
-                                    <div class="avatar-sm bg-success bg-opacity-10 rounded-circle d-flex align-items-center justify-content-center me-3">
-                                        {#if player.athlete_headshot_href}
-                                            <img src={player.athlete_headshot_href} alt={player.athlete_display_name} class="rounded-circle" style="width: 32px; height: 32px; object-fit: cover;" />
-                                        {:else}
-                                            <i class="fas fa-user text-success fs-18"></i>
-                                        {/if}
+            <div class="ds-player-grid">
+                {#each filteredPlayers as player, i}
+                    <article class="ds-player-card">
+                        {#if i < 2}
+                            <div class="ds-player-card__hot">
+                                <DsIcon name="trending_up" size={12} /> HOT
+                            </div>
+                        {/if}
+                        <div class="ds-player-card__head">
+                            <div class="ds-player-card__avatar-wrap">
+                                {#if player.athlete_headshot_href}
+                                    <img src={player.athlete_headshot_href} alt="" class="ds-player-card__avatar" />
+                                {:else}
+                                    <div class="ds-player-card__avatar ds-player-card__avatar--empty">
+                                        <DsIcon name="person" size={28} />
                                     </div>
-                                    <div class="flex-grow-1">
-                                        <h6 class="card-title mb-1">{player.athlete_display_name}</h6>
-                                        <p class="text-muted mb-0 small">{player.athlete_short_name}</p>
-                                    </div>
-                                </div>
-
-                                <div class="row g-2 mb-3">
-                                    <div class="col-6">
-                                        <div class="text-center p-2 bg-light rounded">
-                                            <small class="text-muted d-block">Position</small>
-                                            <span class="fw-semibold">{player.athlete_position_abbreviation || 'N/A'}</span>
-                                        </div>
-                                    </div>
-                                    <div class="col-6">
-                                        <div class="text-center p-2 bg-light rounded">
-                                            <small class="text-muted d-block">Jersey</small>
-                                            <span class="fw-semibold">#{player.athlete_jersey || 'N/A'}</span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div class="player-card-actions d-flex flex-column flex-lg-row flex-wrap gap-2 mt-3">
-                                    <a href="/players/{player.athlete_id}/data" class="btn btn-success btn-sm flex-fill text-center text-nowrap">
-                                        <i class="fas fa-database me-1"></i>Data
-                                    </a>
-                                    <a
-                                        href="/players/{player.athlete_id}/analytics"
-                                        class="btn btn-outline-success btn-sm flex-fill text-center text-nowrap"
-                                    >
-                                        <i class="fas fa-chart-line me-1"></i>Analytics
-                                    </a>
-                                    <a href="/players/{player.athlete_id}" class="btn btn-outline-secondary btn-sm flex-fill text-center text-nowrap">
-                                        <i class="fas fa-eye me-1"></i>Profile
-                                    </a>
+                                {/if}
+                            </div>
+                            <div>
+                                <h2 class="ds-player-card__name">{player.athlete_display_name}</h2>
+                                <p class="ds-player-card__meta">
+                                    {player.athlete_position_abbreviation ?? player.athlete_position_name ?? '—'}
+                                    {#if player.athlete_jersey}• #{player.athlete_jersey}{/if}
+                                </p>
+                                <div class="ds-player-card__status">
+                                    <span class="ds-status-dot"></span>
+                                    <span>AVAILABLE</span>
                                 </div>
                             </div>
                         </div>
-                    </div>
+                        <div class="ds-player-card__stats">
+                            <div><span>POS</span><strong>{player.athlete_position_abbreviation ?? '—'}</strong></div>
+                            <div><span>#</span><strong>{player.athlete_jersey ?? '—'}</strong></div>
+                            <div><span>ID</span><strong class="text-truncate">{player.athlete_id.slice(-4)}</strong></div>
+                        </div>
+                        <a href="/players/{player.athlete_id}" class="ds-player-card__cta">View Full Stats</a>
+                    </article>
                 {/each}
             </div>
-
-            {#if filteredPlayers.length === 0 && searchTerm}
-                <div class="row">
-                    <div class="col-12">
-                        <div class="card">
-                            <div class="card-body text-center">
-                                <div class="avatar-lg bg-light rounded-circle d-flex align-items-center justify-content-center mx-auto mb-3">
-                                    <i class="fas fa-search text-muted fs-24"></i>
-                                </div>
-                                <h5 class="mb-2">No Players Found</h5>
-                                <p class="text-muted mb-0">No players match your search criteria.</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            {:else if players.length === 0}
-                <div class="row">
-                    <div class="col-12">
-                        <div class="card">
-                            <div class="card-body text-center">
-                                <div class="avatar-lg bg-light rounded-circle d-flex align-items-center justify-content-center mx-auto mb-3">
-                                    <i class="fas fa-users text-muted fs-24"></i>
-                                </div>
-                                <h5 class="mb-2">No Players Found</h5>
-                                <p class="text-muted mb-0">There are currently no players in the database.</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+            {#if filteredPlayers.length === 0}
+                <p class="ds-text-muted">No players match your filters.</p>
             {/if}
         {/if}
-    {/if}
-    </div>
+    </section>
 </DefaultLayout>
+
+<style>
+    .ds-players-page { padding-bottom: var(--ds-spacing-lg); }
+    .ds-players-title {
+        font-size: clamp(28px, 4vw, 36px);
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        margin-bottom: var(--ds-spacing-md);
+    }
+    .ds-chip-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--ds-spacing-sm);
+    }
+    .ds-player-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+        gap: var(--ds-spacing-md);
+    }
+    .ds-player-card {
+        position: relative;
+        background: var(--ds-surface-container-lowest);
+        border: 1px solid var(--ds-outline-variant);
+        border-radius: var(--ds-radius-xl);
+        padding: var(--ds-spacing-md);
+        transition: transform 0.2s ease, border-color 0.2s ease;
+        overflow: hidden;
+    }
+    .ds-player-card:hover {
+        transform: translateY(-2px);
+        border-color: var(--ds-primary);
+    }
+    .ds-player-card__hot {
+        position: absolute;
+        top: 0;
+        right: 0;
+        background: var(--ds-primary);
+        color: var(--ds-on-primary);
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        padding: 4px 10px;
+        border-bottom-left-radius: var(--ds-radius-lg);
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+    .ds-player-card__head {
+        display: flex;
+        gap: var(--ds-spacing-md);
+        margin-bottom: var(--ds-spacing-md);
+    }
+    .ds-player-card__avatar-wrap { flex-shrink: 0; }
+    .ds-player-card__avatar {
+        width: 64px;
+        height: 64px;
+        border-radius: 50%;
+        object-fit: cover;
+        border: 2px solid var(--ds-primary);
+    }
+    .ds-player-card__avatar--empty {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--ds-surface-container-high);
+        border-color: var(--ds-border-subtle);
+        color: var(--ds-text-muted);
+    }
+    .ds-player-card__name {
+        font-size: 18px;
+        font-weight: 600;
+        margin: 0 0 4px;
+        line-height: 1.2;
+    }
+    .ds-player-card:hover .ds-player-card__name { color: var(--ds-primary); }
+    .ds-player-card__meta {
+        font-size: 14px;
+        color: var(--ds-on-surface-variant);
+        margin: 0 0 6px;
+    }
+    .ds-player-card__status {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        color: var(--ds-tertiary);
+    }
+    .ds-status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--ds-success);
+    }
+    .ds-player-card__stats {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 4px;
+        border-top: 1px solid var(--ds-outline-variant);
+        padding-top: var(--ds-spacing-md);
+        margin-bottom: var(--ds-spacing-md);
+        text-align: center;
+    }
+    .ds-player-card__stats span {
+        display: block;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        color: var(--ds-outline);
+        margin-bottom: 2px;
+    }
+    .ds-player-card__stats strong {
+        font-size: 16px;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+    }
+    .ds-player-card__stats > div:nth-child(2) {
+        border-left: 1px solid var(--ds-outline-variant);
+        border-right: 1px solid var(--ds-outline-variant);
+    }
+    .ds-player-card__cta {
+        display: block;
+        text-align: center;
+        background: var(--ds-secondary);
+        color: #fff;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        padding: 10px;
+        border-radius: var(--ds-radius-lg);
+        text-decoration: none;
+        transition: background 0.15s ease;
+    }
+    .ds-player-card__cta:hover {
+        background: var(--ds-primary);
+        color: var(--ds-on-primary);
+    }
+</style>

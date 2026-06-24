@@ -1,0 +1,73 @@
+//
+// Strip legacy admin template chrome — Stitch uses top-nav only
+//
+
+.wrapper.ds-shell {
+    .page-content {
+        padding-left: 0 !important;
+        background-color: var(--ds-surface);
+    }
+
+    .main-nav {
+        transform: translateX(-100%);
+        transition: transform 0.25s ease;
+        box-shadow: none;
+        z-index: 1020;
+
+        @media (min-width: 1141px) {
+            display: none !important;
+        }
+    }
+
+    &.sidebar-open .main-nav {
+        transform: translateX(0);
+    }
+
+    .footer {
+        margin-top: var(--ds-spacing-lg);
+        padding: var(--ds-spacing-md) 0;
+        font-size: 12px;
+    }
+}
+
+html.sidebar-enable .wrapper.ds-shell .main-nav {
+    transform: translateX(0);
+}
+
+// Kill legacy template shadows / light surfaces in dark shell
+.wrapper.ds-shell {
+    .topbar:not(.ds-topbar) {
+        box-shadow: none;
+    }
+
+    .container-xxl {
+        max-width: var(--ds-container-max);
+        padding-left: 0;
+        padding-right: 0;
+    }
+
+    .avatar-sm.bg-primary,
+    .avatar-sm.bg-success,
+    .avatar-sm.bg-info,
+    .avatar-sm.bg-warning,
+    .avatar-sm.bg-danger {
+        background: rgba(255, 108, 47, 0.12) !important;
+        border-radius: var(--ds-radius) !important;
+
+        i, .fas {
+            color: var(--ds-primary) !important;
+        }
+    }
+
+    .hover-shadow:hover {
+        box-shadow: none !important;
+        border-color: var(--ds-primary) !important;
+    }
+}
+
+// Mobile bottom nav spacing
+@media (max-width: 767.98px) {
+    .wrapper.ds-shell .page-content {
+        padding-bottom: calc(72px + var(--ds-spacing-md));
+    }
+}

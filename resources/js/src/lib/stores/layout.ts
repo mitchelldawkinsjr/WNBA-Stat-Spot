@@ -13,7 +13,7 @@ const defaultConfig: LayoutType = {
     theme: 'dark',
     topBarColor: 'dark',
     leftSideBarColor: 'dark',
-    leftSideBarSize: 'sm-hover-active'
+    leftSideBarSize: 'hidden'
 }
 
 export const layout: Writable<LayoutType> = persisted('reback_svelte_layout', defaultConfig);

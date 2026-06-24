@@ -26,7 +26,7 @@ test.describe('WNBA Stat Spot redesign shell', () => {
     await page.setViewportSize({ width: 1400, height: 900 });
     await waitForShell(page);
     await expect(page.locator('.ds-topbar .logo-dark img.logo-lg')).toBeVisible();
-    await expect(page.getByRole('heading', { name: /dashboard/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /live games/i })).toBeVisible();
   });
 
   test('primary top navigation links are present', async ({ page }) => {
@@ -73,6 +73,11 @@ test.describe('Navigation flow', () => {
     await waitForShell(page);
     await page.getByRole('button', { name: 'Open menu' }).click();
     await expect(page.locator('.main-nav')).toBeVisible();
-    await page.keyboard.press('Escape');
+  });
+
+  test('mobile bottom nav is visible', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await waitForShell(page);
+    await expect(page.locator('.ds-bottom-nav')).toBeVisible();
   });
 });

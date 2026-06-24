@@ -59,7 +59,7 @@
             display: none;
         }
 
-        @media (min-width: 1200px) {
+        @media (min-width: 992px) {
             display: flex;
         }
     }
@@ -120,18 +120,5 @@
         .logo-box {
             display: none;
         }
-    }
-
-    @media (min-width: 1141px) {
-        .page-content {
-            padding-left: $main-nav-width;
-        }
-    }
-}
-
-html[data-menu-size='hidden'].ds-shell-ready .wrapper.ds-shell .page-content,
-html[data-menu-size='hidden'] .wrapper.ds-shell .page-content {
-    @media (max-width: 1140px) {
-        padding-left: 0;
     }
 }

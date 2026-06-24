@@ -287,8 +287,53 @@ body {
     }
 }
 
-.footer {
-    border-top: 1px solid var(--ds-border-subtle);
-    background: var(--ds-surface-container-lowest);
+.material-symbols-outlined {
+    font-family: 'Material Symbols Outlined';
+    font-weight: normal;
+    font-style: normal;
+    line-height: 1;
+    letter-spacing: normal;
+    text-transform: none;
+    display: inline-block;
+    white-space: nowrap;
+    word-wrap: normal;
+    direction: ltr;
+    vertical-align: middle;
+}
+
+.ds-more-menu {
+    background: var(--ds-surface-container-high) !important;
+    border: 1px solid var(--ds-border-subtle) !important;
+    border-radius: var(--ds-radius-lg) !important;
+
+    .dropdown-item {
+        color: var(--ds-on-surface);
+        font-size: 14px;
+
+        &:hover {
+            background: var(--ds-surface-dark-elevated);
+            color: var(--ds-primary);
+        }
+    }
+
+    .dropdown-header {
+        color: var(--ds-text-muted);
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+    }
+}
+
+.progress {
+    background: var(--ds-surface-variant);
+    height: 6px;
+    border-radius: var(--ds-radius-pill);
+}
+
+.input-group-text {
+    background: var(--ds-surface-container-low);
+    border-color: var(--ds-border-subtle);
     color: var(--ds-text-muted);
 }
+
