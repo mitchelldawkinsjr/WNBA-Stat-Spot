@@ -4,6 +4,29 @@
 		<meta charset="utf-8" />
 		<link rel="icon" href="%sveltekit.assets%/favicon.png" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<script>
+			(function () {
+				var STORAGE_KEY = 'reback_svelte_layout';
+				var defaults = { theme: 'light', topBarColor: 'light', leftSideBarColor: 'light' };
+				try {
+					var raw = localStorage.getItem(STORAGE_KEY);
+					var config = raw ? JSON.parse(raw) : defaults;
+					var theme = config.theme === 'dark' ? 'dark' : 'light';
+					var topBar = config.topBarColor === 'dark' ? 'dark' : 'light';
+					var menu = config.leftSideBarColor === 'dark' ? 'dark' : 'light';
+					var root = document.documentElement;
+					root.setAttribute('data-bs-theme', theme);
+					root.setAttribute('data-topbar-color', topBar);
+					root.setAttribute('data-menu-color', menu);
+					root.style.colorScheme = theme;
+				} catch (error) {
+					document.documentElement.setAttribute('data-bs-theme', 'light');
+					document.documentElement.setAttribute('data-topbar-color', 'light');
+					document.documentElement.setAttribute('data-menu-color', 'light');
+					document.documentElement.style.colorScheme = 'light';
+				}
+			})();
+		</script>
 		%sveltekit.head%
 	</head>
 	<body data-sveltekit-preload-data="hover">

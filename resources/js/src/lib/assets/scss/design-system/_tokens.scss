@@ -27,34 +27,36 @@
 
     --ds-topbar-height: 64px;
 
-    // Dark fallback before layout JS sets data-bs-theme
-    --ds-surface: #0e141a;
-    --ds-surface-dim: #0e141a;
-    --ds-surface-bright: #343a40;
-    --ds-surface-container-lowest: #090f14;
-    --ds-surface-container-low: #161c22;
-    --ds-surface-container: #1a2026;
-    --ds-surface-container-high: #252b31;
-    --ds-surface-container-highest: #2f353c;
+    // Light fallback before layout JS hydrates (Stitch default shell)
+    --ds-surface: #f9f9f9;
+    --ds-surface-dim: #dadada;
+    --ds-surface-bright: #f9f9f9;
+    --ds-surface-container-lowest: #ffffff;
+    --ds-surface-container-low: #f4f3f3;
+    --ds-surface-container: #eeeeee;
+    --ds-surface-container-high: #e8e8e8;
+    --ds-surface-container-highest: #e2e2e2;
     --ds-surface-dark: #262d34;
     --ds-surface-dark-elevated: #2c3238;
-    --ds-surface-variant: #2f353c;
-    --ds-on-surface: #dde3eb;
-    --ds-on-surface-variant: #e1bfb4;
-    --ds-text-muted: #aab8c5;
-    --ds-outline: #a98a80;
-    --ds-outline-variant: #594139;
-    --ds-border-subtle: #2f3944;
-    --ds-primary: #ff6c2f;
+    --ds-surface-variant: #e2e2e2;
+    --ds-on-surface: #1a1c1c;
+    --ds-on-surface-variant: #594139;
+    --ds-text-muted: #5e5e5f;
+    --ds-outline: #8d7167;
+    --ds-outline-variant: #e1bfb4;
+    --ds-border-subtle: #e1bfb4;
+    --ds-primary: #a93800;
     --ds-primary-container: #ff6c2f;
-    --ds-primary-soft: #ffb59b;
+    --ds-primary-soft: #a93800;
     --ds-on-primary: #ffffff;
     --ds-on-primary-container: #5d1c00;
     --ds-secondary: #3491fc;
-    --ds-secondary-soft: #a7c8ff;
-    --ds-secondary-container: #2c3238;
-    --ds-on-secondary-container: #dde3eb;
-    --ds-tertiary: #8e98c0;
+    --ds-secondary-soft: #004787;
+    --ds-secondary-container: #eee2c5;
+    --ds-on-secondary-container: #6c644d;
+    --ds-tertiary: #5e5e5f;
+    --ds-card-on-surface: #dde3eb;
+    --ds-card-text-muted: #aab8c5;
 }
 
 // Dark theme (default) — Stitch home-dashboard / league-standings
@@ -89,6 +91,8 @@ html[data-bs-theme='dark'],
     --ds-secondary-container: #2c3238;
     --ds-on-secondary-container: #dde3eb;
     --ds-tertiary: #8e98c0;
+    --ds-card-on-surface: var(--ds-on-surface);
+    --ds-card-text-muted: var(--ds-text-muted);
 
     --#{$prefix}body-bg: var(--ds-surface);
     --#{$prefix}body-color: var(--ds-on-surface);
@@ -98,7 +102,7 @@ html[data-bs-theme='dark'],
     --#{$prefix}link-hover-color: var(--ds-primary);
 }
 
-// Light theme — Stitch teams / players exports
+// Light theme — Stitch game-details / teams / players exports
 html[data-bs-theme='light'],
 [data-bs-theme='light'] {
     --ds-surface: #f9f9f9;
@@ -109,8 +113,9 @@ html[data-bs-theme='light'],
     --ds-surface-container: #eeeeee;
     --ds-surface-container-high: #e8e8e8;
     --ds-surface-container-highest: #e2e2e2;
-    --ds-surface-dark: #ffffff;
-    --ds-surface-dark-elevated: #f4f3f3;
+    // Cards stay on the dark slate layer used in Stitch light screens
+    --ds-surface-dark: #262d34;
+    --ds-surface-dark-elevated: #2c3238;
     --ds-surface-variant: #e2e2e2;
 
     --ds-on-surface: #1a1c1c;
@@ -118,7 +123,7 @@ html[data-bs-theme='light'],
     --ds-text-muted: #5e5e5f;
     --ds-outline: #8d7167;
     --ds-outline-variant: #e1bfb4;
-    --ds-border-subtle: #e1bfb4;
+    --ds-border-subtle: #2f3944;
 
     --ds-primary: #a93800;
     --ds-primary-container: #ff6c2f;
@@ -130,6 +135,8 @@ html[data-bs-theme='light'],
     --ds-secondary-container: #eee2c5;
     --ds-on-secondary-container: #6c644d;
     --ds-tertiary: #5e5e5f;
+    --ds-card-on-surface: #dde3eb;
+    --ds-card-text-muted: #aab8c5;
 
     --#{$prefix}body-bg: var(--ds-surface);
     --#{$prefix}body-color: var(--ds-on-surface);

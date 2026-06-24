@@ -9,14 +9,25 @@
     right: 0;
     height: var(--ds-topbar-height);
     padding-left: 0;
-    background-color: var(--ds-surface-container-low);
+    background-color: var(--ds-surface);
     border-bottom: 1px solid var(--ds-border-subtle);
     box-shadow: none;
     z-index: 1015;
 
+    html[data-bs-theme='dark'] & {
+        background-color: var(--ds-surface-container-low);
+    }
+
     > .container-xxl,
     > .ds-topbar__inner {
         height: 100%;
+        padding-left: var(--ds-margin-mobile);
+        padding-right: var(--ds-margin-mobile);
+
+        @media (min-width: 768px) {
+            padding-left: var(--ds-margin-desktop);
+            padding-right: var(--ds-margin-desktop);
+        }
     }
 
     .navbar-header {
@@ -112,6 +123,7 @@
 .wrapper.ds-shell {
     .page-content {
         padding-top: calc(var(--ds-topbar-height) + var(--ds-spacing-md));
+        margin-left: 0;
         padding-left: 0;
         min-height: 100vh;
     }

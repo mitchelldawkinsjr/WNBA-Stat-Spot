@@ -58,6 +58,7 @@ body {
     border: 1px solid var(--ds-border-subtle);
     border-radius: var(--ds-radius-lg);
     box-shadow: none;
+    color: var(--ds-card-on-surface, var(--ds-on-surface));
     transition: transform 0.2s ease, background-color 0.2s ease;
 
     &:hover {
@@ -69,6 +70,18 @@ body {
 
         &:hover {
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+        }
+
+        .card-header,
+        .card-title,
+        .card-body,
+        h1, h2, h3, h4, h5, h6 {
+            color: var(--ds-card-on-surface);
+        }
+
+        .text-muted,
+        .ds-text-muted {
+            color: var(--ds-card-text-muted) !important;
         }
     }
 
@@ -219,7 +232,19 @@ html[data-bs-theme='light'] {
     border: 1px solid var(--ds-border-subtle);
     border-radius: var(--ds-radius-lg);
     padding: var(--ds-spacing-md);
+    color: var(--ds-card-on-surface, var(--ds-on-surface));
     transition: transform 0.2s ease;
+
+    html[data-bs-theme='light'] & {
+        background: var(--ds-surface-dark);
+        color: var(--ds-card-on-surface);
+
+        .ds-section-label,
+        .ds-text-muted,
+        .text-muted {
+            color: var(--ds-card-text-muted) !important;
+        }
+    }
 
     &:hover {
         transform: translateY(-2px);

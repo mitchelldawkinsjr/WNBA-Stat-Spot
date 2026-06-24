@@ -104,6 +104,25 @@
         if (status === 'STATUS_IN_PROGRESS') return 'Live';
         return status.replace(/^STATUS_/, '').replaceAll('_', ' ').toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
     }
+
+    function gameDateTimeLabel(g: Game): string {
+        return new Date(g.game_date_time || g.game_date).toLocaleString(undefined, {
+            weekday: 'short',
+            month: 'short',
+            day: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+        });
+    }
+
+    function venueLabel(g: Game): string {
+        const parts: string[] = [];
+        if (g.venue_name) parts.push(g.venue_name);
+        const location = [g.venue_city, g.venue_state].filter(Boolean).join(', ');
+        if (location) parts.push(location);
+        if (g.venue_capacity) parts.push(`Capacity ${g.venue_capacity.toLocaleString()}`);
+        return parts.join(' · ') || 'Venue TBD';
+    }
 </script>
 
 <svelte:head>
@@ -122,66 +141,60 @@
     {:else if error}
         <ErrorMessage message={error} />
     {:else if game}
-        <div class="row g-4">
-            <div class="col-lg-8">
-                <div class="card">
-                    <div class="card-body">
-                        <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-4">
-                            <div>
-                                <p class="ds-section-label mb-1">{game.season} • {game.season_type}</p>
-                                <h2 class="ds-headline-md mb-0">{teamLabel('away')} @ {teamLabel('home')}</h2>
-                                <p class="ds-text-muted mb-0 mt-1">
-                                    {new Date(game.game_date_time || game.game_date).toLocaleString()}
-                                </p>
-                            </div>
-                            <StatusBadge variant="neutral" label={formatStatus(game.status_name)} />
+        <div class="game-detail-page">
+            <div class="card game-detail-page__header-card">
+                <div class="card-body">
+                    <div class="game-detail-page__meta">
+                        <div class="game-detail-page__meta-main">
+                            <p class="ds-section-label mb-1">{game.season} • {game.season_type}</p>
+                            <h2 class="ds-headline-md mb-0">{teamLabel('away')} @ {teamLabel('home')}</h2>
+                            <p class="ds-text-muted mb-0 mt-1">{gameDateTimeLabel(game)}</p>
+                            <p class="ds-text-muted small mb-0 mt-1">{venueLabel(game)}</p>
                         </div>
+                        <StatusBadge variant="neutral" label={formatStatus(game.status_name)} />
+                    </div>
 
-                        <div class="row g-3">
-                            <div class="col-sm-6">
-                                <div class="ds-score-card h-100">
-                                    <p class="ds-section-label mb-2">Away</p>
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <div class="d-flex align-items-center gap-2">
-                                            {#if teamLogo('away')}
-                                                <img src={teamLogo('away')} alt={teamAbbr('away')} style="width:32px;height:32px;object-fit:contain;" />
-                                            {/if}
-                                            <div>
-                                                <span class="fw-semibold">{teamAbbr('away')}</span>
-                                                {#if teamRecord('away')}
-                                                    <div class="small text-muted">{teamRecord('away')}</div>
-                                                {/if}
-                                            </div>
-                                        </div>
-                                        <span class="ds-stat-value fs-3">{teamScore('away')}</span>
+                    <div class="game-detail-page__scoreboard">
+                        <div class="ds-score-card game-detail-page__score-card">
+                            <p class="ds-section-label mb-2">Away</p>
+                            <div class="game-detail-page__score-row">
+                                <div class="game-detail-page__team">
+                                    {#if teamLogo('away')}
+                                        <img src={teamLogo('away')} alt={teamAbbr('away')} class="game-detail-page__logo" />
+                                    {/if}
+                                    <div class="game-detail-page__team-text">
+                                        <span class="fw-semibold">{teamAbbr('away')}</span>
+                                        {#if teamRecord('away')}
+                                            <div class="small text-muted">{teamRecord('away')}</div>
+                                        {/if}
                                     </div>
                                 </div>
+                                <span class="ds-stat-value fs-3">{teamScore('away')}</span>
                             </div>
-                            <div class="col-sm-6">
-                                <div class="ds-score-card h-100">
-                                    <p class="ds-section-label mb-2">Home</p>
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <div class="d-flex align-items-center gap-2">
-                                            {#if teamLogo('home')}
-                                                <img src={teamLogo('home')} alt={teamAbbr('home')} style="width:32px;height:32px;object-fit:contain;" />
-                                            {/if}
-                                            <div>
-                                                <span class="fw-semibold">{teamAbbr('home')}</span>
-                                                {#if teamRecord('home')}
-                                                    <div class="small text-muted">{teamRecord('home')}</div>
-                                                {/if}
-                                            </div>
-                                        </div>
-                                        <span class="ds-stat-value fs-3">{teamScore('home')}</span>
+                        </div>
+                        <div class="ds-score-card game-detail-page__score-card">
+                            <p class="ds-section-label mb-2">Home</p>
+                            <div class="game-detail-page__score-row">
+                                <div class="game-detail-page__team">
+                                    {#if teamLogo('home')}
+                                        <img src={teamLogo('home')} alt={teamAbbr('home')} class="game-detail-page__logo" />
+                                    {/if}
+                                    <div class="game-detail-page__team-text">
+                                        <span class="fw-semibold">{teamAbbr('home')}</span>
+                                        {#if teamRecord('home')}
+                                            <div class="small text-muted">{teamRecord('home')}</div>
+                                        {/if}
                                     </div>
                                 </div>
+                                <span class="ds-stat-value fs-3">{teamScore('home')}</span>
                             </div>
                         </div>
                     </div>
                 </div>
+            </div>
 
-                {#if showPreviewTab || boxScore.length > 0}
-                    <ul class="nav nav-tabs mt-4" role="tablist">
+            {#if showPreviewTab || boxScore.length > 0}
+                <ul class="nav nav-tabs game-detail-page__tabs" role="tablist">
                         {#if showPreviewTab}
                             <li class="nav-item" role="presentation">
                                 <button
@@ -209,18 +222,18 @@
                     </ul>
                 {/if}
 
-                {#if activeTab === 'preview'}
-                    {#if previewLoading}
-                        <div class="mt-4"><LoadingSpinner /></div>
-                    {:else if previewError}
-                        <div class="mt-4"><ErrorMessage message={previewError} /></div>
-                    {:else if preview?.home_team}
-                        <div class="mt-4">
-                            <GamePreviewPanel {preview} />
-                        </div>
-                    {/if}
-                {:else if activeTab === 'boxscore'}
-                    <div class="card mt-4" id="box-score">
+            {#if activeTab === 'preview'}
+                {#if previewLoading}
+                    <div class="game-detail-page__tab-panel"><LoadingSpinner /></div>
+                {:else if previewError}
+                    <div class="game-detail-page__tab-panel"><ErrorMessage message={previewError} /></div>
+                {:else if preview?.home_team}
+                    <div class="game-detail-page__tab-panel">
+                        <GamePreviewPanel {preview} />
+                    </div>
+                {/if}
+            {:else if activeTab === 'boxscore'}
+                <div class="card game-detail-page__tab-panel" id="box-score">
                         <div class="card-header border-0">
                             <h3 class="ds-headline-sm mb-0">Box Score</h3>
                         </div>
@@ -258,44 +271,84 @@
                                 <p class="ds-text-muted mb-0">Box score not available yet for this game.</p>
                             {/if}
                         </div>
-                    </div>
-                {/if}
-            </div>
-
-            <div class="col-lg-4">
-                <div class="card h-100">
-                    <div class="card-header border-0">
-                        <h3 class="ds-headline-sm mb-0">Venue</h3>
-                    </div>
-                    <div class="card-body">
-                        <p class="mb-1 fw-semibold">{game.venue_name ?? 'TBD'}</p>
-                        <p class="ds-text-muted mb-0">
-                            {[game.venue_city, game.venue_state].filter(Boolean).join(', ') || 'Location TBD'}
-                        </p>
-                        {#if game.venue_capacity}
-                            <p class="ds-text-muted mt-2 mb-0">Capacity: {game.venue_capacity.toLocaleString()}</p>
-                        {/if}
-                    </div>
                 </div>
-
-                {#if preview?.prediction && activeTab === 'preview'}
-                    <div class="card mt-4">
-                        <div class="card-header border-0">
-                            <h3 class="ds-headline-sm mb-0">Quick Pick</h3>
-                        </div>
-                        <div class="card-body">
-                            <p class="fw-bold fs-5 mb-1">{preview.prediction.predicted_winner_label}</p>
-                            <p class="ds-text-muted small mb-2">
-                                {preview.prediction.win_probability.home}% / {preview.prediction.win_probability.away}%
-                                ({teamAbbr('home')} / {teamAbbr('away')})
-                            </p>
-                            <p class="mb-0 small">
-                                Projected: {teamAbbr('away')} {preview.prediction.projected_score.away} – {teamAbbr('home')} {preview.prediction.projected_score.home}
-                            </p>
-                        </div>
-                    </div>
-                {/if}
-            </div>
+            {/if}
         </div>
     {/if}
 </DefaultLayout>
+
+<style>
+    .game-detail-page {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    .game-detail-page__header-card,
+    .game-detail-page__tab-panel {
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    .game-detail-page__meta {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 0.75rem 1rem;
+        margin-bottom: 1.25rem;
+    }
+
+    .game-detail-page__meta-main {
+        flex: 1 1 12rem;
+        min-width: 0;
+    }
+
+    .game-detail-page__scoreboard {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+    }
+
+    .game-detail-page__score-card {
+        flex: 1 1 14rem;
+        min-width: 0;
+    }
+
+    .game-detail-page__score-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+        min-width: 0;
+    }
+
+    .game-detail-page__team {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        min-width: 0;
+        flex: 1 1 auto;
+    }
+
+    .game-detail-page__team-text {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .game-detail-page__logo {
+        width: 32px;
+        height: 32px;
+        flex-shrink: 0;
+        object-fit: contain;
+    }
+
+    .game-detail-page__tabs {
+        margin-top: 0.25rem;
+        flex-wrap: nowrap;
+        overflow-x: auto;
+    }
+</style>

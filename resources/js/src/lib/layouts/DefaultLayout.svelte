@@ -5,13 +5,14 @@
     import MobileBottomNav from "$lib/layouts/components/MobileBottomNav.svelte";
     import RightSideBar from "$lib/layouts/components/RightSideBar.svelte";
     import { onMount } from 'svelte';
-    import { initLayout } from '$lib/stores/layout';
+    import { initLayout, setLeftSideBarSize } from '$lib/stores/layout';
 
     let isRightSideBarOpen = false;
 
     onMount(() => {
         document.documentElement.classList.add('ds-shell-ready');
         initLayout();
+        setLeftSideBarSize('hidden');
     });
 </script>
 

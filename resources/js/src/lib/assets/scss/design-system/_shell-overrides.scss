@@ -4,8 +4,13 @@
 
 .wrapper.ds-shell {
     .page-content {
+        margin-left: 0 !important;
         padding-left: 0 !important;
         background-color: var(--ds-surface);
+    }
+
+    .topbar.ds-topbar {
+        padding-left: 0 !important;
     }
 
     .main-nav {
@@ -40,7 +45,7 @@ html.sidebar-enable .wrapper.ds-shell .main-nav {
         box-shadow: none;
     }
 
-    .container-xxl {
+    .container-xxl:not(.ds-topbar__inner) {
         max-width: var(--ds-container-max);
         padding-left: 0;
         padding-right: 0;

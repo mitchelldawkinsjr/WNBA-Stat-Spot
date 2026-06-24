@@ -10,9 +10,9 @@ type LayoutType = {
 }
 
 const defaultConfig: LayoutType = {
-    theme: 'dark',
-    topBarColor: 'dark',
-    leftSideBarColor: 'dark',
+    theme: 'light',
+    topBarColor: 'light',
+    leftSideBarColor: 'light',
     leftSideBarSize: 'hidden'
 }
 
@@ -23,11 +23,23 @@ let currentTopBarColor: 'light' | 'dark';
 let currentLeftSideBarColor: 'light' | 'dark';
 let currentLeftSideBarSize: 'sm-hover-active' | 'sm-hover' | 'hidden' | 'condensed' | 'default';
 
+const applyLayoutToDocument = (current: LayoutType) => {
+    if (typeof document === 'undefined') return;
+
+    const root = document.documentElement;
+    root.setAttribute('data-bs-theme', current.theme);
+    root.setAttribute('data-topbar-color', current.topBarColor);
+    root.setAttribute('data-menu-color', current.leftSideBarColor);
+    root.setAttribute('data-menu-size', current.leftSideBarSize);
+    root.style.colorScheme = current.theme;
+};
+
 layout.subscribe((current) => {
-    currentTheme = current.theme
-    currentTopBarColor = current.topBarColor
-    currentLeftSideBarColor = current.leftSideBarColor
-    currentLeftSideBarSize = current.leftSideBarSize
+    currentTheme = current.theme;
+    currentTopBarColor = current.topBarColor;
+    currentLeftSideBarColor = current.leftSideBarColor;
+    currentLeftSideBarSize = current.leftSideBarSize;
+    applyLayoutToDocument(current);
 });
 
 const updateLayout = (key: keyof LayoutType, value: LayoutType[keyof LayoutType], attribute: string) => {
@@ -51,10 +63,12 @@ export const toggleTheme = () => {
 };
 
 export const initLayout = () => {
-    setTheme(currentTheme);
-    setTopBarColor(currentTopBarColor);
-    setLeftSideBarColor(currentLeftSideBarColor);
-    setLeftSideBarSize(currentLeftSideBarSize);
+    applyLayoutToDocument({
+        theme: currentTheme,
+        topBarColor: currentTopBarColor,
+        leftSideBarColor: currentLeftSideBarColor,
+        leftSideBarSize: currentLeftSideBarSize,
+    });
 };
 
 export const resetLayout = () => {
