@@ -8,6 +8,7 @@ use App\Models\WnbaPlayerGame;
 use App\Models\WnbaTeam;
 use App\Services\WNBA\Data\DataAggregatorService;
 use App\Services\WNBA\Data\GameScheduleService;
+use App\Services\WNBA\Data\Support\TeamCatalog;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -32,52 +33,68 @@ class GamePreviewService
     {
         $cacheKey = "game_preview_{$externalGameId}_{$season}";
 
-        return Cache::remember($cacheKey, self::CACHE_TTL, function () use ($externalGameId, $season) {
-            $game = $this->resolveGame($externalGameId, $season);
-
-            if ($game === null) {
-                return ['error' => 'Game not found'];
-            }
-
-            $homeTeamId = (int) ($game['home_team']['id'] ?? 0);
-            $awayTeamId = (int) ($game['away_team']['id'] ?? 0);
-
-            if ($homeTeamId <= 0 || $awayTeamId <= 0) {
-                return [
-                    'error' => 'Team data unavailable for preview',
-                    'game' => $this->formatGameMeta($game),
-                ];
-            }
-
-            try {
-                $homeTeam = $this->buildTeamPreview($homeTeamId, $awayTeamId, $season, true);
-                $awayTeam = $this->buildTeamPreview($awayTeamId, $homeTeamId, $season, false);
-                $headToHead = $this->buildHeadToHead($homeTeamId, $awayTeamId, $season);
-                $prediction = $this->generatePrediction($homeTeam, $awayTeam, $headToHead, $game);
-                $analysis = $this->generateAnalysis($homeTeam, $awayTeam, $headToHead, $prediction);
-
-                return [
-                    'game' => $this->formatGameMeta($game),
-                    'home_team' => $homeTeam,
-                    'away_team' => $awayTeam,
-                    'head_to_head' => $headToHead,
-                    'comparison' => $this->buildComparisonData($homeTeam, $awayTeam),
-                    'prediction' => $prediction,
-                    'analysis' => $analysis,
-                    'generated_at' => now()->toIso8601String(),
-                ];
-            } catch (\Throwable $e) {
-                Log::error('Game preview generation failed', [
-                    'game_id' => $externalGameId,
-                    'error' => $e->getMessage(),
-                ]);
-
-                return [
-                    'error' => 'Failed to generate game preview',
-                    'game' => $this->formatGameMeta($game),
-                ];
-            }
+        $preview = Cache::remember($cacheKey, self::CACHE_TTL, function () use ($externalGameId, $season) {
+            return $this->generatePreview($externalGameId, $season);
         });
+
+        if (isset($preview['error']) && ! isset($preview['home_team'])) {
+            Cache::forget($cacheKey);
+        }
+
+        return $preview;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function generatePreview(string $externalGameId, int $season): array
+    {
+        $game = $this->resolveGame($externalGameId, $season);
+
+        if ($game === null) {
+            return ['error' => 'Game not found'];
+        }
+
+        $game = $this->enrichTeamIds($game);
+
+        $homeTeamId = (int) ($game['home_team']['id'] ?? 0);
+        $awayTeamId = (int) ($game['away_team']['id'] ?? 0);
+
+        if ($homeTeamId <= 0 || $awayTeamId <= 0) {
+            return [
+                'error' => 'Team data unavailable for preview',
+                'game' => $this->formatGameMeta($game),
+            ];
+        }
+
+        try {
+            $homeTeam = $this->buildTeamPreview($homeTeamId, $awayTeamId, $season, true);
+            $awayTeam = $this->buildTeamPreview($awayTeamId, $homeTeamId, $season, false);
+            $headToHead = $this->buildHeadToHead($homeTeamId, $awayTeamId, $season);
+            $prediction = $this->generatePrediction($homeTeam, $awayTeam, $headToHead, $game);
+            $analysis = $this->generateAnalysis($homeTeam, $awayTeam, $headToHead, $prediction);
+
+            return [
+                'game' => $this->formatGameMeta($game),
+                'home_team' => $homeTeam,
+                'away_team' => $awayTeam,
+                'head_to_head' => $headToHead,
+                'comparison' => $this->buildComparisonData($homeTeam, $awayTeam),
+                'prediction' => $prediction,
+                'analysis' => $analysis,
+                'generated_at' => now()->toIso8601String(),
+            ];
+        } catch (\Throwable $e) {
+            Log::error('Game preview generation failed', [
+                'game_id' => $externalGameId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [
+                'error' => 'Failed to generate game preview',
+                'game' => $this->formatGameMeta($game),
+            ];
+        }
     }
 
     /**
@@ -85,41 +102,108 @@ class GamePreviewService
      */
     private function resolveGame(string $externalGameId, int $season): ?array
     {
+        $fromLive = collect($this->schedule->list($season, true))
+            ->first(fn (array $row) => (string) ($row['game_id'] ?? '') === $externalGameId);
+
+        if ($fromLive !== null) {
+            return $fromLive;
+        }
+
         $dbGame = WnbaGame::with(['gameTeams.team', 'gameTeams.opponentTeam'])
             ->where('game_id', $externalGameId)
             ->where('season', $season)
             ->first();
 
         if ($dbGame !== null) {
-            $fromDb = $this->transformDbGameForPreview($dbGame);
-            if ($this->hasValidTeams($fromDb)) {
-                return $fromDb;
-            }
+            return $this->transformDbGameForPreview($dbGame);
         }
 
-        $fromSchedule = collect($this->schedule->list($season, false))
+        return collect($this->schedule->list($season, false))
             ->first(fn (array $row) => (string) ($row['game_id'] ?? '') === $externalGameId);
-
-        if ($fromSchedule !== null && $this->hasValidTeams($fromSchedule)) {
-            return $fromSchedule;
-        }
-
-        return $fromDb ?? $fromSchedule;
     }
 
     /**
-     * @param  array<string, mixed>|null  $game
+     * @param  array<string, mixed>  $game
+     * @return array<string, mixed>
      */
-    private function hasValidTeams(?array $game): bool
+    private function enrichTeamIds(array $game): array
     {
-        if ($game === null) {
-            return false;
+        foreach (['home_team', 'away_team'] as $side) {
+            if (! is_array($game[$side] ?? null)) {
+                continue;
+            }
+
+            $resolved = $this->resolveInternalTeamId($game[$side]);
+            if ($resolved === null) {
+                continue;
+            }
+
+            $game[$side]['id'] = $resolved['id'];
+            $game[$side] = array_merge($game[$side], $resolved['info']);
         }
 
-        $homeTeamId = (int) ($game['home_team']['id'] ?? 0);
-        $awayTeamId = (int) ($game['away_team']['id'] ?? 0);
+        return $game;
+    }
 
-        return $homeTeamId > 0 && $awayTeamId > 0;
+    /**
+     * @param  array<string, mixed>  $teamInfo
+     * @return array{id: int, info: array<string, mixed>}|null
+     */
+    private function resolveInternalTeamId(array $teamInfo): ?array
+    {
+        $internalId = (int) ($teamInfo['id'] ?? 0);
+        if ($internalId > 0) {
+            $team = WnbaTeam::query()->league()->find($internalId);
+            if ($team !== null) {
+                return ['id' => $team->id, 'info' => $this->formatTeamInfo($team, $teamInfo)];
+            }
+        }
+
+        $externalId = (string) ($teamInfo['team_id'] ?? '');
+        if ($externalId !== '' && TeamCatalog::isLeagueTeamId($externalId)) {
+            $team = WnbaTeam::query()
+                ->league()
+                ->where(function ($query) use ($externalId) {
+                    $query->where('team_id', $externalId)
+                        ->orWhere('espn_team_id', $externalId);
+                })
+                ->first();
+
+            if ($team !== null) {
+                return ['id' => $team->id, 'info' => $this->formatTeamInfo($team, $teamInfo)];
+            }
+        }
+
+        $abbr = TeamCatalog::canonicalAbbreviation((string) ($teamInfo['abbreviation'] ?? ''));
+        if ($abbr !== '') {
+            $aliases = TeamCatalog::aliasesFor($abbr);
+            $team = WnbaTeam::query()
+                ->league()
+                ->whereIn('team_abbreviation', $aliases)
+                ->first();
+
+            if ($team !== null) {
+                return ['id' => $team->id, 'info' => $this->formatTeamInfo($team, $teamInfo)];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $fallback
+     * @return array<string, mixed>
+     */
+    private function formatTeamInfo(WnbaTeam $team, array $fallback = []): array
+    {
+        return [
+            'team_id' => $team->team_id,
+            'name' => $team->team_display_name ?? $team->team_name ?? ($fallback['name'] ?? 'Unknown'),
+            'abbreviation' => $team->team_abbreviation ?? ($fallback['abbreviation'] ?? ''),
+            'logo' => $team->team_logo ?? ($fallback['logo'] ?? null),
+            'score' => $fallback['score'] ?? null,
+            'winner' => $fallback['winner'] ?? false,
+        ];
     }
 
     /**
@@ -151,16 +235,33 @@ class GamePreviewService
      */
     private function teamInfoFromLine(?WnbaGameTeam $line): ?array
     {
-        if ($line === null || $line->team === null) {
+        if ($line === null) {
+            return null;
+        }
+
+        $team = $line->team ?? WnbaTeam::query()->league()->find($line->team_id);
+
+        if ($team === null) {
+            $resolved = $this->resolveInternalTeamId([
+                'id' => $line->team_id,
+                'team_id' => (string) $line->team_id,
+            ]);
+
+            if ($resolved !== null) {
+                $team = WnbaTeam::find($resolved['id']);
+            }
+        }
+
+        if ($team === null) {
             return null;
         }
 
         return [
-            'id' => $line->team_id,
-            'team_id' => $line->team->team_id,
-            'name' => $line->team->team_display_name ?? $line->team->team_name,
-            'abbreviation' => $line->team->team_abbreviation,
-            'logo' => $line->team->team_logo,
+            'id' => $team->id,
+            'team_id' => $team->team_id,
+            'name' => $team->team_display_name ?? $team->team_name,
+            'abbreviation' => $team->team_abbreviation,
+            'logo' => $team->team_logo,
             'score' => $line->team_score,
             'winner' => $line->team_winner,
         ];

@@ -706,7 +706,16 @@ async function fetchApi<T>(endpoint: string, options?: RequestInit & { cacheTtl?
         const response = await fetch(url, config);
 
         if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status} - ${response.statusText}`);
+            let detail = response.statusText;
+            try {
+                const body = await response.json();
+                if (typeof body?.message === 'string' && body.message.trim() !== '') {
+                    detail = body.message;
+                }
+            } catch {
+                // ignore non-JSON error bodies
+            }
+            throw new Error(`HTTP error! status: ${response.status} - ${detail}`);
         }
 
         const data = await response.json();
