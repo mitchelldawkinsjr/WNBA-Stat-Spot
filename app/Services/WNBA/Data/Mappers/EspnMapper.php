@@ -220,11 +220,17 @@ class EspnMapper
                         continue;
                     }
 
-                    $meta = $events[$gameId] ?? [];
-                    $mapped = $this->mapGamelogStats($labels, $names, $stats);
+                    $eventId = (string) ($stats['eventId'] ?? $gameId);
+                    $statValues = $stats['stats'] ?? $stats;
+                    if (! is_array($statValues)) {
+                        continue;
+                    }
+
+                    $meta = $events[$eventId] ?? [];
+                    $mapped = $this->mapGamelogStats($labels, $names, $statValues);
 
                     $rows[] = [
-                        'game_id' => $gameId,
+                        'game_id' => $eventId,
                         'athlete_id' => $athleteId,
                         'game_date' => isset($meta['gameDate']) ? substr((string) $meta['gameDate'], 0, 10) : null,
                         'game_date_time' => $meta['gameDate'] ?? null,
@@ -240,6 +246,8 @@ class EspnMapper
                 }
             }
         }
+
+        usort($rows, fn (array $a, array $b) => strcmp((string) ($b['game_date'] ?? ''), (string) ($a['game_date'] ?? '')));
 
         return $rows;
     }

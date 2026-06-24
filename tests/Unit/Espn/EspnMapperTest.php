@@ -35,6 +35,45 @@ class EspnMapperTest extends TestCase
         $this->assertSame(34, $team['field_goals_made']);
     }
 
+    public function test_map_player_gamelog_resolves_event_id_from_stats_object(): void
+    {
+        $payload = json_decode(<<<'JSON'
+{
+  "labels": ["MIN","PTS","REB"],
+  "names": ["minutes","points","totalRebounds"],
+  "events": {
+    "401857014": {
+      "gameDate": "2026-06-23T00:00:00.000+00:00",
+      "atVs": "vs",
+      "gameResult": "W",
+      "score": "86-77",
+      "opponent": {"id": "11", "displayName": "Phoenix Mercury", "abbreviation": "PHX"}
+    }
+  },
+  "seasonTypes": [{
+    "displayName": "2026 Regular Season",
+    "categories": [{
+      "events": [{
+        "eventId": "401857014",
+        "stats": ["29", "8", "9"]
+      }]
+    }]
+  }]
+}
+JSON, true, 512, JSON_THROW_ON_ERROR);
+
+        $mapper = new EspnMapper(2026);
+        $rows = $mapper->mapPlayerGamelog('4432831', $payload);
+
+        $this->assertCount(1, $rows);
+        $this->assertSame('401857014', $rows[0]['game_id']);
+        $this->assertSame('2026-06-23', $rows[0]['game_date']);
+        $this->assertSame(29.0, $rows[0]['minutes']);
+        $this->assertSame(8, $rows[0]['points']);
+        $this->assertSame(9, $rows[0]['rebounds']);
+        $this->assertSame('PHX', $rows[0]['opponent_team_abbreviation']);
+    }
+
     public function test_map_schedule_dedupes_events(): void
     {
         $event = json_decode(<<<'JSON'

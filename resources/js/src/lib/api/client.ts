@@ -696,6 +696,21 @@ export const api = {
         },
         getSummary: () => fetchApi<ApiResponse<Player[]>>('/players/summary', { cacheTtl: 'long' }),
         getById: (id: string) => fetchApi<ApiResponse<Player>>(`/players/${id}`, { cacheTtl: 'medium' }),
+        getGamelog: (id: string, options?: { season?: number; last_n_games?: number }) => {
+            const params = new URLSearchParams();
+            if (options?.season != null) params.append('season', String(options.season));
+            if (options?.last_n_games != null) params.append('last_n_games', String(options.last_n_games));
+            const qs = params.toString();
+            return fetchApi<{
+                success: boolean;
+                data: {
+                    provider: string;
+                    season: number;
+                    player_id: string;
+                    games: Array<Record<string, unknown>>;
+                };
+            }>(`/players/${id}/gamelog${qs ? `?${qs}` : ''}`, { cacheTtl: 'short' });
+        },
         /**
          * Aggregated box-score + trends from DataAggregator (/wnba/data/players/:id).
          * Use this instead of api.wnba.data.getPlayerData — some deployments had `api.wnba.data` stripped/missing at runtime.

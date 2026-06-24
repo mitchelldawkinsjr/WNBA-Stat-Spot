@@ -124,6 +124,9 @@ jobs:
             echo "Ensuring WNBA player/team/game data (skips if already populated)..."
             docker compose -f docker-compose.prod.yml exec -T app php artisan app:import-wnba-data --if-empty
 
+            echo "Running incremental import for current season..."
+            docker compose -f docker-compose.prod.yml exec -T app php artisan app:import-wnba-data --incremental
+
             # Health check loop
             echo "Performing health check..."
             max_attempts=30

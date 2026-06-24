@@ -111,17 +111,13 @@ class PlayerController extends Controller
         $player = Cache::remember($cacheKey, $this->defaultCacheTtl, function () use ($id) {
             return WnbaPlayer::with([
                 'playerGames' => function ($query) {
-                    $query->select([
-                        'id', 'player_id', 'game_id', 'team_id', 'points', 'rebounds', 'assists',
-                        'field_goals_made', 'field_goals_attempted', 'three_point_field_goals_made',
-                        'three_point_field_goals_attempted', 'free_throws_made', 'free_throws_attempted',
-                        'steals', 'blocks', 'turnovers', 'minutes', 'created_at'
-                    ])
-                    ->orderBy('created_at', 'desc')
-                    ->limit(20); // Only load recent games for performance
+                    $query->select('wnba_player_games.*')
+                        ->join('wnba_games', 'wnba_player_games.game_id', '=', 'wnba_games.id')
+                        ->orderByDesc('wnba_games.game_date')
+                        ->limit(50);
                 },
                 'playerGames.team:id,team_id,team_abbreviation,team_display_name,team_logo',
-                'playerGames.game:id,game_id,game_date,season'
+                'playerGames.game:id,game_id,game_date,season',
             ])
             ->where('athlete_id', $id)
             ->orWhere('espn_athlete_id', $id)

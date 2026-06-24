@@ -52,6 +52,9 @@
     let loading = true;
     let error: string | null = null;
     let playerId: string;
+    let gamelogSeason = 2026;
+    let gamelogLoading = false;
+    let gamelogGames: PlayerGame[] = [];
     let predictionEngineRef: any;
 
     // Prop Scanner state
@@ -76,8 +79,45 @@
 
     $: playerId = $page.params.id;
 
-    // Calculate averages
-    $: gameStats = player?.player_games?.filter(game => !game.did_not_play) || [];
+    function mapGamelogToPlayerGame(row: Record<string, unknown>, season: number): PlayerGame {
+        const minutes = row.minutes;
+        const oppAbbr = String(row.opponent_team_abbreviation ?? 'OPP');
+        const homeAway = row.home_away === 'away' ? '@' : 'vs';
+        return {
+            id: 0,
+            game_id: Number(row.game_id) || 0,
+            minutes: minutes != null ? String(minutes) : null,
+            field_goals_made: Number(row.field_goals_made) || 0,
+            field_goals_attempted: Number(row.field_goals_attempted) || 0,
+            three_point_field_goals_made: Number(row.three_point_field_goals_made) || 0,
+            three_point_field_goals_attempted: Number(row.three_point_field_goals_attempted) || 0,
+            free_throws_made: Number(row.free_throws_made) || 0,
+            free_throws_attempted: Number(row.free_throws_attempted) || 0,
+            rebounds: Number(row.rebounds) || 0,
+            assists: Number(row.assists) || 0,
+            steals: Number(row.steals) || 0,
+            blocks: Number(row.blocks) || 0,
+            turnovers: Number(row.turnovers) || 0,
+            fouls: Number(row.fouls) || 0,
+            points: Number(row.points) || 0,
+            starter: false,
+            did_not_play: false,
+            team: {
+                team_display_name: String(row.opponent_team_name ?? 'Opponent'),
+                team_abbreviation: `${homeAway} ${oppAbbr}`,
+                team_logo: '',
+            },
+            game: {
+                game_date: String(row.game_date ?? ''),
+                season: String(season),
+            },
+        };
+    }
+
+    // Prefer live ESPN/Tank01 gamelog for the selected season; fall back to DB rows.
+    $: dbGameStats = player?.player_games?.filter(game => !game.did_not_play) || [];
+    $: gameStats = (gamelogGames.length > 0 ? gamelogGames : dbGameStats)
+        .filter(game => !game.did_not_play);
     $: averages = gameStats.length > 0 ? {
         points: (gameStats.reduce((sum, game) => sum + game.points, 0) / gameStats.length).toFixed(1),
         rebounds: (gameStats.reduce((sum, game) => sum + game.rebounds, 0) / gameStats.length).toFixed(1),
@@ -375,8 +415,30 @@
         }
     }
 
+    async function loadGamelog(season = gamelogSeason) {
+        try {
+            gamelogLoading = true;
+            const response = await api.players.getGamelog(playerId, { season, last_n_games: 50 });
+            if (response.success && response.data?.games?.length) {
+                gamelogGames = response.data.games.map((row) => mapGamelogToPlayerGame(row, season));
+            } else {
+                gamelogGames = [];
+            }
+        } catch {
+            gamelogGames = [];
+        } finally {
+            gamelogLoading = false;
+        }
+    }
+
+    async function changeGamelogSeason(season: number) {
+        gamelogSeason = season;
+        await loadGamelog(season);
+    }
+
     onMount(async () => {
         await loadPlayer();
+        await loadGamelog();
         await loadPropScannerData();
         await loadHistoricalTestResults();
     });
@@ -570,8 +632,24 @@
             <div class="row">
                 <div class="col-12">
                     <div class="card">
-                        <div class="card-header">
+                        <div class="card-header d-flex justify-content-between align-items-center">
                             <h5 class="card-title mb-0">Game Log</h5>
+                            <div class="btn-group btn-group-sm" role="group" aria-label="Season">
+                                <button
+                                    type="button"
+                                    class="btn btn-outline-primary"
+                                    class:active={gamelogSeason === 2026}
+                                    disabled={gamelogLoading}
+                                    on:click={() => changeGamelogSeason(2026)}
+                                >2026</button>
+                                <button
+                                    type="button"
+                                    class="btn btn-outline-primary"
+                                    class:active={gamelogSeason === 2025}
+                                    disabled={gamelogLoading}
+                                    on:click={() => changeGamelogSeason(2025)}
+                                >2025</button>
+                            </div>
                         </div>
                         <div class="card-body">
                             {#if gameStats.length > 0}
