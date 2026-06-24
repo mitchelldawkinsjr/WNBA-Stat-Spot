@@ -90,6 +90,7 @@ class GamePreviewService
 
             return [
                 'error' => 'Failed to generate game preview',
+                'error_detail' => $e->getMessage(),
                 'game' => $this->formatGameMeta($game),
             ];
         }
