@@ -445,7 +445,11 @@ class DataAggregatorService
 
     private function calculateTrend($values): float
     {
-        if (empty($values) || count($values) < 2) return 0;
+        $values = array_map(fn ($value) => $this->toNumericStatValue($value), (array) $values);
+
+        if (count($values) < 2) {
+            return 0;
+        }
 
         $n = count($values);
         $x = range(1, $n);
@@ -466,6 +470,8 @@ class DataAggregatorService
 
     private function calculateConsistency(array $values): float
     {
+        $values = array_map(fn ($value) => $this->toNumericStatValue($value), $values);
+
         if (empty($values)) return 0;
 
         $mean = array_sum($values) / count($values);
@@ -480,6 +486,34 @@ class DataAggregatorService
     private function calculatePercentage(int $made, int $attempted): float
     {
         return $attempted > 0 ? round(($made / $attempted) * 100, 1) : 0;
+    }
+
+    private function toNumericStatValue(mixed $value): float
+    {
+        if ($value === null || $value === '') {
+            return 0.0;
+        }
+
+        if (is_int($value) || is_float($value)) {
+            return (float) $value;
+        }
+
+        $string = trim((string) $value);
+        if ($string === '' || strtoupper($string) === 'DNP') {
+            return 0.0;
+        }
+
+        if (is_numeric($string)) {
+            return (float) $string;
+        }
+
+        if (str_contains($string, ':')) {
+            [$minutes, $seconds] = array_pad(explode(':', $string, 2), 2, '0');
+
+            return (float) $minutes + ((float) $seconds / 60);
+        }
+
+        return 0.0;
     }
 
     private function calculateAverageStats($games): array

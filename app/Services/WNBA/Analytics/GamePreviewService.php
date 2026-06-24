@@ -6,7 +6,6 @@ use App\Models\WnbaGame;
 use App\Models\WnbaGameTeam;
 use App\Models\WnbaPlayerGame;
 use App\Models\WnbaTeam;
-use App\Services\WNBA\Data\DataAggregatorService;
 use App\Services\WNBA\Data\GameScheduleService;
 use App\Services\WNBA\Data\Support\TeamCatalog;
 use Illuminate\Support\Collection;
@@ -22,7 +21,6 @@ class GamePreviewService
 
     public function __construct(
         private TeamAnalyticsService $teamAnalytics,
-        private DataAggregatorService $dataAggregator,
         private GameScheduleService $schedule,
     ) {}
 
@@ -369,7 +367,8 @@ class GamePreviewService
             ->where('wnba_player_games.team_id', $teamId)
             ->where('wnba_games.season', $season)
             ->where('wnba_player_games.did_not_play', false)
-            ->where('wnba_player_games.minutes', '>', 0)
+            ->whereNotNull('wnba_player_games.minutes')
+            ->whereNotIn('wnba_player_games.minutes', ['', '0', 'DNP'])
             ->groupBy(
                 'wnba_player_games.player_id',
                 'wnba_players.athlete_display_name',
@@ -392,11 +391,7 @@ class GamePreviewService
             ->get();
 
         return $leaders->map(function ($leader) use ($season, $opponentId) {
-            $recent = $this->dataAggregator->aggregatePlayerData(
-                (int) $leader->player_id,
-                $season,
-                5
-            );
+            $recentForm = $this->getPlayerRecentForm((int) $leader->player_id, $season);
 
             $vsOpponent = WnbaPlayerGame::query()
                 ->join('wnba_games', 'wnba_games.id', '=', 'wnba_player_games.game_id')
@@ -413,9 +408,6 @@ class GamePreviewService
                 ])
                 ->first();
 
-            $recentAverages = $recent['season_stats']['averages'] ?? [];
-            $recentForm = $recent['performance_trends'] ?? [];
-
             return [
                 'player_id' => (int) $leader->player_id,
                 'name' => $leader->name,
@@ -428,19 +420,60 @@ class GamePreviewService
                     'apg' => (float) $leader->apg,
                     'mpg' => (float) $leader->mpg,
                 ],
-                'last_5' => [
-                    'ppg' => $recentAverages['points'] ?? (float) $leader->ppg,
-                    'rpg' => $recentAverages['rebounds'] ?? (float) $leader->rpg,
-                    'apg' => $recentAverages['assists'] ?? (float) $leader->apg,
-                    'trend' => $recentForm['trend_direction'] ?? 'stable',
-                ],
+                'last_5' => $recentForm['averages'],
                 'vs_opponent' => [
                     'ppg' => $vsOpponent ? (float) ($vsOpponent->ppg ?? 0) : null,
                     'games' => $vsOpponent ? (int) ($vsOpponent->games ?? 0) : 0,
                 ],
-                'game_log' => array_slice($recent['game_log'] ?? [], 0, 5),
+                'game_log' => $recentForm['game_log'],
             ];
         })->values()->all();
+    }
+
+    /**
+     * @return array{averages: array{ppg: float, rpg: float, apg: float, trend: string}, game_log: array<int, array<string, mixed>>}
+     */
+    private function getPlayerRecentForm(int $playerId, int $season, int $limit = 5): array
+    {
+        $games = WnbaPlayerGame::query()
+            ->join('wnba_games', 'wnba_games.id', '=', 'wnba_player_games.game_id')
+            ->where('wnba_player_games.player_id', $playerId)
+            ->where('wnba_games.season', $season)
+            ->where('wnba_player_games.did_not_play', false)
+            ->orderByDesc('wnba_games.game_date')
+            ->select('wnba_player_games.*', 'wnba_games.game_date')
+            ->limit($limit)
+            ->get();
+
+        if ($games->isEmpty()) {
+            return [
+                'averages' => ['ppg' => 0.0, 'rpg' => 0.0, 'apg' => 0.0, 'trend' => 'stable'],
+                'game_log' => [],
+            ];
+        }
+
+        $avg = static fn (string $column): float => round((float) $games->avg($column), 1);
+        $points = $games->pluck('points')->map(fn ($value) => (float) $value)->values()->all();
+        $firstHalf = array_slice($points, 0, (int) ceil(count($points) / 2));
+        $secondHalf = array_slice($points, (int) floor(count($points) / 2));
+        $firstAvg = $firstHalf ? array_sum($firstHalf) / count($firstHalf) : 0;
+        $secondAvg = $secondHalf ? array_sum($secondHalf) / count($secondHalf) : 0;
+        $trend = abs($secondAvg - $firstAvg) < 1 ? 'stable' : ($secondAvg > $firstAvg ? 'up' : 'down');
+
+        return [
+            'averages' => [
+                'ppg' => $avg('points'),
+                'rpg' => $avg('rebounds'),
+                'apg' => $avg('assists'),
+                'trend' => $trend,
+            ],
+            'game_log' => $games->map(fn (WnbaPlayerGame $game) => [
+                'date' => optional($game->game_date)->format('Y-m-d') ?? '',
+                'points' => (int) $game->points,
+                'rebounds' => (int) $game->rebounds,
+                'assists' => (int) $game->assists,
+            ])->values()->all(),
+        ];
     }
 
     /**
