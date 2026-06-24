@@ -74,4 +74,20 @@ class Tank01MapperTest extends TestCase
         $this->assertSame('player_points', $props[0]['stat_type']);
         $this->assertSame('Napheesa Collier', $props[0]['player_name']);
     }
+
+    public function test_maps_player_gamelog_fixture(): void
+    {
+        $fixture = json_decode(
+            file_get_contents(base_path('tests/Fixtures/tank01/games_for_player.json')),
+            true
+        );
+        $mapper = new Tank01Mapper(2025);
+        $rows = $mapper->mapPlayerGamelog($fixture['body'], '1004', 2025);
+
+        $this->assertCount(2, $rows);
+        $this->assertSame('20250807_IND@PHX', $rows[0]['game_id']);
+        $this->assertSame('1004', $rows[0]['athlete_id']);
+        $this->assertSame(1, $rows[0]['rebounds']);
+        $this->assertSame('20250805_IND@LA', $rows[1]['game_id']);
+    }
 }

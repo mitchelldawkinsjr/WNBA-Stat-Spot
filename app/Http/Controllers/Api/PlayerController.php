@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Traits\ApiResponseTrait;
 use App\Http\Traits\CacheHelper;
 use App\Models\WnbaPlayer;
+use App\Services\WNBA\Data\PlayerGamelogService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -75,6 +76,31 @@ class PlayerController extends Controller
             ], 'Players retrieved successfully');
         } catch (\Exception $e) {
             return $this->handleException($e, 'Retrieving players');
+        }
+    }
+
+    public function gamelog(string $id, Request $request, PlayerGamelogService $gamelogService): JsonResponse
+    {
+        $request->validate([
+            'season' => 'nullable|integer',
+            'last_n_games' => 'nullable|integer|min:1|max:50',
+            'provider' => 'nullable|string|in:espn,tank01',
+        ]);
+
+        try {
+            $season = (int) ($request->input('season') ?? config('wnba.seasons.current_season'));
+            $lastNGames = $request->input('last_n_games') ? (int) $request->input('last_n_games') : null;
+
+            $data = $gamelogService->fetch(
+                $id,
+                $season,
+                $lastNGames,
+                $request->input('provider'),
+            );
+
+            return $this->successResponse($data, 'Player gamelog retrieved successfully');
+        } catch (\Exception $e) {
+            return $this->handleException($e, 'Retrieving player gamelog');
         }
     }
 

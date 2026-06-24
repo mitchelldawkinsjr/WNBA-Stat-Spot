@@ -33,6 +33,25 @@ class WnbaProviderResolver
         return $this->resolve($incremental ? 'incremental' : 'bulk_import');
     }
 
+    public function resolveGamelogProviderName(string $playerId, ?string $override = null): string
+    {
+        if ($override !== null && $override !== '') {
+            return $this->normalizeName($override);
+        }
+
+        if (ctype_digit($playerId)) {
+            if (strlen($playerId) <= 6) {
+                return 'tank01';
+            }
+
+            if (strlen($playerId) >= 7) {
+                return 'espn';
+            }
+        }
+
+        return $this->resolveName('player_gamelog');
+    }
+
     public function make(string $providerName): WnbaStatsProvider
     {
         return match ($this->normalizeName($providerName)) {

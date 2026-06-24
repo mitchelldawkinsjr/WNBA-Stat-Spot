@@ -2,9 +2,12 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Contracts\WnbaStatsProvider;
 use App\Http\Controllers\Controller;
 use App\Services\RapidApi\Tank01UsageTracker;
 use App\Services\WNBA\Data\DataAggregatorService;
+use App\Services\WNBA\Data\PlayerGamelogService;
+use App\Services\WNBA\Data\WnbaProviderResolver;
 use App\Services\WnbaDataService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -17,7 +20,9 @@ class DataAggregatorController extends Controller
 {
     public function __construct(
         private DataAggregatorService $dataAggregator,
-        private WnbaDataService $wnbaDataService
+        private WnbaDataService $wnbaDataService,
+        private WnbaProviderResolver $providerResolver,
+        private PlayerGamelogService $playerGamelogService,
     ) {}
 
     /**
@@ -70,7 +75,12 @@ class DataAggregatorController extends Controller
             Log::info('Starting forced WNBA data import via API');
 
             // Run the import command with force flag
-            $exitCode = Artisan::call('app:import-wnba-data', ['--force' => true]);
+            $params = ['--force' => true];
+            if ($this->providerResolver->resolveName('bulk_import') === 'tank01') {
+                $params['--confirm-quota'] = true;
+            }
+
+            $exitCode = Artisan::call('app:import-wnba-data', $params);
 
             if ($exitCode === 0) {
                 $summary = $this->getDataSummaryArray();
@@ -166,9 +176,9 @@ class DataAggregatorController extends Controller
         try {
             Log::info('Starting teams data import via API');
 
-            $teamSchedulePath = $this->wnbaDataService->downloadTeamScheduleData();
-            $teamScheduleData = $this->wnbaDataService->parseTeamScheduleData($teamSchedulePath);
-            $this->wnbaDataService->saveTeamScheduleData($teamScheduleData);
+            $teamSchedulePath = $this->importService()->downloadTeamScheduleData();
+            $teamScheduleData = $this->importService()->parseTeamScheduleData($teamSchedulePath);
+            $this->importService()->saveTeamScheduleData($teamScheduleData);
 
             $teamCount = DB::table('wnba_teams')->count();
 
@@ -202,9 +212,9 @@ class DataAggregatorController extends Controller
         try {
             Log::info('Starting games data import via API');
 
-            $teamSchedulePath = $this->wnbaDataService->downloadTeamScheduleData();
-            $teamScheduleData = $this->wnbaDataService->parseTeamScheduleData($teamSchedulePath);
-            $this->wnbaDataService->saveTeamScheduleData($teamScheduleData);
+            $teamSchedulePath = $this->importService()->downloadTeamScheduleData();
+            $teamScheduleData = $this->importService()->parseTeamScheduleData($teamSchedulePath);
+            $this->importService()->saveTeamScheduleData($teamScheduleData);
 
             $gameCount = DB::table('wnba_games')->count();
 
@@ -239,9 +249,9 @@ class DataAggregatorController extends Controller
             Log::info('Starting player stats data import via API');
 
             // Import box score data for comprehensive player stats and player syncing.
-            $boxScorePath = $this->wnbaDataService->downloadBoxScoreData();
-            $boxScoreData = $this->wnbaDataService->parseBoxScoreData($boxScorePath);
-            $this->wnbaDataService->saveBoxScoreData($boxScoreData);
+            $boxScorePath = $this->importService()->downloadBoxScoreData();
+            $boxScoreData = $this->importService()->parseBoxScoreData($boxScorePath);
+            $this->importService()->saveBoxScoreData($boxScoreData);
 
             $playerCount = DB::table('wnba_players')->count();
             $statsCount = DB::table('wnba_player_games')->count();
@@ -278,9 +288,9 @@ class DataAggregatorController extends Controller
             Log::info('Starting players data import via API');
 
             // Players are imported as part of box score data
-            $boxScorePath = $this->wnbaDataService->downloadBoxScoreData();
-            $boxScoreData = $this->wnbaDataService->parseBoxScoreData($boxScorePath);
-            $this->wnbaDataService->saveBoxScoreData($boxScoreData);
+            $boxScorePath = $this->importService()->downloadBoxScoreData();
+            $boxScoreData = $this->importService()->parseBoxScoreData($boxScorePath);
+            $this->importService()->saveBoxScoreData($boxScoreData);
 
             $playerCount = DB::table('wnba_players')->count();
 
@@ -564,12 +574,76 @@ class DataAggregatorController extends Controller
         }
     }
 
+    /**
+     * Get live player gamelog from configured stats provider.
+     */
+    public function getPlayerGamelog(Request $request, string $playerId): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'season' => 'nullable|integer',
+            'last_n_games' => 'nullable|integer|min:1|max:50',
+            'provider' => 'nullable|string|in:espn,tank01',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        try {
+            $season = (int) ($request->input('season') ?? config('wnba.seasons.current_season'));
+            $lastNGames = $request->input('last_n_games') ? (int) $request->input('last_n_games') : null;
+
+            $data = $this->playerGamelogService->fetch(
+                $playerId,
+                $season,
+                $lastNGames,
+                $request->input('provider'),
+            );
+
+            return response()->json([
+                'success' => true,
+                'data' => $data,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Player gamelog fetch failed', [
+                'player_id' => $playerId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch player gamelog',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
     public function getApiQuota(Tank01UsageTracker $usageTracker): JsonResponse
     {
         return response()->json([
             'success' => true,
-            'provider' => config('wnba.data_source.provider'),
-            'data' => $usageTracker->getUsageStats(),
+            'default_provider' => config('wnba.data_source.provider'),
+            'routing' => config('wnba.data_source.routing'),
+            'tank01' => $usageTracker->getUsageStats(),
         ]);
+    }
+
+    private function importService(bool $incremental = true): WnbaDataService
+    {
+        $provider = $this->providerResolver->resolveForImport($incremental);
+        config(['wnba.data_source.provider' => $provider->name()]);
+        app()->forgetInstance(WnbaStatsProvider::class);
+        app()->forgetInstance(WnbaDataService::class);
+
+        $service = app(WnbaDataService::class);
+        $service->setImportOptions([
+            'incremental' => $incremental,
+            'force' => false,
+        ]);
+
+        return $service;
     }
 }

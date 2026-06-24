@@ -23,6 +23,7 @@ use App\Services\WNBA\Math\MonteCarloSimulator;
 use App\Services\WNBA\Math\RegressionAnalyzer;
 use App\Services\WNBA\Data\DataAggregatorService;
 use App\Services\WNBA\Data\CacheManagerService;
+use App\Services\WNBA\Data\PlayerGamelogService;
 
 class WnbaServiceProvider extends ServiceProvider
 {
@@ -52,6 +53,7 @@ class WnbaServiceProvider extends ServiceProvider
         // Register Data services as singletons
         $this->app->singleton(DataAggregatorService::class);
         $this->app->singleton(CacheManagerService::class);
+        $this->app->singleton(PlayerGamelogService::class);
 
         // Register Statistical Engine service
         $this->app->bind(StatisticalEngineService::class, function ($app) {

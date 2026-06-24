@@ -136,6 +136,7 @@ Route::post('/teams/clear-cache', [TeamController::class, 'clearCache']);
 Route::get('/players', [PlayerController::class, 'index']);
 Route::get('/players/summary', [PlayerController::class, 'summary']);
 Route::post('/players/clear-cache', [PlayerController::class, 'clearCache']);
+Route::get('/players/{id}/gamelog', [PlayerController::class, 'gamelog']);
 Route::get('/players/{id}', [PlayerController::class, 'show']);
 
 Route::get('/games', [GameController::class, 'index']);
@@ -171,6 +172,7 @@ Route::prefix('wnba')->group(function () {
         Route::post('/import/games', [DataAggregatorController::class, 'importGames']);
         Route::post('/import/stats', [DataAggregatorController::class, 'importPlayerStats']);
 
+        Route::get('/players/{playerId}/gamelog', [DataAggregatorController::class, 'getPlayerGamelog']);
         Route::get('/players/{playerId}', [DataAggregatorController::class, 'getPlayerData']);
         Route::get('/players/{playerId}/props', [DataAggregatorController::class, 'getPropData']);
         Route::get('/teams/{teamId}', [DataAggregatorController::class, 'getTeamData']);

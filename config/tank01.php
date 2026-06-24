@@ -13,6 +13,7 @@ return [
         'box_score' => 'getWNBABoxScore',
         'game_info' => 'getWNBAGameInfo',
         'betting_odds' => 'getWNBABettingOdds',
+        'games_for_player' => 'getWNBAGamesForPlayer',
     ],
 
     'rate_limit' => [
@@ -31,6 +32,7 @@ return [
         'box_score_live' => (int) env('TANK01_CACHE_BOX_LIVE', 60),
         'odds' => (int) env('TANK01_CACHE_ODDS', 3600),
         'scoreboard' => (int) env('TANK01_CACHE_SCOREBOARD', 120),
+        'games_for_player' => (int) env('TANK01_CACHE_PLAYER_GAMELOG', 900),
     ],
 
     'live_sync' => [

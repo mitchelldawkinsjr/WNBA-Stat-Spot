@@ -191,6 +191,55 @@ class Tank01Mapper
         return $records;
     }
 
+    /**
+     * @param  array<string, mixed>  $body
+     * @return array<int, array<string, mixed>>
+     */
+    public function mapPlayerGamelog(array $body, string $playerId, int $season): array
+    {
+        $rows = [];
+
+        foreach ($body as $gameKey => $game) {
+            if (! is_array($game)) {
+                continue;
+            }
+
+            $gameId = (string) ($game['gameID'] ?? $gameKey);
+            if ($gameId === '') {
+                continue;
+            }
+
+            $awayAbv = $this->teamAbvFromGameId($gameId, 'away');
+            $homeAbv = $this->teamAbvFromGameId($gameId, 'home');
+            $teamAbv = (string) ($game['teamAbv'] ?? $game['team'] ?? '');
+            $side = $teamAbv === $homeAbv ? 'home' : 'away';
+            $opponentAbv = $side === 'home' ? $awayAbv : $homeAbv;
+            $gameDate = $this->formatGameDate($game['gameDate'] ?? substr($gameId, 0, 8));
+
+            $rows[] = $this->mapPlayerBoxScoreRow(
+                $gameId,
+                $gameDate,
+                $side,
+                $teamAbv,
+                $game['teamID'] ?? null,
+                $opponentAbv,
+                null,
+                0,
+                0,
+                array_merge($game, ['playerID' => $game['playerID'] ?? $playerId]),
+            );
+        }
+
+        usort($rows, fn (array $a, array $b) => strcmp((string) $b['game_id'], (string) $a['game_id']));
+
+        foreach ($rows as &$row) {
+            $row['season'] = $season;
+        }
+        unset($row);
+
+        return $rows;
+    }
+
     public function isGameCompleted(string $status): bool
     {
         $status = strtolower($status);
@@ -252,7 +301,7 @@ class Tank01Mapper
             'steals' => (int) ($player['stl'] ?? 0),
             'blocks' => (int) ($player['blk'] ?? 0),
             'turnovers' => (int) ($player['TOV'] ?? 0),
-            'fouls' => (int) ($player['pf'] ?? 0),
+            'fouls' => (int) ($player['pf'] ?? $player['PF'] ?? 0),
             'plus_minus' => (int) preg_replace('/[^0-9-]/', '', (string) ($player['plusMinus'] ?? '0')),
             'points' => (int) ($player['pts'] ?? 0),
             'starter' => ($player['starter'] ?? '0') === '1' || ($player['starter'] ?? false) === true,

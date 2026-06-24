@@ -124,6 +124,30 @@ class Tank01WnbaProvider implements WnbaStatsProvider
     /**
      * @return array<int, array<string, mixed>>
      */
+    public function fetchPlayerGamelog(string $playerId, int $season, ?int $lastNGames = null): array
+    {
+        $query = [
+            'playerID' => $playerId,
+            'season' => (string) $season,
+            'fantasyPoints' => 'false',
+        ];
+
+        if ($lastNGames !== null) {
+            $query['numberOfGames'] = (string) $lastNGames;
+        }
+
+        $body = $this->client->get(
+            config('tank01.endpoints.games_for_player'),
+            $query,
+            (int) config('tank01.cache_ttl.games_for_player'),
+        );
+
+        return $this->mapper->mapPlayerGamelog(is_array($body) ? $body : [], $playerId, $season);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
     public function fetchScoreboard(string $gameDate): array
     {
         $body = $this->client->get(
