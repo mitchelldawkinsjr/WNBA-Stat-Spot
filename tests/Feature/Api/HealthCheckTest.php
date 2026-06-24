@@ -52,6 +52,10 @@ class HealthCheckTest extends TestCase
 
         $response->assertStatus(200)
             ->assertJsonPath('checks.database.status', 'ok');
+
+        $this->get('/api/health/database')
+            ->assertStatus(200)
+            ->assertJsonStructure(['status', 'details', 'timestamp']);
     }
 
     public function test_cache_health_check(): void
@@ -62,6 +66,10 @@ class HealthCheckTest extends TestCase
 
         $response->assertStatus(200)
             ->assertJsonPath('checks.redis.status', 'ok');
+
+        $this->get('/api/health/cache')
+            ->assertStatus(200)
+            ->assertJsonStructure(['status', 'details', 'timestamp']);
 
         Cache::forget('health-test');
     }

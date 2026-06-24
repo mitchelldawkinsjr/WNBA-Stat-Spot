@@ -33,6 +33,9 @@ Route::get('/test', function () {
 // Health check endpoints for CI/CD monitoring
 Route::get('/health', [HealthController::class, 'health']);
 Route::get('/health/detailed', [HealthController::class, 'detailed']);
+Route::get('/health/database', [HealthController::class, 'database']);
+Route::get('/health/cache', [HealthController::class, 'cache']);
+Route::get('/health/queue', [HealthController::class, 'queue']);
 
 // Database setup status endpoint
 Route::get('/status', function () {

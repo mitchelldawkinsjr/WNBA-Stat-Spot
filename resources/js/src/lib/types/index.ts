@@ -1,5 +1,3 @@
-import type {ApexOptions} from "apexcharts";
-
 export type StatisticType = {
     title: string
     description?: string
@@ -18,10 +16,3 @@ export type StatisticCardType = {
         image?: string
     }
 } & StatisticType
-
-export type ApexChartType = {
-    height: number
-    type?: string
-    series: any[]
-    options: ApexOptions
-}

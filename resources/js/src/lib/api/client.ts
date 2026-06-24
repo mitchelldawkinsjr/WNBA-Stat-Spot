@@ -198,15 +198,6 @@ export interface Stats extends PlayerGame {
 }
 
 // WNBA Analytics Interfaces
-export interface PlayerPropPrediction {
-    prediction: number;
-    confidence: number;
-    over_probability: number;
-    under_probability: number;
-    recommendation: string;
-    expected_value: number;
-}
-
 export interface Prediction {
     id?: number;
     player_id: string;
@@ -501,16 +492,6 @@ export interface GameAnalytics {
     generated_at: string;
 }
 
-export interface BettingRecommendation {
-    player_id: string;
-    stat: string;
-    line: number;
-    recommendation: 'over' | 'under' | 'avoid';
-    confidence: number;
-    expected_value: number;
-    reasoning: string;
-}
-
 export interface CacheStats {
     total_keys: number;
     memory_usage: any[];
@@ -529,15 +510,6 @@ export interface CacheStats {
         expiring_later: number;
         no_expiration: number;
     };
-}
-
-export interface ModelValidation {
-    overall_accuracy: number;
-    stat_accuracies: Record<string, number>;
-    recent_performance: Array<{
-        date: string;
-        accuracy: number;
-    }>;
 }
 
 export interface PaginatedResponse<T> {
@@ -740,23 +712,6 @@ export const api = {
     },
     wnba: {
         predictions: {
-            getPlayerProps: (playerId: string, stats: string[]) =>
-                fetchApi<{ success: boolean; data: { predictions: Record<string, PlayerPropPrediction> } }>('/wnba/predictions/props', {
-                    method: 'POST',
-                    body: JSON.stringify({ player_id: playerId, stats })
-                }),
-            getBettingRecommendations: (filters?: any) =>
-                fetchApi<{ success: boolean; data: { recommendations: BettingRecommendation[] } }>('/wnba/predictions/betting', {
-                    method: 'POST',
-                    body: JSON.stringify(filters || {})
-                }),
-            generate: (data: { player_id: string; stat: string; line: number }) =>
-                fetchApi<{ success: boolean; data: Prediction }>('/wnba/predictions/generate', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(data),
-                    cacheTtl: 'medium'
-                }),
             generatePrediction: (data: { player_id: string; stat: string; line: number }) =>
                 fetchApi<{ success: boolean; data: Prediction }>('/wnba/predictions/generate', {
                     method: 'POST',

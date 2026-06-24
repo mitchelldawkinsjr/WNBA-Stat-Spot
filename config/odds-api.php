@@ -43,7 +43,7 @@ return [
     ],
 
     'cache' => [
-        // Support both patterns used in OddsApiService
+        // Legacy key aliases used by OddsController cache helpers
         'odds_ttl' => env('ODDS_CACHE_TTL', 3600), // 1 hour
         'props_ttl' => env('PROPS_CACHE_TTL', 7200), // 2 hours
         'events_ttl' => env('EVENTS_CACHE_TTL', 14400), // 4 hours

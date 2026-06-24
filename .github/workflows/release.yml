@@ -233,9 +233,9 @@ jobs:
 
           ### Manual Installation
           1. Download and extract the release archive
-          2. Follow the deployment guide in DEPLOYMENT_STEPS.md
-          3. Configure your environment variables
-          4. Run database migrations
+          2. Copy `.env.example` to `.env` and configure database/Redis/API keys
+          3. Run `php artisan migrate --force`
+          4. Run `php artisan app:import-wnba-data`
 
           ## 📋 Requirements
           - PHP 8.4+
@@ -253,14 +253,13 @@ jobs:
 
           ## 📚 Documentation
 
-          - [Deployment Guide](DEPLOYMENT_STEPS.md)
-          - [Analytics Documentation](README_WNBA_ANALYTICS.md)
-          - [API Documentation](docs/api.md)
+          - [README](README.md)
+          - [Container setup](README_CONTAINER_SETUP.md)
 
           ## 🤝 Support
 
           If you encounter any issues, please:
-          1. Check the [troubleshooting guide](RENDER_DATABASE_TROUBLESHOOTING.md)
+          1. Check the README troubleshooting section
           2. Search existing issues
           3. Create a new issue with detailed information
           EOF
