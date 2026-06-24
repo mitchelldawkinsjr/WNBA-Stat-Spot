@@ -344,7 +344,7 @@ class GamePreviewService
             ->limit($limit)
             ->get()
             ->map(fn (WnbaGameTeam $row) => [
-                'date' => optional($row->game?->game_date)->format('M j') ?? '',
+                'date' => $this->formatGameDate($row->game?->game_date, 'M j'),
                 'opponent' => $row->opponentTeam?->team_abbreviation ?? 'OPP',
                 'points_scored' => (int) $row->team_score,
                 'points_allowed' => (int) $row->opponent_team_score,
@@ -468,12 +468,29 @@ class GamePreviewService
                 'trend' => $trend,
             ],
             'game_log' => $games->map(fn (WnbaPlayerGame $game) => [
-                'date' => optional($game->game_date)->format('Y-m-d') ?? '',
+                'date' => $this->formatGameDate($game->getAttribute('game_date') ?? $game->game?->game_date),
                 'points' => (int) $game->points,
                 'rebounds' => (int) $game->rebounds,
                 'assists' => (int) $game->assists,
             ])->values()->all(),
         ];
+    }
+
+    private function formatGameDate(mixed $date, string $format = 'Y-m-d'): string
+    {
+        if ($date === null || $date === '') {
+            return '';
+        }
+
+        if ($date instanceof \DateTimeInterface) {
+            return $date->format($format);
+        }
+
+        try {
+            return \Carbon\Carbon::parse((string) $date)->format($format);
+        } catch (\Throwable) {
+            return substr((string) $date, 0, 10);
+        }
     }
 
     /**
@@ -526,7 +543,7 @@ class GamePreviewService
             $margins[] = (int) $homeLine->team_score - (int) $awayLine->team_score;
 
             $meetings[] = [
-                'date' => optional($game->game_date)->format('M j, Y') ?? '',
+                'date' => $this->formatGameDate($game->game_date, 'M j, Y'),
                 'season' => $game->season,
                 'home_score' => (int) $homeLine->team_score,
                 'away_score' => (int) $awayLine->team_score,
