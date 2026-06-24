@@ -842,7 +842,7 @@ export const api = {
                 const queryString = params.toString();
                 const endpoint = `/wnba/analytics/player/${playerId}${queryString ? `?${queryString}` : ''}`;
 
-                return fetchApi<{ success: boolean; data: PlayerAnalytics }>(endpoint, { cacheTtl: 'medium' });
+                return fetchApi<{ success: boolean; data: PlayerAnalytics }>(endpoint, { cacheTtl: 'short' });
             },
             getTeam: (teamId: string, options?: { season?: number; last_n_games?: number }) => {
                 const params = new URLSearchParams();

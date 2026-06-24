@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { onMount } from 'svelte';
+    import { onDestroy, tick } from 'svelte';
     import { Chart } from '$lib/chart/register';
     import type { ChartConfiguration } from 'chart.js';
 
@@ -12,25 +12,26 @@
     };
 
     let canvas: HTMLCanvasElement;
-    let chart: Chart;
+    let chart: Chart | null = null;
 
-    onMount(() => {
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return;
+    function datasetValues() {
+        return [
+            data.fgPercentage,
+            data.threePercentage,
+            data.ftPercentage,
+            data.efgPercentage,
+            data.tsPercentage
+        ];
+    }
 
-        const chartConfig: ChartConfiguration = {
+    function buildConfig(): ChartConfiguration {
+        return {
             type: 'radar',
             data: {
                 labels: ['FG%', '3P%', 'FT%', 'eFG%', 'TS%'],
                 datasets: [{
                     label: 'Shooting Efficiency',
-                    data: [
-                        data.fgPercentage,
-                        data.threePercentage,
-                        data.ftPercentage,
-                        data.efgPercentage,
-                        data.tsPercentage
-                    ],
+                    data: datasetValues(),
                     backgroundColor: 'rgba(54, 162, 235, 0.2)',
                     borderColor: 'rgba(54, 162, 235, 1)',
                     borderWidth: 2,
@@ -59,33 +60,42 @@
                     tooltip: {
                         callbacks: {
                             label: (context) => {
-                                return `${context.parsed.value.toFixed(1)}%`;
+                                return `${context.parsed.r.toFixed(1)}%`;
                             }
                         }
                     }
                 }
             }
         };
+    }
 
-        chart = new Chart(ctx, chartConfig);
+    async function ensureChart() {
+        await tick();
+        if (!canvas) {
+            return;
+        }
 
-        return () => {
-            if (chart) {
-                chart.destroy();
+        if (!chart) {
+            const ctx = canvas.getContext('2d');
+            if (!ctx) {
+                return;
             }
-        };
-    });
+            chart = new Chart(ctx, buildConfig());
+            return;
+        }
 
-    $: if (chart && data) {
-        chart.data.datasets[0].data = [
-            data.fgPercentage,
-            data.threePercentage,
-            data.ftPercentage,
-            data.efgPercentage,
-            data.tsPercentage
-        ];
+        chart.data.datasets[0].data = datasetValues();
         chart.update();
     }
+
+    $: if (canvas && data) {
+        void ensureChart();
+    }
+
+    onDestroy(() => {
+        chart?.destroy();
+        chart = null;
+    });
 </script>
 
 <div class="chart-container" style="position: relative; height: 400px;">

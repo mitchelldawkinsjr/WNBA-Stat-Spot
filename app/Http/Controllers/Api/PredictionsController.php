@@ -57,13 +57,20 @@ class PredictionsController extends Controller
     {
         try {
             $season = (int) ($request->input('season') ?? config('wnba.seasons.current_season'));
-            $cacheKey = "player_analytics:v3:{$playerId}:{$season}";
+            $cacheKey = "player_analytics:v4:{$playerId}:{$season}";
+
+            $data = Cache::get($cacheKey);
+            if (! is_array($data)) {
+                $data = $this->playerAnalytics->getAnalytics($playerId, $season);
+
+                if (! isset($data['error']) && ($data['source'] ?? 'none') !== 'none') {
+                    Cache::put($cacheKey, $data, now()->addHours(6));
+                }
+            }
 
             return response()->json([
                 'status' => 'success',
-                'data' => Cache::remember($cacheKey, now()->addHours(6), function () use ($playerId, $season) {
-                    return $this->playerAnalytics->getAnalytics($playerId, $season);
-                }),
+                'data' => $data,
             ]);
         } catch (\Throwable $e) {
             Log::error('Failed to get player analytics', [

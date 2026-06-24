@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { onMount, onDestroy } from 'svelte';
+    import { onDestroy, tick } from 'svelte';
     import { Card, CardBody, CardHeader, CardTitle } from '@sveltestrap/sveltestrap';
     import { Chart } from '$lib/chart/register';
     import type { ChartConfiguration, ChartData, ChartOptions } from 'chart.js';
@@ -64,12 +64,6 @@
         },
     };
 
-    onMount(() => {
-        if (canvas && data) {
-            createChart();
-        }
-    });
-
     onDestroy(() => {
         if (chart) {
             chart.destroy();
@@ -104,14 +98,20 @@
         }
     }
 
-    // Reactive updates when data changes
-    $: if (chart && data) {
-        updateChart();
+    $: if (canvas && data?.datasets?.length) {
+        void ensureChart();
     }
 
-    // Recreate chart when type changes
-    $: if (chart && chartType) {
-        createChart();
+    async function ensureChart() {
+        await tick();
+        if (!canvas || !data?.datasets?.length) {
+            return;
+        }
+        if (!chart) {
+            createChart();
+            return;
+        }
+        updateChart();
     }
 
     // Export chart update function for external use

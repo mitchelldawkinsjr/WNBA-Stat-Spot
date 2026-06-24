@@ -27,7 +27,15 @@
             return;
         }
 
-        await playerAnalytics.fetchAnalytics(playerInfo.athlete_id, { season });
+        playerAnalytics.reset();
+        const hasAnalytics = await playerAnalytics.fetchAnalytics(playerInfo.athlete_id, { season });
+
+        if (!hasAnalytics) {
+            const gamelog = await api.players.getGamelog(playerInfo.athlete_id, { season, last_n_games: 50 });
+            if (gamelog.success && gamelog.data?.games?.length) {
+                playerAnalytics.setFromGamelog(gamelog.data.games);
+            }
+        }
     }
 
     async function changeAnalyticsSeason(season: number) {
