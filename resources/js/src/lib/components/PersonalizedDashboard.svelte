@@ -5,6 +5,7 @@
     import LoadingError from './LoadingError.svelte';
     import BaseChart from './charts/BaseChart.svelte';
     import type { ChartData } from 'chart.js';
+    import { isGameFinal, isGameTodayEt, sortGamesForToday } from '$lib/utils/gameDates';
 
     interface TrendingPlayer {
         id: number;
@@ -106,10 +107,9 @@
     onMount(async () => {
         try {
             const gamesRes = await api.games.getAll({ season: 2026 });
-            const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
 
-            todaysGames = (gamesRes.data ?? [])
-                .filter((game) => game.game_date === today)
+            todaysGames = sortGamesForToday(gamesRes.data ?? [])
+                .filter((game) => isGameTodayEt(game) && !isGameFinal(game))
                 .map((game) => ({
                     id: game.game_id,
                     home_team: game.home_team?.abbreviation ?? game.home_team?.name ?? 'TBD',

@@ -170,6 +170,7 @@ export interface Game {
     season: string;
     season_type: string;
     game_date: string;
+    game_date_et?: string;
     game_date_time: string;
     home_team_id?: string;
     away_team_id?: string;

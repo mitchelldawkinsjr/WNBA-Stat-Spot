@@ -5,10 +5,14 @@
     import StatusBadge from '$lib/components/ui/StatusBadge.svelte';
     import DsIcon from '$lib/components/ui/DsIcon.svelte';
     import TodaysBestProps from '$lib/components/TodaysBestProps.svelte';
-
-    const WNBA_TIMEZONE = 'America/New_York';
-    const LIVE_STATUS_PATTERN = /IN_PROGRESS|HALFTIME|END_PERIOD|LIVE/i;
-    const FINAL_STATUS_PATTERN = /FINAL|COMPLETED|POSTPONED|CANCEL/i;
+    import {
+        WNBA_TIMEZONE,
+        isGameFinal,
+        isGameLive,
+        isGameTodayEt,
+        sortGamesForToday,
+        todayEtDate,
+    } from '$lib/utils/gameDates';
 
     let games: Game[] = [];
     let leaders: LeagueLeader[] = [];
@@ -26,13 +30,13 @@
     let loading = true;
     let refreshTimer: ReturnType<typeof setInterval> | null = null;
 
-    $: liveGames = games.filter(isLive);
-    $: todaysGames = games.filter((game) => isTodayEt(game) && !isFinal(game) && !isLive(game));
-    $: displayGames = liveGames.length > 0 ? liveGames : todaysGames;
-    $: gamesSectionTitle = liveGames.length > 0 ? 'Live Games' : (todaysGames.length > 0 ? "Today's Games" : 'Games');
+    $: todaysGames = sortGamesForToday(games.filter((game) => isGameTodayEt(game) && !isGameFinal(game)));
+    $: liveGames = todaysGames.filter(isGameLive);
+    $: displayGames = todaysGames;
+    $: gamesSectionTitle = liveGames.length > 0 ? "Today's Games" : (todaysGames.length > 0 ? "Today's Games" : 'Games');
     $: gamesSectionSubtitle = liveGames.length > 0
-        ? 'Scores updating from in-progress matchups'
-        : (todaysGames.length > 0 ? 'Scheduled for today (ET)' : 'No live or scheduled games right now');
+        ? `${liveGames.length} live now · ${todaysGames.length} total on ${todayEtDate()} (ET)`
+        : (todaysGames.length > 0 ? `Scheduled for ${todayEtDate()} (ET)` : 'No games scheduled for today');
 
     onMount(async () => {
         await loadDashboard();
@@ -97,23 +101,8 @@
         return team?.abbreviation ?? team?.name?.slice(0, 3).toUpperCase() ?? 'TBD';
     }
 
-    function isLive(game: Game): boolean {
-        const status = game.status_name ?? '';
-        if (FINAL_STATUS_PATTERN.test(status)) return false;
-        return LIVE_STATUS_PATTERN.test(status);
-    }
-
-    function isFinal(game: Game): boolean {
-        return FINAL_STATUS_PATTERN.test(game.status_name ?? '');
-    }
-
-    function isTodayEt(game: Game): boolean {
-        const today = new Date().toLocaleDateString('en-CA', { timeZone: WNBA_TIMEZONE });
-        return game.game_date === today;
-    }
-
     function formatStatus(game: Game): string {
-        if (isLive(game)) return 'Live';
+        if (isGameLive(game)) return 'Live';
         const status = game.status_name ?? '';
         if (status === 'STATUS_SCHEDULED') return 'Scheduled';
         if (status === 'STATUS_FINAL') return 'Final';
@@ -160,11 +149,11 @@
                 <a
                     href="/games/{game.game_id}"
                     class="ds-score-card text-decoration-none text-reset"
-                    class:is-live={isLive(game)}
+                    class:is-live={isGameLive(game)}
                 >
                     <div class="d-flex justify-content-between align-items-center mb-2">
                         <span class="ds-meta-caps">{formatGameTime(game)}</span>
-                        {#if isLive(game)}
+                        {#if isGameLive(game)}
                             <StatusBadge variant="live" label="LIVE" />
                         {:else}
                             <span class="ds-meta-caps">{formatStatus(game)}</span>

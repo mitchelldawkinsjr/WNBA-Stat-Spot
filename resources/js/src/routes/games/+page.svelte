@@ -3,6 +3,7 @@
     import { api } from '$lib/api/client';
     import type { Game } from '$lib/api/client';
     import DefaultLayout from "$lib/layouts/DefaultLayout.svelte";
+    import { isGameTodayEt, sortGamesForToday, WNBA_TIMEZONE } from '$lib/utils/gameDates';
 
     let games: Game[] = [];
     let loading = true;
@@ -10,8 +11,12 @@
     let searchTerm = '';
     let viewMode: 'cards' | 'table' = 'cards';
     let selectedSeason = 2026;
+    let dateFilter: 'all' | 'today' = 'today';
 
-    $: filteredGames = games.filter(game =>
+    $: filteredGames = (dateFilter === 'today'
+        ? sortGamesForToday(games.filter(isGameTodayEt))
+        : games
+    ).filter(game =>
         (game.venue_name && game.venue_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
         (game.venue_city && game.venue_city.toLowerCase().includes(searchTerm.toLowerCase())) ||
         game.season.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -53,9 +58,10 @@
 
     function formatTime(dateTimeString: string): string {
         return new Date(dateTimeString).toLocaleTimeString('en-US', {
+            timeZone: WNBA_TIMEZONE,
             hour: 'numeric',
             minute: '2-digit',
-            hour12: true
+            hour12: true,
         });
     }
 
@@ -117,6 +123,20 @@
             <div class="col-md-4">
                 <div class="card">
                     <div class="card-body">
+                        <div class="btn-group w-100 mb-2" role="group" aria-label="Date filter">
+                            <button
+                                type="button"
+                                class="btn {dateFilter === 'today' ? 'btn-primary' : 'btn-outline-primary'}"
+                                disabled={loading}
+                                on:click={() => dateFilter = 'today'}
+                            >Today (ET)</button>
+                            <button
+                                type="button"
+                                class="btn {dateFilter === 'all' ? 'btn-primary' : 'btn-outline-primary'}"
+                                disabled={loading}
+                                on:click={() => dateFilter = 'all'}
+                            >All Games</button>
+                        </div>
                         <div class="btn-group w-100 mb-2" role="group" aria-label="Season">
                             <button
                                 type="button"

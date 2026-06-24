@@ -8,6 +8,7 @@ use App\Services\WNBA\Analytics\GameAnalyticsService;
 use App\Services\WNBA\Analytics\PlayerAnalyticsService;
 use App\Services\WNBA\Analytics\TeamAnalyticsService;
 use App\Services\WNBA\Data\DataAggregatorService;
+use App\Services\WNBA\Data\GameScheduleService;
 use App\Services\WNBA\Predictions\PropsPredictionService;
 use App\Services\WNBA\Predictions\StatisticalEngineService;
 use Carbon\Carbon;
@@ -806,175 +807,68 @@ class PredictionsController extends Controller
     /**
      * Get today's games that are scheduled but not completed
      */
-    private function getTodaysGames(string $timezone = 'UTC'): array
+    private function getTodaysGames(string $timezone = 'America/New_York'): array
     {
         try {
-            // Use the user's timezone to determine what "today" means
             $userToday = Carbon::now($timezone);
-            $userStartOfDay = $userToday->copy()->startOfDay();
-            $userEndOfDay = $userToday->copy()->endOfDay();
-
-            // Convert to UTC for database queries (since dates are stored in UTC)
-            $utcStartOfDay = $userStartOfDay->copy()->utc();
-            $utcEndOfDay = $userEndOfDay->copy()->utc();
-
-            Log::info('DEBUG: Starting getTodaysGames with timezone', [
-                'timezone' => $timezone,
-                'user_today' => $userToday->toString(),
-                'user_date' => $userToday->toDateString(),
-                'utc_start' => $utcStartOfDay->toString(),
-                'utc_end' => $utcEndOfDay->toString(),
-            ]);
-
             $userDate = $userToday->toDateString();
+            $season = (int) config('wnba.seasons.current_season');
 
-            // Match by game_date (calendar day) or game_date_time window for timezone edge cases
-            $games = DB::table('wnba_games')
-                ->where(function ($query) use ($utcStartOfDay, $utcEndOfDay, $userDate) {
-                    $query->whereBetween('game_date_time', [$utcStartOfDay, $utcEndOfDay])
-                        ->orWhere('game_date', $userDate);
-                })
-                ->where(function ($query) {
-                    $query->whereIn('status_name', [
-                        'STATUS_SCHEDULED', 'SCHEDULED', 'Pre-Game', 'PRE_GAME', 'Pregame',
-                    ])->orWhereIn('status_name', [
-                        'STATUS_IN_PROGRESS', 'IN_PROGRESS', 'Live', 'LIVE', 'In Progress',
-                        'STATUS_HALFTIME', 'HALFTIME', 'Half Time', 'Halftime',
-                        'STATUS_END_PERIOD', 'END_PERIOD', 'End of Period', 'End Period',
-                    ]);
-                })
-                ->whereNotIn('status_name', [
-                    'STATUS_FINAL', 'FINAL', 'Final', 'COMPLETED', 'Completed',
-                    'STATUS_FINAL_OT', 'FINAL_OT', 'Final OT', 'Final (OT)',
-                    'STATUS_POSTPONED', 'POSTPONED', 'Postponed',
-                    'STATUS_CANCELED', 'CANCELED', 'Cancelled', 'STATUS_CANCELLED',
-                ])
-                ->where('status_name', 'NOT LIKE', '%FINAL%')
-                ->where('status_name', 'NOT LIKE', '%COMPLETED%')
-                ->where('status_name', 'NOT LIKE', '%POSTPONED%')
-                ->where('status_name', 'NOT LIKE', '%CANCEL%')
-                ->where(function ($query) use ($userToday) {
-                    $liveStatuses = [
-                        'STATUS_IN_PROGRESS', 'IN_PROGRESS', 'Live', 'LIVE', 'In Progress',
-                        'STATUS_HALFTIME', 'HALFTIME', 'Half Time', 'Halftime',
-                        'STATUS_END_PERIOD', 'END_PERIOD', 'End of Period', 'End Period',
-                    ];
-                    $query->whereIn('status_name', $liveStatuses)
-                        ->orWhere('game_date_time', '>', $userToday->copy()->subHours(4)->utc());
-                })
-                ->select(['id', 'game_id', 'game_date', 'game_date_time', 'status_name'])
-                ->orderBy('game_date_time', 'asc')
-                ->get()
-                ->toArray();
-
-            Log::info('DEBUG: Raw query found games', [
-                'games_count' => count($games),
-                'timezone' => $timezone,
-                'games' => array_map(function ($game) use ($timezone) {
-                    return [
-                        'id' => $game->id,
-                        'game_id' => $game->game_id,
-                        'status' => $game->status_name,
-                        'game_time_utc' => $game->game_date_time,
-                        'game_time_user' => Carbon::parse($game->game_date_time)->setTimezone($timezone)->toString(),
-                    ];
-                }, $games),
-            ]);
-
-            // If no games today that meet criteria, return empty array
-            if (empty($games)) {
-                Log::info('No eligible games found for today in user timezone', [
-                    'timezone' => $timezone,
-                    'user_date' => $userToday->toDateString(),
-                    'total_games_in_range' => DB::table('wnba_games')
-                        ->where('game_date_time', '>=', $utcStartOfDay)
-                        ->where('game_date_time', '<=', $utcEndOfDay)
-                        ->count(),
-                    'all_statuses_in_range' => DB::table('wnba_games')
-                        ->where('game_date_time', '>=', $utcStartOfDay)
-                        ->where('game_date_time', '<=', $utcEndOfDay)
-                        ->pluck('status_name')
-                        ->unique()
-                        ->values()
-                        ->toArray(),
-                ]);
-
-                return [];
-            }
-
-            // Convert to array format expected by the rest of the code
+            $schedule = app(GameScheduleService::class)->list($season, true);
             $formattedGames = [];
-            foreach ($games as $game) {
-                $gameTimeUtc = Carbon::parse($game->game_date_time);
-                $gameTimeUser = $gameTimeUtc->copy()->setTimezone($timezone);
-                $teams = $this->getTeamsForGame($game->game_id);
 
-                Log::info('DEBUG: Processing game', [
-                    'game_id' => $game->game_id,
-                    'teams' => $teams,
-                    'status' => $game->status_name,
-                    'game_time_utc' => $gameTimeUtc->toString(),
-                    'game_time_user' => $gameTimeUser->toString(),
-                ]);
-
-                // Double-check: only include if game is today (in user's timezone) and not completed
-                $isToday = $gameTimeUser->isSameDay($userToday);
-                $isNotCompleted = ! $this->isGameCompleted($game->status_name);
-                $isNotTooOld = $gameTimeUtc->greaterThan($userToday->copy()->subHours(4)->utc());
-
-                if ($isToday && $isNotCompleted && $isNotTooOld) {
-                    $formattedGames[] = [
-                        'id' => $game->id,
-                        'game_id' => $game->game_id,
-                        'home_team_id' => $teams['home_team_id'] ?? null,
-                        'away_team_id' => $teams['away_team_id'] ?? null,
-                        'game_time' => $gameTimeUser->format('H:i:s'),
-                        'game_date_time' => $game->game_date_time,
-                        'status' => $game->status_name,
-                        'is_upcoming' => in_array($game->status_name, ['STATUS_SCHEDULED', 'SCHEDULED', 'Pre-Game', 'PRE_GAME', 'Pregame']),
-                        'is_live' => $this->isGameLive($game->status_name),
-                        'is_today' => true,
-                        'home_team' => $teams['home_team'] ?? 'Unknown',
-                        'away_team' => $teams['away_team'] ?? 'Unknown',
-                        'user_timezone' => $timezone,
-                        'user_game_time' => $gameTimeUser->format('Y-m-d H:i:s T'),
-                    ];
-                } else {
-                    Log::info('DEBUG: Excluding game from results', [
-                        'game_id' => $game->game_id,
-                        'is_today' => $isToday,
-                        'is_not_completed' => $isNotCompleted,
-                        'is_not_too_old' => $isNotTooOld,
-                        'status' => $game->status_name,
-                        'timezone' => $timezone,
-                    ]);
+            foreach ($schedule as $game) {
+                $gameTimeRaw = $game['game_date_time'] ?? $game['game_date'] ?? null;
+                if (! $gameTimeRaw) {
+                    continue;
                 }
+
+                $gameTimeUser = Carbon::parse($gameTimeRaw)->timezone($timezone);
+                if ($gameTimeUser->toDateString() !== $userDate) {
+                    continue;
+                }
+
+                $status = (string) ($game['status_name'] ?? '');
+                if ($this->isGameCompleted($status)) {
+                    continue;
+                }
+
+                $isLive = $this->isGameLive($status);
+                if (! $isLive && $gameTimeUser->lt($userToday->copy()->subHours(5))) {
+                    continue;
+                }
+
+                $formattedGames[] = [
+                    'id' => $game['id'] ?? 0,
+                    'game_id' => $game['game_id'],
+                    'home_team_id' => $game['home_team']['team_id'] ?? null,
+                    'away_team_id' => $game['away_team']['team_id'] ?? null,
+                    'game_time' => $gameTimeUser->format('g:i A T'),
+                    'game_date_time' => $gameTimeRaw,
+                    'status' => $status,
+                    'is_upcoming' => ! $isLive && str_contains($status, 'SCHEDULED'),
+                    'is_live' => $isLive,
+                    'is_today' => true,
+                    'home_team' => $game['home_team']['abbreviation'] ?? $game['home_team']['name'] ?? 'Unknown',
+                    'away_team' => $game['away_team']['abbreviation'] ?? $game['away_team']['name'] ?? 'Unknown',
+                    'user_timezone' => $timezone,
+                    'user_game_time' => $gameTimeUser->format('Y-m-d H:i:s T'),
+                ];
             }
+
+            usort($formattedGames, fn (array $a, array $b) => strcmp((string) $a['game_date_time'], (string) $b['game_date_time']));
 
             Log::info('Found eligible games for today in user timezone', [
                 'timezone' => $timezone,
-                'user_date' => $userToday->toDateString(),
+                'user_date' => $userDate,
                 'games_count' => count($formattedGames),
-                'games' => array_map(function ($game) {
-                    return [
-                        'game_id' => $game['game_id'],
-                        'status' => $game['status'],
-                        'user_game_time' => $game['user_game_time'],
-                        'is_upcoming' => $game['is_upcoming'],
-                        'is_live' => $game['is_live'],
-                        'home_team' => $game['home_team'],
-                        'away_team' => $game['away_team'],
-                    ];
-                }, $formattedGames),
             ]);
 
             return $formattedGames;
-
         } catch (\Exception $e) {
             Log::error('Failed to get today\'s games', [
                 'timezone' => $timezone,
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
             ]);
 
             return [];

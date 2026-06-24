@@ -4,6 +4,7 @@ namespace App\Services\WNBA\Data;
 
 use App\Models\WnbaGame;
 use App\Services\WNBA\Data\Providers\EspnWnbaProvider;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
 
 class GameScheduleService
@@ -12,7 +13,7 @@ class GameScheduleService
     {
         $cacheKey = "games_list_{$season}_".($includeLive ? 'live' : 'db');
 
-        return Cache::remember($cacheKey, 300, function () use ($season, $includeLive) {
+        return Cache::remember($cacheKey, $includeLive ? 60 : 300, function () use ($season, $includeLive) {
             $dbGames = WnbaGame::with(['gameTeams.team', 'gameTeams.opponentTeam'])
                 ->where('season', $season)
                 ->orderByDesc('game_date')
@@ -80,7 +81,7 @@ class GameScheduleService
             $result = $this->enrichFromSchedule($result, $scheduleRecord);
         }
 
-        return $result;
+        return $this->normalizeGameDates($result);
     }
 
     /**
@@ -100,8 +101,15 @@ class GameScheduleService
             $dbGame['away_team'] = $espn['away_team'];
         }
 
-        foreach (['venue_name', 'venue_city', 'venue_state', 'status_name', 'game_date', 'game_date_time'] as $field) {
+        foreach (['venue_name', 'venue_city', 'venue_state'] as $field) {
             if (empty($dbGame[$field]) && ! empty($espn[$field])) {
+                $dbGame[$field] = $espn[$field];
+            }
+        }
+
+        // Prefer live ESPN data for fields that change during/after games
+        foreach (['status_name', 'game_date', 'game_date_time'] as $field) {
+            if (! empty($espn[$field])) {
                 $dbGame[$field] = $espn[$field];
             }
         }
@@ -111,9 +119,27 @@ class GameScheduleService
 
         if ($dbGame['final_score'] === null && $espn['final_score'] !== null) {
             $dbGame['final_score'] = $espn['final_score'];
+        } elseif ($espn['final_score'] !== null && ($espn['final_score']['final'] ?? false)) {
+            $dbGame['final_score'] = $espn['final_score'];
         }
 
         return $dbGame;
+    }
+
+    /**
+     * @param  array<string, mixed>  $game
+     * @return array<string, mixed>
+     */
+    private function normalizeGameDates(array $game): array
+    {
+        $raw = $game['game_date_time'] ?? $game['game_date'] ?? null;
+        if ($raw) {
+            $et = Carbon::parse($raw)->timezone('America/New_York');
+            $game['game_date_et'] = $et->toDateString();
+            $game['game_date'] = $et->toDateString();
+        }
+
+        return $game;
     }
 
     /**
@@ -153,7 +179,7 @@ class GameScheduleService
         $statusName = $record['status_name'] ?? null;
         $isFinal = $statusName === 'STATUS_FINAL';
 
-        return [
+        $result = [
             'id' => 0,
             'game_id' => (string) ($record['game_id'] ?? ''),
             'season' => (string) ($record['season'] ?? ''),
@@ -191,6 +217,8 @@ class GameScheduleService
             ] : null,
             'source' => 'espn',
         ];
+
+        return $this->normalizeGameDates($result);
     }
 
     private function teamInfoFromDb(WnbaGame $game, string $homeAway): ?array
