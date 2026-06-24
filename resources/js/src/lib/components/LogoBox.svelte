@@ -1,22 +1,51 @@
 <script lang="ts">
-    const logoSm = "/images/logo-sm.png"
-    // const logoLight = "/images/logo-light.png"
-    const logoDark = "/images/logo-dark.png"
+    const logoSm = "/images/logo-sm.png";
+    const logoDark = "/images/logo-dark.png";
 
-
-    export let logoSmHeight: number = 300;
-    export let logoLgHeight: number = 300;
-
+    /** Compact mark for sidebar / mobile */
+    export let logoSmHeight: number = 28;
+    /** Full wordmark */
+    export let logoLgHeight: number = 36;
+    /** When true, only render the compact mark (sidebar collapsed) */
+    export let compact: boolean = false;
 </script>
 
 <div class="logo-box">
-    <a href="/" class="logo-dark">
-        <img src={logoSm} class="logo-lg" height={logoSmHeight} alt="logo sm"/>
-        <img src={logoDark} class="logo-lg" height={logoLgHeight} alt="logo dark"/>
-    </a>
-
-    <a href="/" class="logo-light">
-        <img src={logoSm} class="logo-sm" height={logoSmHeight} alt="logo sm"/>
-        <img src={logoDark} class="logo-lg" height={logoLgHeight} alt="logo light"/>
-    </a>
+    {#if compact}
+        <a href="/" class="logo-dark" aria-label="WNBA Stat Spot home">
+            <img src={logoSm} class="logo-sm" height={logoSmHeight} alt="WNBA Stat Spot"/>
+        </a>
+        <a href="/" class="logo-light" aria-label="WNBA Stat Spot home">
+            <img src={logoSm} class="logo-sm" height={logoSmHeight} alt="WNBA Stat Spot"/>
+        </a>
+    {:else}
+        <a href="/" class="logo-dark" aria-label="WNBA Stat Spot home">
+            <img src={logoSm} class="logo-sm logo-box__sm" height={logoSmHeight} alt="WNBA Stat Spot"/>
+            <img src={logoDark} class="logo-lg logo-box__lg" height={logoLgHeight} alt="WNBA Stat Spot"/>
+        </a>
+        <a href="/" class="logo-light" aria-label="WNBA Stat Spot home">
+            <img src={logoSm} class="logo-sm logo-box__sm" height={logoSmHeight} alt="WNBA Stat Spot"/>
+            <img src={logoDark} class="logo-lg logo-box__lg" height={logoLgHeight} alt="WNBA Stat Spot"/>
+        </a>
+    {/if}
 </div>
+
+<style>
+    .logo-box__sm {
+        display: none;
+    }
+
+    .logo-box__lg {
+        display: inline-block;
+    }
+
+    @media (max-width: 767.98px) {
+        .logo-box__sm {
+            display: inline-block;
+        }
+
+        .logo-box__lg {
+            display: none;
+        }
+    }
+</style>

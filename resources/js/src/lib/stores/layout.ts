@@ -10,9 +10,9 @@ type LayoutType = {
 }
 
 const defaultConfig: LayoutType = {
-    theme: 'light',
-    topBarColor: 'light',
-    leftSideBarColor: 'light',
+    theme: 'dark',
+    topBarColor: 'dark',
+    leftSideBarColor: 'dark',
     leftSideBarSize: 'sm-hover-active'
 }
 

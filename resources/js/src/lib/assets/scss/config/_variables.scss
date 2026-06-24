@@ -5,12 +5,12 @@
 // Prefix for :root CSS variables
 $prefix: 'bs-';
 
-// Google Font Family link
-@import url('https://fonts.googleapis.com/css2?family=Wix+Madefor+Text:ital,wght@0,400..800;1,400..800&display=swap');
+// Google Font Family link (Stitch design system)
+@import url('https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;600;700&display=swap');
 
 // Font Family
-$font-family-primary: 'Wix Madefor Text', sans-serif;
-$font-family-secondary: 'Wix Madefor Text', sans-serif;
+$font-family-primary: 'Hanken Grotesk', sans-serif;
+$font-family-secondary: 'Hanken Grotesk', sans-serif;
 
 //
 // Color system
@@ -44,7 +44,7 @@ $cyan: #4ecac2;
 // scss-docs-end color-variables
 
 // scss-docs-start theme-color-variables
-$primary: $blue;
+$primary: $orange;
 $secondary: $gray-600;
 $blue: $blue;
 $indigo: $indigo;

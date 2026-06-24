@@ -1,0 +1,66 @@
+//
+// ProCourts / WNBA Stat Spot design tokens (from Stitch DESIGN.md)
+//
+
+:root {
+    --ds-surface: #0e141a;
+    --ds-surface-dim: #0e141a;
+    --ds-surface-bright: #343a40;
+    --ds-surface-container-lowest: #090f14;
+    --ds-surface-container-low: #161c22;
+    --ds-surface-container: #1a2026;
+    --ds-surface-container-high: #252b31;
+    --ds-surface-container-highest: #2f353c;
+    --ds-surface-dark: #262d34;
+    --ds-surface-dark-elevated: #2c3238;
+    --ds-surface-variant: #2f353c;
+
+    --ds-on-surface: #dde3eb;
+    --ds-on-surface-variant: #e1bfb4;
+    --ds-text-muted: #aab8c5;
+    --ds-outline: #a98a80;
+    --ds-outline-variant: #594139;
+    --ds-border-subtle: #2f3944;
+
+    --ds-primary: #ff6c2f;
+    --ds-primary-soft: #ffb59b;
+    --ds-on-primary: #ffffff;
+    --ds-on-primary-container: #5d1c00;
+    --ds-secondary: #3491fc;
+    --ds-secondary-soft: #a7c8ff;
+    --ds-tertiary: #8e98c0;
+
+    --ds-success: #22c55e;
+    --ds-danger: #ef5f5f;
+    --ds-warning: #f9b931;
+    --ds-info: #4ecac2;
+
+    --ds-font-family: 'Hanken Grotesk', sans-serif;
+    --ds-radius-sm: 0.125rem;
+    --ds-radius: 0.25rem;
+    --ds-radius-lg: 0.5rem;
+    --ds-radius-xl: 0.75rem;
+    --ds-radius-pill: 9999px;
+
+    --ds-spacing-xs: 5px;
+    --ds-spacing-sm: 10px;
+    --ds-spacing-md: 20px;
+    --ds-spacing-lg: 30px;
+    --ds-spacing-xl: 60px;
+    --ds-gutter: 20px;
+    --ds-margin-mobile: 16px;
+    --ds-margin-desktop: 32px;
+    --ds-container-max: 1320px;
+
+    --ds-topbar-height: 64px;
+}
+
+html[data-bs-theme='dark'],
+[data-bs-theme='dark'] {
+    --#{$prefix}body-bg: var(--ds-surface);
+    --#{$prefix}body-color: var(--ds-on-surface);
+    --#{$prefix}border-color: var(--ds-border-subtle);
+    --#{$prefix}headings-color: var(--ds-on-surface);
+    --#{$prefix}link-color: var(--ds-primary-soft);
+    --#{$prefix}link-hover-color: var(--ds-primary);
+}
