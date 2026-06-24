@@ -71,3 +71,75 @@ html.sidebar-enable .wrapper.ds-shell .main-nav {
         padding-bottom: calc(72px + var(--ds-spacing-md));
     }
 }
+
+// Stitch segmented toggles (prediction-engine / league-standings pattern)
+.wrapper.ds-shell {
+    .btn-group {
+        display: flex;
+        width: 100%;
+        padding: 4px;
+        gap: 4px;
+        background: var(--ds-surface-container);
+        border: 1px solid var(--ds-outline-variant);
+        border-radius: var(--ds-radius-lg);
+        box-shadow: none;
+
+        > .btn,
+        > .btn:first-child,
+        > .btn:last-child,
+        > .btn:not(:last-child):not(.dropdown-toggle) {
+            flex: 1 1 0;
+            margin: 0;
+            border: none !important;
+            border-radius: var(--ds-radius) !important;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            line-height: 1.2;
+            padding: 8px 16px;
+            box-shadow: none !important;
+            white-space: nowrap;
+        }
+
+        > .btn-primary,
+        > .btn-warning,
+        > .btn-success,
+        > .btn-info,
+        > .btn-danger {
+            background-color: var(--ds-primary-container) !important;
+            border-color: transparent !important;
+            color: var(--ds-on-primary-container) !important;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08) !important;
+        }
+
+        > .btn-outline-primary,
+        > .btn-outline-warning,
+        > .btn-outline-success,
+        > .btn-outline-info,
+        > .btn-outline-danger {
+            background: transparent !important;
+            border-color: transparent !important;
+            color: var(--ds-on-surface-variant) !important;
+
+            &:hover,
+            &:focus {
+                background: var(--ds-surface-container-highest) !important;
+                border-color: transparent !important;
+                color: var(--ds-on-surface) !important;
+            }
+        }
+    }
+
+    .table-light {
+        --#{$prefix}table-bg: var(--ds-surface-container-low);
+        --#{$prefix}table-color: var(--ds-on-surface);
+        --#{$prefix}table-border-color: var(--ds-border-subtle);
+    }
+
+    .bg-light,
+    .table-light th {
+        background-color: var(--ds-surface-container-low) !important;
+        color: var(--ds-on-surface) !important;
+    }
+}

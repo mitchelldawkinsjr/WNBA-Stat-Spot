@@ -87,6 +87,11 @@
         }
     }
 
+    html[data-bs-theme='light'] & .ds-topbar__link.active {
+        color: var(--ds-primary);
+        background: rgba(169, 56, 0, 0.08);
+    }
+
     .ds-topbar__actions {
         display: flex;
         align-items: center;

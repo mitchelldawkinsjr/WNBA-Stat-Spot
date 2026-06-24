@@ -64,6 +64,14 @@ body {
         background-color: var(--ds-surface-dark-elevated);
     }
 
+    html[data-bs-theme='light'] & {
+        box-shadow: none;
+
+        &:hover {
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+        }
+    }
+
     .card-header {
         background-color: transparent;
         border-bottom: 1px solid var(--ds-border-subtle);
@@ -77,8 +85,8 @@ body {
 }
 
 .btn-primary {
-    background-color: var(--ds-primary);
-    border-color: var(--ds-primary);
+    background-color: var(--ds-primary-container);
+    border-color: var(--ds-primary-container);
     color: var(--ds-on-primary);
     border-radius: var(--ds-radius);
     font-weight: 600;
@@ -101,6 +109,20 @@ body {
         background-color: rgba(52, 145, 252, 0.12);
         border-color: var(--ds-secondary);
         color: var(--ds-secondary-soft);
+    }
+}
+
+html[data-bs-theme='light'] {
+    .btn-outline-primary {
+        color: var(--ds-primary);
+        border-color: var(--ds-primary);
+
+        &:hover,
+        &:focus {
+            background-color: rgba(169, 56, 0, 0.08);
+            border-color: var(--ds-primary);
+            color: var(--ds-primary);
+        }
     }
 }
 
@@ -130,6 +152,10 @@ body {
     --#{$prefix}table-border-color: var(--ds-border-subtle);
     --#{$prefix}table-striped-bg: rgba(255, 255, 255, 0.02);
     --#{$prefix}table-hover-bg: var(--ds-surface-dark-elevated);
+
+    html[data-bs-theme='light'] & {
+        --#{$prefix}table-striped-bg: rgba(0, 0, 0, 0.02);
+    }
 
     th {
         font-size: 12px;
