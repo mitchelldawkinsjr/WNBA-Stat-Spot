@@ -1,7 +1,7 @@
 <script lang="ts">
     import { onDestroy, onMount } from 'svelte';
     import { api } from '$lib/api/client';
-    import type { Game, LeagueLeader, PlayerSpotlight } from '$lib/api/client';
+    import type { Game, LeagueLeader, PlayerSpotlight, PredictionAccuracyDashboard, TodaysProp } from '$lib/api/client';
     import StatusBadge from '$lib/components/ui/StatusBadge.svelte';
     import DsIcon from '$lib/components/ui/DsIcon.svelte';
     import TodaysBestProps from '$lib/components/TodaysBestProps.svelte';
@@ -17,6 +17,8 @@
     let games: Game[] = [];
     let leaders: LeagueLeader[] = [];
     let newsItems: Array<Record<string, unknown>> = [];
+    let accuracy: PredictionAccuracyDashboard | null = null;
+    let topProp: TodaysProp | null = null;
     let featuredPlayer: PlayerSpotlight & { position: string } = {
         name: 'Featured Player',
         player_id: '',
@@ -50,14 +52,17 @@
     async function loadDashboard() {
         try {
             loading = true;
-            const [gamesRes, leadersRes, newsRes] = await Promise.all([
+            const [gamesRes, leadersRes, newsRes, accuracyRes] = await Promise.all([
                 api.games.getAll({ season: 2026 }),
                 api.players.getLeaders({ season: 2026 }),
                 api.wnba.getNews({ limit: 4 }).catch(() => null),
+                api.wnba.predictions.getAccuracy('America/New_York').catch(() => null),
             ]);
             games = gamesRes.data ?? [];
             leaders = leadersRes.data?.leaders ?? [];
             newsItems = newsRes?.data?.items ?? [];
+            accuracy = accuracyRes?.data ?? null;
+            topProp = accuracy?.top_prop_of_day ?? null;
 
             const spotlight = leadersRes.data?.spotlight;
             if (spotlight) {
@@ -121,6 +126,10 @@
 
     function formatStat(value: number | null | undefined): string {
         return value != null ? value.toFixed(1) : '—';
+    }
+
+    function formatPct(value: number | null | undefined): string {
+        return value != null ? `${value.toFixed(1)}%` : '—';
     }
 </script>
 
@@ -239,13 +248,46 @@
             </div>
 
             <div class="ds-panel">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h3 class="ds-panel__title mb-0"><DsIcon name="verified" size={20} className="text-primary" /> Model Accuracy</h3>
+                    <a href="/advanced/model-validation" class="ds-link-caps">Details</a>
+                </div>
+                <p class="ds-text-muted small mb-3">Running hit rate on tracked projections after games finish.</p>
+                <div class="ds-accuracy-grid mb-3">
+                    <div class="ds-score-card">
+                        <span class="ds-meta-caps">Winner picks</span>
+                        <span class="ds-stat-value text-primary">{formatPct(accuracy?.game_scores.winner_accuracy)}</span>
+                        <small class="ds-text-muted">{accuracy?.game_scores.graded ?? 0} graded</small>
+                    </div>
+                    <div class="ds-score-card">
+                        <span class="ds-meta-caps">Props</span>
+                        <span class="ds-stat-value text-primary">{formatPct(accuracy?.props.accuracy)}</span>
+                        <small class="ds-text-muted">{accuracy?.props.graded ?? 0} graded</small>
+                    </div>
+                </div>
+                {#if topProp}
+                    <div class="ds-top-prop">
+                        <span class="ds-meta-caps">Top prop of the day</span>
+                        <div class="fw-semibold">{topProp.player_name}</div>
+                        <div class="small">
+                            <span class="text-uppercase">{topProp.recommendation}</span>
+                            {topProp.suggested_line}
+                            {topProp.stat_type?.replace(/_/g, ' ')}
+                        </div>
+                    </div>
+                {:else}
+                    <p class="ds-text-muted small mb-0">Top prop appears once today's slate is generated.</p>
+                {/if}
+            </div>
+
+            <div class="ds-panel">
                 <h3 class="ds-panel__title"><DsIcon name="query_stats" size={20} className="text-primary" /> Quick Links</h3>
                 <div class="ds-link-list">
                     <a href="/reports/predictions" class="ds-link-row"><DsIcon name="auto_awesome" size={18} /> Prediction Engine</a>
                     <a href="/reports/todays-props" class="ds-link-row"><DsIcon name="local_fire_department" size={18} /> Today's Best Props</a>
+                    <a href="/advanced/model-validation" class="ds-link-row"><DsIcon name="verified" size={18} /> Model Accuracy</a>
                     <a href="/advanced/prop-scanner" class="ds-link-row"><DsIcon name="radar" size={18} /> Prop Scanner</a>
                     <a href="/advanced/live-odds" class="ds-link-row"><DsIcon name="bolt" size={18} /> Live Odds</a>
-                    <a href="/compare/players" class="ds-link-row"><DsIcon name="compare" size={18} /> Compare Players</a>
                 </div>
             </div>
         </div>
@@ -432,6 +474,22 @@
         background: var(--ds-surface-container-high);
     }
     .ds-leader-avatar--placeholder { display: inline-block; }
+    .ds-accuracy-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: var(--ds-spacing-sm);
+    }
+    .ds-accuracy-grid .ds-score-card {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+    .ds-top-prop {
+        padding: var(--ds-spacing-sm);
+        border-radius: var(--ds-radius-lg);
+        background: var(--ds-surface-variant);
+        border: 1px solid var(--ds-border-subtle);
+    }
     .ds-link-list { display: flex; flex-direction: column; gap: 4px; }
     .ds-link-row {
         display: flex;

@@ -5,10 +5,12 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Services\Odds\OddsService;
 use App\Services\WNBA\Analytics\GameAnalyticsService;
+use App\Services\WNBA\Analytics\GamePreviewService;
 use App\Services\WNBA\Analytics\PlayerAnalyticsService;
 use App\Services\WNBA\Analytics\TeamAnalyticsService;
 use App\Services\WNBA\Data\DataAggregatorService;
 use App\Services\WNBA\Data\GameScheduleService;
+use App\Services\WNBA\Predictions\PredictionAccuracyService;
 use App\Services\WNBA\Predictions\PropsPredictionService;
 use App\Services\WNBA\Predictions\StatisticalEngineService;
 use Carbon\Carbon;
@@ -33,6 +35,10 @@ class PredictionsController extends Controller
 
     private OddsService $oddsApi;
 
+    private PredictionAccuracyService $predictionAccuracy;
+
+    private GamePreviewService $gamePreview;
+
     public function __construct(
         PropsPredictionService $propsPrediction,
         StatisticalEngineService $statisticalEngine,
@@ -40,7 +46,9 @@ class PredictionsController extends Controller
         TeamAnalyticsService $teamAnalytics,
         GameAnalyticsService $gameAnalytics,
         DataAggregatorService $dataAggregator,
-        OddsService $oddsApi
+        OddsService $oddsApi,
+        PredictionAccuracyService $predictionAccuracy,
+        GamePreviewService $gamePreview,
     ) {
         $this->propsPrediction = $propsPrediction;
         $this->statisticalEngine = $statisticalEngine;
@@ -49,6 +57,8 @@ class PredictionsController extends Controller
         $this->gameAnalytics = $gameAnalytics;
         $this->dataAggregator = $dataAggregator;
         $this->oddsApi = $oddsApi;
+        $this->predictionAccuracy = $predictionAccuracy;
+        $this->gamePreview = $gamePreview;
     }
 
     /**
@@ -367,32 +377,37 @@ class PredictionsController extends Controller
                 'user_time' => Carbon::now($timezone)->toString(),
             ]);
 
-            $cacheKey = 'todays_best_props_with_odds_v2_'.str_replace('/', '_', $timezone);
+            $cacheKey = 'todays_best_props_with_odds_v3_'.str_replace('/', '_', $timezone);
 
-            return response()->json([
-                'success' => true,
-                'data' => Cache::remember($cacheKey, now()->addMinutes(30), function () use ($timezone) {
-                    try {
-                        $props = $this->generateTodaysBestProps($timezone);
+            $props = Cache::remember($cacheKey, now()->addMinutes(30), function () use ($timezone) {
+                try {
+                    $props = $this->generateTodaysBestProps($timezone);
 
-                        if (empty($props)) {
-                            Log::info('No games scheduled for today in user timezone - returning empty props list', [
-                                'timezone' => $timezone,
-                            ]);
-
-                            return [];
-                        }
-
-                        return $props;
-                    } catch (\Throwable $e) {
-                        Log::warning('generateTodaysBestProps failed; returning empty props list', [
+                    if (empty($props)) {
+                        Log::info('No games scheduled for today in user timezone - returning empty props list', [
                             'timezone' => $timezone,
-                            'error' => $e->getMessage(),
                         ]);
 
                         return [];
                     }
-                }),
+
+                    $this->trackTodaysPredictions($props, $timezone);
+
+                    return $props;
+                } catch (\Throwable $e) {
+                    Log::warning('generateTodaysBestProps failed; returning empty props list', [
+                        'timezone' => $timezone,
+                        'error' => $e->getMessage(),
+                    ]);
+
+                    return [];
+                }
+            });
+
+            return response()->json([
+                'success' => true,
+                'data' => $props,
+                'top_prop' => $props[0] ?? null,
             ]);
         } catch (\Exception $e) {
             Log::error('Failed to get today\'s best props', [
@@ -404,6 +419,103 @@ class PredictionsController extends Controller
                 'data' => [],
                 'message' => 'Props unavailable; check logs or configuration.',
             ]);
+        }
+    }
+
+    /**
+     * Running accuracy for tracked game-score and prop predictions.
+     */
+    public function getPredictionAccuracy(Request $request)
+    {
+        $timezone = $request->get('timezone', 'America/New_York');
+
+        try {
+            new \DateTimeZone($timezone);
+        } catch (\Exception $e) {
+            $timezone = 'America/New_York';
+        }
+
+        try {
+            return response()->json([
+                'success' => true,
+                'data' => $this->predictionAccuracy->getAccuracyDashboard($timezone),
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Failed to load prediction accuracy', ['error' => $e->getMessage()]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Unable to load prediction accuracy',
+            ], 500);
+        }
+    }
+
+    /**
+     * Single best prop recommendation for the current day.
+     */
+    public function getTopPropOfDay(Request $request)
+    {
+        $timezone = $request->get('timezone', 'America/New_York');
+
+        try {
+            new \DateTimeZone($timezone);
+        } catch (\Exception $e) {
+            $timezone = 'America/New_York';
+        }
+
+        try {
+            $topProp = $this->predictionAccuracy->getTopPropOfDay($timezone);
+
+            if ($topProp === null) {
+                $todays = $this->getTodaysBestProps(new Request(['timezone' => $timezone]));
+                $payload = $todays->getData(true);
+                $topProp = $payload['top_prop'] ?? ($payload['data'][0] ?? null);
+            }
+
+            return response()->json([
+                'success' => true,
+                'data' => $topProp,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Failed to load top prop of day', ['error' => $e->getMessage()]);
+
+            return response()->json([
+                'success' => true,
+                'data' => null,
+            ]);
+        }
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $props
+     */
+    private function trackTodaysPredictions(array $props, string $timezone): void
+    {
+        try {
+            $this->predictionAccuracy->recordTodaysProps($props, $timezone);
+        } catch (\Throwable $e) {
+            Log::warning('Failed to track today\'s prop predictions', [
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        $gameIds = collect($props)
+            ->pluck('game_id')
+            ->filter()
+            ->unique()
+            ->values();
+
+        $season = (int) config('wnba.seasons.current_season');
+
+        foreach ($gameIds as $gameId) {
+            try {
+                $this->gamePreview->buildPreview((string) $gameId, $season);
+            } catch (\Throwable $e) {
+                Log::warning('Failed to track game score prediction for today\'s slate', [
+                    'game_id' => $gameId,
+                    'error' => $e->getMessage(),
+                ]);
+            }
         }
     }
 
@@ -592,6 +704,7 @@ class PredictionsController extends Controller
                         'player_name' => $player['name'] ?? $player['athlete_display_name'],
                         'team_abbreviation' => $this->getTeamAbbreviation($player['team_id'] ?? null),
                         'opponent' => $game ? $this->getOpponent($player['team_id'] ?? 1, $game) : 'TBD',
+                        'game_id' => $game['game_id'] ?? null,
                         'game_time' => $game ? $this->formatGameTime($game['game_date_time'] ?? '') : 'TBD',
                         'stat_type' => $statType,
                         'suggested_line' => $line,

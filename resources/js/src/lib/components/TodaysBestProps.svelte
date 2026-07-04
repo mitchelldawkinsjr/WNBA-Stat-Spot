@@ -40,6 +40,7 @@
     }
 
     let todaysProps: TodaysProp[] = [];
+    let topProp: TodaysProp | null = null;
     let loading = true;
     let error: string | null = null;
     let lastUpdated: string | null = null;
@@ -57,10 +58,12 @@
 
             const response = await api.wnba.predictions.getTodaysBest('America/New_York');
             todaysProps = response.data ?? [];
+            topProp = response.top_prop ?? todaysProps[0] ?? null;
             lastUpdated = new Date().toLocaleTimeString('en-US', { timeZone: 'America/New_York' });
         } catch (err) {
             error = err instanceof Error ? err.message : 'Failed to load today\'s props';
             todaysProps = [];
+            topProp = null;
             console.error('Failed to load today\'s props:', err);
         } finally {
             loading = false;
@@ -182,14 +185,43 @@
                 </div>
             </div>
         {:else}
+            {#if topProp}
+                <div class="alert alert-primary border-0 shadow-sm mb-4">
+                    <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
+                        <div>
+                            <div class="text-uppercase small fw-bold mb-1">Top Prop of the Day</div>
+                            <h5 class="mb-1">{topProp.player_name}</h5>
+                            <div class="mb-1">
+                                <span class="badge bg-{topProp.recommendation === 'over' ? 'success' : 'danger'} me-2">
+                                    {topProp.recommendation.toUpperCase()} {topProp.suggested_line}
+                                </span>
+                                <span class="text-capitalize">{topProp.stat_type}</span>
+                                <span class="text-muted"> · Predicted {topProp.predicted_value}</span>
+                            </div>
+                            <small class="text-muted">
+                                {topProp.team_abbreviation} {topProp.opponent}
+                                · EV {topProp.expected_value?.toFixed?.(1) ?? topProp.expected_value}
+                                · Conf {formatPercentage(topProp.confidence > 1 ? topProp.confidence / 100 : topProp.confidence)}
+                            </small>
+                        </div>
+                        <a href="/advanced/model-validation" class="btn btn-sm btn-outline-primary">Track Accuracy</a>
+                    </div>
+                </div>
+            {/if}
+
             <div class="row g-3">
-                {#each todaysProps.slice(0, 6) as prop}
+                {#each todaysProps.slice(0, 6) as prop, index}
                     <div class="col-md-6 col-lg-4 mb-3">
-                        <div class="card h-100 border-0 shadow-sm">
+                        <div class="card h-100 border-0 shadow-sm" class:border-primary={index === 0} class:border={index === 0}>
                             <div class="card-body">
                                 <div class="d-flex justify-content-between align-items-start mb-2">
                                     <div>
-                                        <h6 class="card-title mb-1 fw-bold">{prop.player_name}</h6>
+                                        <h6 class="card-title mb-1 fw-bold">
+                                            {prop.player_name}
+                                            {#if index === 0}
+                                                <span class="badge bg-primary ms-1">Top</span>
+                                            {/if}
+                                        </h6>
                                         <small class="text-muted">{prop.team_abbreviation} {prop.opponent}</small>
                                     </div>
                                     <span class="badge bg-{getBadgeColor(prop.betting_value)} rounded-pill">

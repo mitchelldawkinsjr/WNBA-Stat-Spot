@@ -108,7 +108,7 @@ export const MENU_ITEMS: MenuItemType[] = [
     {
         key: 'model-validation',
         icon: 'iconamoon:shield-check-duotone',
-        label: 'Model Validation',
+        label: 'Model Accuracy',
         url: '/advanced/model-validation',
     },
     {

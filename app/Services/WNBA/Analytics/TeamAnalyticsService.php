@@ -5,6 +5,7 @@ namespace App\Services\WNBA\Analytics;
 use App\Models\WnbaGameTeam;
 use App\Models\WnbaGame;
 use App\Models\WnbaPlayerGame;
+use App\Services\WNBA\Data\Support\TeamForeignKeyResolver;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -18,7 +19,7 @@ class TeamAnalyticsService
     /**
      * Get comprehensive team performance metrics
      */
-    public function getTeamPerformanceMetrics(int $teamId, int $season, ?int $lastNGames = null): array
+    public function getTeamPerformanceMetrics(int|string $teamId, int $season, ?int $lastNGames = null): array
     {
         $cacheKey = "team_performance_{$teamId}_{$season}_" . ($lastNGames ?? 'all');
 
@@ -129,7 +130,7 @@ class TeamAnalyticsService
     /**
      * Calculate team shooting and scoring trends
      */
-    public function getShootingTrends(int $teamId, int $season, int $lastNGames = 10): array
+    public function getShootingTrends(int|string $teamId, int $season, int $lastNGames = 10): array
     {
         $cacheKey = "team_shooting_trends_{$teamId}_{$season}_{$lastNGames}";
 
@@ -167,7 +168,7 @@ class TeamAnalyticsService
     /**
      * Analyze team performance against specific opponent types
      */
-    public function getOpponentAnalysis(int $teamId, int $season): array
+    public function getOpponentAnalysis(int|string $teamId, int $season): array
     {
         $cacheKey = "team_opponent_analysis_{$teamId}_{$season}";
 
@@ -190,7 +191,7 @@ class TeamAnalyticsService
     /**
      * Get team defensive metrics and rankings
      */
-    public function getDefensiveMetrics(int $teamId, int $season): array
+    public function getDefensiveMetrics(int|string $teamId, int $season): array
     {
         $cacheKey = "team_defensive_metrics_{$teamId}_{$season}";
 
@@ -222,7 +223,7 @@ class TeamAnalyticsService
     /**
      * Calculate team strength of schedule
      */
-    public function getStrengthOfSchedule(int $teamId, int $season): array
+    public function getStrengthOfSchedule(int|string $teamId, int $season): array
     {
         $cacheKey = "team_sos_{$teamId}_{$season}";
 
@@ -306,9 +307,11 @@ class TeamAnalyticsService
 
     // Private helper methods
 
-    private function getTeamGames(int $teamId, int $season, ?int $lastNGames = null): Collection
+    private function getTeamGames(int|string $teamId, int $season, ?int $lastNGames = null): Collection
     {
-        $query = WnbaGameTeam::where('team_id', $teamId)
+        $teamKeys = TeamForeignKeyResolver::foreignKeysForReference($teamId);
+
+        $query = WnbaGameTeam::whereIn('team_id', $teamKeys)
             ->whereHas('game', function ($q) use ($season) {
                 $q->where('season', $season);
             })
@@ -538,9 +541,11 @@ class TeamAnalyticsService
         return round($games->avg('opponent_team_score'), 2);
     }
 
-    private function getOpponentWinPercentage(int $opponentId, int $season): ?float
+    private function getOpponentWinPercentage(int|string $opponentId, int $season): ?float
     {
-        $opponentGames = WnbaGameTeam::where('team_id', $opponentId)
+        $opponentKeys = TeamForeignKeyResolver::foreignKeysForReference($opponentId);
+
+        $opponentGames = WnbaGameTeam::whereIn('team_id', $opponentKeys)
             ->whereHas('game', function ($q) use ($season) {
                 $q->where('season', $season);
             })

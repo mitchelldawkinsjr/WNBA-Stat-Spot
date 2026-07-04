@@ -398,7 +398,8 @@ export interface TodaysProp {
     player_name: string;
     team_abbreviation: string;
     opponent: string;
-    game_time: string;
+    game_id?: string | null;
+    game_time?: string;
     stat_type: string;
     suggested_line: number;
     predicted_value: number;
@@ -407,16 +408,55 @@ export interface TodaysProp {
     expected_value: number;
     probability_over: number;
     probability_under: number;
-    recent_form: number;
-    season_average: number;
-    matchup_difficulty: string;
-    betting_value: 'excellent' | 'good' | 'fair' | 'poor';
+    recent_form?: number;
+    season_average?: number;
+    matchup_difficulty?: string;
+    betting_value: 'excellent' | 'good' | 'fair' | 'poor' | string;
     reasoning: string;
     espn_line?: number;
     espn_odds?: {
         over: number;
         under: number;
     };
+    is_top_prop?: boolean;
+    actual_value?: number | null;
+    correct?: boolean | null;
+    graded?: boolean;
+}
+
+export interface PredictionAccuracyDashboard {
+    game_scores: {
+        graded: number;
+        pending: number;
+        winner_accuracy: number | null;
+        winner_correct: number;
+        total_within_5_pct: number | null;
+        spread_direction_accuracy: number | null;
+        avg_home_score_error: number | null;
+        avg_away_score_error: number | null;
+        avg_total_error: number | null;
+        recent: Array<{
+            game_id: string;
+            matchup: string;
+            predicted: string;
+            actual: string;
+            winner_correct: boolean;
+            total_error: number;
+            graded_at: string | null;
+        }>;
+    };
+    props: {
+        graded: number;
+        pending: number;
+        accuracy: number | null;
+        correct: number;
+        by_stat: Array<{ stat_type: string; graded: number; accuracy: number | null }>;
+        top_prop_accuracy: number | null;
+        top_prop_graded: number;
+        top_prop_correct: number;
+    };
+    top_prop_of_day: TodaysProp | null;
+    updated_at: string;
 }
 
 // Data Aggregator Interfaces
@@ -968,14 +1008,40 @@ export const api = {
                 const params = new URLSearchParams();
                 params.append('timezone', userTimezone);
 
-                return fetchApi<{ success: boolean; data: TodaysProp[] }>(`/wnba/predictions/todays-best?${params.toString()}`, { cacheTtl: 'short' });
+                return fetchApi<{ success: boolean; data: TodaysProp[]; top_prop?: TodaysProp | null }>(
+                    `/wnba/predictions/todays-best?${params.toString()}`,
+                    { cacheTtl: 'short' }
+                );
             },
             getTodaysBestProps: (timezone?: string) => {
                 const userTimezone = timezone || 'America/New_York';
                 const params = new URLSearchParams();
                 params.append('timezone', userTimezone);
 
-                return fetchApi<{ success: boolean; data: TodaysProp[] }>(`/wnba/predictions/todays-best?${params.toString()}`, { cacheTtl: 'short' });
+                return fetchApi<{ success: boolean; data: TodaysProp[]; top_prop?: TodaysProp | null }>(
+                    `/wnba/predictions/todays-best?${params.toString()}`,
+                    { cacheTtl: 'short' }
+                );
+            },
+            getAccuracy: (timezone?: string) => {
+                const userTimezone = timezone || 'America/New_York';
+                const params = new URLSearchParams();
+                params.append('timezone', userTimezone);
+
+                return fetchApi<{ success: boolean; data: PredictionAccuracyDashboard }>(
+                    `/wnba/predictions/accuracy?${params.toString()}`,
+                    { cacheTtl: 'short' }
+                );
+            },
+            getTopPropOfDay: (timezone?: string) => {
+                const userTimezone = timezone || 'America/New_York';
+                const params = new URLSearchParams();
+                params.append('timezone', userTimezone);
+
+                return fetchApi<{ success: boolean; data: TodaysProp | null }>(
+                    `/wnba/predictions/top-prop?${params.toString()}`,
+                    { cacheTtl: 'short' }
+                );
             },
         },
         analytics: {

@@ -8,6 +8,8 @@ use App\Models\WnbaPlayerGame;
 use App\Models\WnbaTeam;
 use App\Services\WNBA\Data\GameScheduleService;
 use App\Services\WNBA\Data\Support\TeamCatalog;
+use App\Services\WNBA\Data\Support\TeamForeignKeyResolver;
+use App\Services\WNBA\Predictions\PredictionAccuracyService;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -22,6 +24,7 @@ class GamePreviewService
     public function __construct(
         private TeamAnalyticsService $teamAnalytics,
         private GameScheduleService $schedule,
+        private PredictionAccuracyService $predictionAccuracy,
     ) {}
 
     /**
@@ -29,7 +32,7 @@ class GamePreviewService
      */
     public function buildPreview(string $externalGameId, int $season): array
     {
-        $cacheKey = "game_preview_{$externalGameId}_{$season}";
+        $cacheKey = "game_preview_v2_{$externalGameId}_{$season}";
 
         $preview = Cache::remember($cacheKey, self::CACHE_TTL, function () use ($externalGameId, $season) {
             return $this->generatePreview($externalGameId, $season);
@@ -37,6 +40,17 @@ class GamePreviewService
 
         if (isset($preview['error']) && ! isset($preview['home_team'])) {
             Cache::forget($cacheKey);
+        }
+
+        if (! isset($preview['error']) && isset($preview['prediction'])) {
+            try {
+                $this->predictionAccuracy->recordGameScorePrediction($preview);
+            } catch (\Throwable $e) {
+                Log::warning('Failed to track game score prediction', [
+                    'game_id' => $externalGameId,
+                    'error' => $e->getMessage(),
+                ]);
+            }
         }
 
         return $preview;
@@ -334,9 +348,11 @@ class GamePreviewService
      */
     private function getRecentGameLog(int $teamId, int $season, int $limit): array
     {
+        $teamKeys = TeamForeignKeyResolver::foreignKeysForReference($teamId);
+
         return WnbaGameTeam::query()
             ->with(['game', 'opponentTeam'])
-            ->where('team_id', $teamId)
+            ->whereIn('team_id', $teamKeys)
             ->whereHas('game', fn ($q) => $q->where('season', $season))
             ->join('wnba_games', 'wnba_games.id', '=', 'wnba_game_teams.game_id')
             ->orderByDesc('wnba_games.game_date')
@@ -361,10 +377,13 @@ class GamePreviewService
      */
     private function getKeyPlayers(int $teamId, int $season, int $opponentId): array
     {
+        $teamKeys = TeamForeignKeyResolver::foreignKeysForReference($teamId);
+        $opponentKeys = TeamForeignKeyResolver::foreignKeysForReference($opponentId);
+
         $leaders = WnbaPlayerGame::query()
             ->join('wnba_games', 'wnba_games.id', '=', 'wnba_player_games.game_id')
             ->join('wnba_players', 'wnba_players.id', '=', 'wnba_player_games.player_id')
-            ->where('wnba_player_games.team_id', $teamId)
+            ->whereIn('wnba_player_games.team_id', $teamKeys)
             ->where('wnba_games.season', $season)
             ->where('wnba_player_games.did_not_play', false)
             ->whereNotNull('wnba_player_games.minutes')
@@ -396,9 +415,9 @@ class GamePreviewService
 
             $vsOpponent = WnbaPlayerGame::query()
                 ->join('wnba_games', 'wnba_games.id', '=', 'wnba_player_games.game_id')
-                ->join('wnba_game_teams as opp_gt', function ($join) use ($opponentId) {
+                ->join('wnba_game_teams as opp_gt', function ($join) use ($opponentKeys) {
                     $join->on('opp_gt.game_id', '=', 'wnba_games.id')
-                        ->where('opp_gt.team_id', '=', $opponentId);
+                        ->whereIn('opp_gt.team_id', $opponentKeys);
                 })
                 ->where('wnba_player_games.player_id', $leader->player_id)
                 ->where('wnba_games.season', $season)
@@ -499,9 +518,12 @@ class GamePreviewService
      */
     private function buildHeadToHead(int $homeTeamId, int $awayTeamId, int $season): array
     {
+        $homeKeys = TeamForeignKeyResolver::foreignKeysForReference($homeTeamId);
+        $awayKeys = TeamForeignKeyResolver::foreignKeysForReference($awayTeamId);
+
         $games = WnbaGame::query()
-            ->whereHas('gameTeams', fn ($q) => $q->where('team_id', $homeTeamId))
-            ->whereHas('gameTeams', fn ($q) => $q->where('team_id', $awayTeamId))
+            ->whereHas('gameTeams', fn ($q) => $q->whereIn('team_id', $homeKeys))
+            ->whereHas('gameTeams', fn ($q) => $q->whereIn('team_id', $awayKeys))
             ->where('season', '>=', $season - 1)
             ->with(['gameTeams.team'])
             ->orderByDesc('game_date')
@@ -526,8 +548,12 @@ class GamePreviewService
         $meetings = [];
 
         foreach ($games as $game) {
-            $homeLine = $game->gameTeams->firstWhere('team_id', $homeTeamId);
-            $awayLine = $game->gameTeams->firstWhere('team_id', $awayTeamId);
+            $homeLine = $game->gameTeams->first(
+                fn (WnbaGameTeam $row) => in_array((string) $row->team_id, $homeKeys, true)
+            );
+            $awayLine = $game->gameTeams->first(
+                fn (WnbaGameTeam $row) => in_array((string) $row->team_id, $awayKeys, true)
+            );
 
             if (!$homeLine || !$awayLine) {
                 continue;
