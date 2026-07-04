@@ -410,7 +410,7 @@ class GamePreviewService
             ->limit(self::KEY_PLAYER_COUNT)
             ->get();
 
-        return $leaders->map(function ($leader) use ($season, $opponentId) {
+        return $leaders->map(function ($leader) use ($season, $opponentKeys) {
             $recentForm = $this->getPlayerRecentForm((int) $leader->player_id, $season);
 
             $vsOpponent = WnbaPlayerGame::query()
