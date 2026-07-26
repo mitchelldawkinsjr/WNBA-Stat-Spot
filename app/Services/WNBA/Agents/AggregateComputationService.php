@@ -41,6 +41,7 @@ class AggregateComputationService
     private const TREND_WINDOWS = [
         'l5' => 5,
         'l10' => 10,
+        'l20' => 20,
         'season' => null,
     ];
 
@@ -203,7 +204,9 @@ class AggregateComputationService
                     'splits' => [
                         'home' => $this->splitAverages($games->where('home_away', 'home')),
                         'away' => $this->splitAverages($games->where('home_away', 'away')),
-                        'per_36' => $this->per36($totals, $minutesTotal),
+                        'per_36' => $this->perMinutes($totals, $minutesTotal, 36),
+                        'per_30' => $this->perMinutes($totals, $minutesTotal, 30),
+                        'plus_minus_avg' => $this->plusMinusAvg($games),
                     ],
                     'formula_version' => self::FORMULA_VERSION,
                     'computed_at' => now(),
@@ -795,7 +798,7 @@ class AggregateComputationService
     }
 
     /**
-     * @return array{games: int, points: float|null, rebounds: float|null, assists: float|null}
+     * @return array{games: int, points: float|null, rebounds: float|null, assists: float|null, plus_minus: float|null}
      */
     private function splitAverages(Collection $games): array
     {
@@ -806,6 +809,7 @@ class AggregateComputationService
             'points' => $count > 0 ? round($games->avg('points'), 2) : null,
             'rebounds' => $count > 0 ? round($games->avg('rebounds'), 2) : null,
             'assists' => $count > 0 ? round($games->avg('assists'), 2) : null,
+            'plus_minus' => $this->plusMinusAvg($games),
         ];
     }
 
@@ -813,19 +817,39 @@ class AggregateComputationService
      * @param  array<string, int>  $totals
      * @return array<string, float|null>
      */
-    private function per36(array $totals, float $minutesTotal): array
+    private function perMinutes(array $totals, float $minutesTotal, int $perMinutes): array
     {
         if ($minutesTotal <= 0) {
-            return ['points' => null, 'rebounds' => null, 'assists' => null];
+            return [
+                'points' => null,
+                'rebounds' => null,
+                'assists' => null,
+                'steals' => null,
+                'blocks' => null,
+                'turnovers' => null,
+            ];
         }
 
-        $factor = 36 / $minutesTotal;
+        $factor = $perMinutes / $minutesTotal;
 
         return [
             'points' => round($totals['points'] * $factor, 2),
             'rebounds' => round($totals['rebounds'] * $factor, 2),
             'assists' => round($totals['assists'] * $factor, 2),
+            'steals' => round($totals['steals'] * $factor, 2),
+            'blocks' => round($totals['blocks'] * $factor, 2),
+            'turnovers' => round($totals['turnovers'] * $factor, 2),
         ];
+    }
+
+    private function plusMinusAvg(Collection $games): ?float
+    {
+        $withPm = $games->filter(fn ($pg) => $pg->plus_minus !== null);
+        if ($withPm->isEmpty()) {
+            return null;
+        }
+
+        return round((float) $withPm->avg('plus_minus'), 2);
     }
 
     /**

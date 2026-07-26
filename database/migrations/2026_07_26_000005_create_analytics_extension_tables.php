@@ -38,7 +38,7 @@ return new class extends Migration
             $table->id();
             $table->foreignId('player_id')->constrained('wnba_players', 'id');
             $table->integer('season');
-            // l5 | l10 | season
+            // l5 | l10 | l20 | season
             $table->string('window', 16);
             $table->integer('games');
             $table->decimal('minutes_avg', 6, 2)->nullable();

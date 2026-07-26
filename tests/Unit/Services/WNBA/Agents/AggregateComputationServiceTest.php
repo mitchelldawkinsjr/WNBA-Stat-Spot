@@ -157,6 +157,10 @@ class AggregateComputationServiceTest extends TestCase
         $this->assertSame(10.0, (float) $stat->splits['away']['points']);
         // Per-36: 32 points in 55 minutes.
         $this->assertSame(round(32 * 36 / 55, 2), (float) $stat->splits['per_36']['points']);
+        // Per-30: 32 points in 55 minutes.
+        $this->assertSame(round(32 * 30 / 55, 2), (float) $stat->splits['per_30']['points']);
+        $this->assertArrayHasKey('steals', $stat->splits['per_30']);
+        $this->assertSame(0.0, (float) $stat->splits['plus_minus_avg']);
     }
 
     public function test_invalid_rows_are_excluded_from_season_stats(): void
@@ -265,11 +269,14 @@ class AggregateComputationServiceTest extends TestCase
         $this->service->computePlayerPerformanceTrends(self::SEASON);
 
         $l5 = WnbaPlayerPerformanceTrend::where('window', 'l5')->first();
+        $l20 = WnbaPlayerPerformanceTrend::where('window', 'l20')->first();
         $season = WnbaPlayerPerformanceTrend::where('window', 'season')->first();
 
         $this->assertNotNull($l5);
+        $this->assertNotNull($l20);
         $this->assertNotNull($season);
         $this->assertSame(2, $l5->games);
+        $this->assertSame(2, $l20->games);
         $this->assertSame(16.0, (float) $season->points_avg);
         // Points series [22, 10] → slope -12.
         $this->assertSame(-12.0, (float) $season->points_slope);

@@ -17,7 +17,8 @@ fake league-average placeholders (e.g. DRtg `100`).
 ## Output tables (written ONLY by this agent)
 
 - `wnba_player_season_stats` — totals, per-game averages, shooting
-  percentages, home/away + per-36 splits (one row per player per season)
+  percentages, home/away + per-36 / per-30 splits + plus-minus avg
+  (one row per player per season)
 - `wnba_team_season_stats` — record, pace, off/def/net rating, Four Factors
   (own + opponent), home/away splits
 - `wnba_player_game_advanced` — per game: TS%, eFG%, usage%, game score,
@@ -26,7 +27,7 @@ fake league-average placeholders (e.g. DRtg `100`).
   margin, avg pace, recent meetings
 - `wnba_player_vs_defense` — player splits by opponent team DRtg bucket
   (`elite` &lt; 95, `good` 95–105, `average` 105–110, `poor` ≥ 110)
-- `wnba_player_performance_trends` — windows `l5` / `l10` / `season`: avgs +
+- `wnba_player_performance_trends` — windows `l5` / `l10` / `l20` / `season`: avgs +
   linear slopes for PTS/REB/AST
 - `wnba_team_performance_trends` — windows `l5` / `l10` / `season`: W-L,
   PPG for/against, pace, ORtg/DRtg over the window

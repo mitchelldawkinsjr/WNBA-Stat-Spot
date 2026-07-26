@@ -26,7 +26,7 @@ class DataAggregatorService
     public function aggregatePlayerData(int $playerId, ?int $season = null, ?int $lastNGames = null): array
     {
         $season = $season ?? (int) config('wnba.seasons.current_season');
-        $cacheKey = "player_data_v4_{$playerId}_{$season}_{$lastNGames}";
+        $cacheKey = "player_data_v5_{$playerId}_{$season}_{$lastNGames}";
 
         return Cache::remember($cacheKey, self::CACHE_TTL, function () use ($playerId, $season, $lastNGames) {
             try {
@@ -50,6 +50,7 @@ class DataAggregatorService
                 }
 
                 $trends = $this->aggregates->playerTrends($playerId, $season);
+                $advanced = $this->aggregates->playerAdvancedMetrics($playerId, $season);
 
                 return [
                     'player_info' => $this->extractPlayerInfo($games->first()),
@@ -57,7 +58,7 @@ class DataAggregatorService
                     'game_log' => $this->formatGameLog($games),
                     'performance_trends' => $trends !== [] ? $trends : $this->calculatePerformanceTrends($games),
                     'situational_stats' => $this->calculateSituationalStats($games, $playerId, $season),
-                    'advanced_metrics' => $this->calculateAdvancedPlayerMetrics($games),
+                    'advanced_metrics' => $advanced ?? $this->calculateAdvancedPlayerMetrics($games),
                     'consistency_metrics' => $this->calculateConsistencyMetrics($games),
                     'data_quality' => $this->assessDataQuality($games),
                     'vs_defense' => $this->aggregates->playerVsDefense($playerId, $season),
@@ -361,6 +362,9 @@ class DataAggregatorService
                 'blocks' => $avg($games, 'blocks'),
                 'turnovers' => $avg($games, 'turnovers'),
                 'minutes' => $avg($games, 'minutes'),
+                'plus_minus' => $games->whereNotNull('plus_minus')->isNotEmpty()
+                    ? round((float) $games->whereNotNull('plus_minus')->avg('plus_minus'), 1)
+                    : 0,
                 'field_goals_made' => $avg($games, 'field_goals_made'),
                 'field_goals_attempted' => $avg($games, 'field_goals_attempted'),
                 'three_point_made' => $avg($games, 'three_point_field_goals_made'),
@@ -453,13 +457,62 @@ class DataAggregatorService
 
     private function calculateAdvancedPlayerMetrics($games): array
     {
+        $totalAst = (float) $games->sum('assists');
+        $totalTov = (float) $games->sum('turnovers');
+        $totalPts = (float) $games->sum('points');
+        $totalFga = (float) $games->sum('field_goals_attempted');
+        $totalFta = (float) $games->sum('free_throws_attempted');
+        $totalFgm = (float) $games->sum('field_goals_made');
+        $totalTpm = (float) $games->sum('three_point_field_goals_made');
+        $shotAttempts = $totalFga + 0.44 * $totalFta;
+
+        $minutesTotal = 0.0;
+        foreach ($games as $game) {
+            $minutesTotal += $this->toNumericStatValue($game->minutes);
+        }
+
+        $per30 = $this->scaleCountingStats($games, $minutesTotal, 30);
+        $per36 = $this->scaleCountingStats($games, $minutesTotal, 36);
+        $plusMinus = $games->whereNotNull('plus_minus');
+
         return [
             'usage_rate' => $this->calculateUsageRate($games),
-            'true_shooting_pct' => $this->calculateTrueShootingPct($games),
-            'effective_fg_pct' => $this->calculateEffectiveFGPct($games),
-            'assist_turnover_ratio' => $this->calculateAssistTurnoverRatio($games),
-            'per_36_stats' => $this->calculatePer36Stats($games),
-            'player_efficiency_rating' => $this->calculatePER($games),
+            'true_shooting_pct' => $shotAttempts > 0 ? round(($totalPts / (2 * $shotAttempts)) * 100, 1) : null,
+            'effective_fg_pct' => $totalFga > 0 ? round((($totalFgm + 0.5 * $totalTpm) / $totalFga) * 100, 1) : null,
+            'assist_turnover_ratio' => $totalTov > 0 ? round($totalAst / $totalTov, 2) : ($totalAst > 0 ? null : 0.0),
+            'game_score_avg' => null,
+            'plus_minus_avg' => $plusMinus->isNotEmpty() ? round((float) $plusMinus->avg('plus_minus'), 2) : null,
+            'per_30_stats' => $per30,
+            'per_36_stats' => $per36,
+            'player_efficiency_rating' => null,
+        ];
+    }
+
+    /**
+     * @return array<string, float|null>
+     */
+    private function scaleCountingStats($games, float $minutesTotal, int $perMinutes): array
+    {
+        if ($minutesTotal <= 0 || $games->isEmpty()) {
+            return [
+                'points' => null,
+                'rebounds' => null,
+                'assists' => null,
+                'steals' => null,
+                'blocks' => null,
+                'turnovers' => null,
+            ];
+        }
+
+        $factor = $perMinutes / $minutesTotal;
+
+        return [
+            'points' => round((float) $games->sum('points') * $factor, 2),
+            'rebounds' => round((float) $games->sum('rebounds') * $factor, 2),
+            'assists' => round((float) $games->sum('assists') * $factor, 2),
+            'steals' => round((float) $games->sum('steals') * $factor, 2),
+            'blocks' => round((float) $games->sum('blocks') * $factor, 2),
+            'turnovers' => round((float) $games->sum('turnovers') * $factor, 2),
         ];
     }
 
@@ -581,6 +634,9 @@ class DataAggregatorService
             'rebounds' => round($games->avg('rebounds'), 1),
             'assists' => round($games->avg('assists'), 1),
             'minutes' => round($games->avg('minutes'), 1),
+            'plus_minus' => $games->whereNotNull('plus_minus')->isNotEmpty()
+                ? round((float) $games->whereNotNull('plus_minus')->avg('plus_minus'), 1)
+                : null,
         ];
     }
 
@@ -1288,13 +1344,7 @@ class DataAggregatorService
                 ],
             ],
             'game_log' => [],
-            'performance_trends' => [
-                'points_trend' => 0,
-                'rebounds_trend' => 0,
-                'assists_trend' => 0,
-                'minutes_trend' => 0,
-                'efficiency_trend' => 0,
-            ],
+            'performance_trends' => [],
             'situational_stats' => [
                 'home' => [],
                 'away' => [],
@@ -1304,12 +1354,15 @@ class DataAggregatorService
                 'rest_days' => [],
             ],
             'advanced_metrics' => [
-                'usage_rate' => 0,
-                'true_shooting_pct' => 0,
-                'effective_fg_pct' => 0,
-                'assist_turnover_ratio' => 0,
+                'usage_rate' => null,
+                'true_shooting_pct' => null,
+                'effective_fg_pct' => null,
+                'assist_turnover_ratio' => null,
+                'game_score_avg' => null,
+                'plus_minus_avg' => null,
+                'per_30_stats' => [],
                 'per_36_stats' => [],
-                'player_efficiency_rating' => 0,
+                'player_efficiency_rating' => null,
             ],
             'consistency_metrics' => [
                 'points_consistency' => 0,

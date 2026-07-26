@@ -3,7 +3,9 @@
 namespace App\Services\WNBA\Analytics;
 
 use App\Models\WnbaMatchupSummary;
+use App\Models\WnbaPlayerGameAdvanced;
 use App\Models\WnbaPlayerPerformanceTrend;
+use App\Models\WnbaPlayerSeasonStat;
 use App\Models\WnbaPlayerVsDefense;
 use App\Models\WnbaTeamPerformanceTrend;
 use App\Models\WnbaTeamSeasonStat;
@@ -209,6 +211,69 @@ class AggregateStatsReader
             ->get();
 
         return $this->combineVsDefenseRows($rows);
+    }
+
+    public function playerSeasonStat(int $playerId, int $season): ?WnbaPlayerSeasonStat
+    {
+        return WnbaPlayerSeasonStat::query()
+            ->where('player_id', $playerId)
+            ->where('season', $season)
+            ->first();
+    }
+
+    /**
+     * Season-level advanced metrics from agent tables (null when not yet computed).
+     *
+     * @return array{
+     *     usage_rate: float|null,
+     *     true_shooting_pct: float|null,
+     *     effective_fg_pct: float|null,
+     *     assist_turnover_ratio: float|null,
+     *     game_score_avg: float|null,
+     *     plus_minus_avg: float|null,
+     *     per_30_stats: array<string, float|null>,
+     *     per_36_stats: array<string, float|null>,
+     *     player_efficiency_rating: float|null
+     * }|null
+     */
+    public function playerAdvancedMetrics(int $playerId, int $season): ?array
+    {
+        $seasonStat = $this->playerSeasonStat($playerId, $season);
+        if ($seasonStat === null) {
+            return null;
+        }
+
+        $advancedRows = WnbaPlayerGameAdvanced::query()
+            ->join('wnba_games as g', 'g.id', '=', 'wnba_player_game_advanced.game_id')
+            ->where('wnba_player_game_advanced.player_id', $playerId)
+            ->where('g.season', $season)
+            ->select('wnba_player_game_advanced.*')
+            ->get();
+
+        $usageAvg = $advancedRows->whereNotNull('usage_pct')->avg('usage_pct');
+        $gameScoreAvg = $advancedRows->whereNotNull('game_score')->avg('game_score');
+
+        $ast = (int) $seasonStat->assists_total;
+        $tov = (int) $seasonStat->turnovers_total;
+        $astTo = $tov > 0 ? round($ast / $tov, 2) : ($ast > 0 ? null : 0.0);
+
+        $splits = is_array($seasonStat->splits) ? $seasonStat->splits : [];
+
+        return [
+            // Agent stores percentages as 0..1; API surfaces 0..100 for UI.
+            'usage_rate' => $usageAvg !== null ? round((float) $usageAvg * 100, 1) : null,
+            'true_shooting_pct' => $seasonStat->ts_pct !== null ? round((float) $seasonStat->ts_pct * 100, 1) : null,
+            'effective_fg_pct' => $seasonStat->efg_pct !== null ? round((float) $seasonStat->efg_pct * 100, 1) : null,
+            'assist_turnover_ratio' => $astTo,
+            'game_score_avg' => $gameScoreAvg !== null ? round((float) $gameScoreAvg, 1) : null,
+            'plus_minus_avg' => isset($splits['plus_minus_avg']) && $splits['plus_minus_avg'] !== null
+                ? (float) $splits['plus_minus_avg']
+                : null,
+            'per_30_stats' => is_array($splits['per_30'] ?? null) ? $splits['per_30'] : [],
+            'per_36_stats' => is_array($splits['per_36'] ?? null) ? $splits['per_36'] : [],
+            // PER is out of scope for v1 box-estimate; keep null rather than a fake 0.
+            'player_efficiency_rating' => null,
+        ];
     }
 
     /**
