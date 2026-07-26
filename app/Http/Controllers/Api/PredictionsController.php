@@ -13,6 +13,7 @@ use App\Services\WNBA\Data\DataAggregatorService;
 use App\Services\WNBA\Data\GameScheduleService;
 use App\Services\WNBA\Predictions\PredictionAccuracyService;
 use App\Services\WNBA\Predictions\PredictionModelParamStore;
+use App\Services\WNBA\Predictions\PropLineResolver;
 use App\Services\WNBA\Predictions\PropsPredictionService;
 use App\Services\WNBA\Predictions\StatisticalEngineService;
 use Carbon\Carbon;
@@ -45,6 +46,8 @@ class PredictionsController extends Controller
 
     private AggregateStatsReader $aggregates;
 
+    private PropLineResolver $propLineResolver;
+
     public function __construct(
         PropsPredictionService $propsPrediction,
         StatisticalEngineService $statisticalEngine,
@@ -57,6 +60,7 @@ class PredictionsController extends Controller
         GamePreviewService $gamePreview,
         PredictionModelParamStore $paramStore,
         AggregateStatsReader $aggregates,
+        PropLineResolver $propLineResolver,
     ) {
         $this->propsPrediction = $propsPrediction;
         $this->statisticalEngine = $statisticalEngine;
@@ -69,6 +73,7 @@ class PredictionsController extends Controller
         $this->gamePreview = $gamePreview;
         $this->paramStore = $paramStore;
         $this->aggregates = $aggregates;
+        $this->propLineResolver = $propLineResolver;
     }
 
     /**
@@ -395,7 +400,7 @@ class PredictionsController extends Controller
                 'user_time' => Carbon::now($timezone)->toString(),
             ]);
 
-            $cacheKey = 'todays_best_props_with_odds_v3_'.str_replace('/', '_', $timezone);
+            $cacheKey = 'todays_best_props_with_odds_v4_'.str_replace('/', '_', $timezone);
 
             $props = Cache::remember($cacheKey, now()->addMinutes(30), function () use ($timezone) {
                 try {
@@ -603,8 +608,14 @@ class PredictionsController extends Controller
             return [];
         }
 
-        // Sort by expected value and return top props
+        // Prefer live book lines, then expected value
         usort($bestProps, function ($a, $b) {
+            $aLive = ! empty($a['odds_available']) ? 1 : 0;
+            $bLive = ! empty($b['odds_available']) ? 1 : 0;
+            if ($aLive !== $bLive) {
+                return $bLive <=> $aLive;
+            }
+
             return $b['expected_value'] <=> $a['expected_value'];
         });
 
@@ -656,51 +667,31 @@ class PredictionsController extends Controller
 
         $props = [];
         $statTypes = ['points', 'rebounds', 'assists', 'steals', 'blocks'];
-
-        // Common prop lines for each stat type
-        $commonLines = [
-            'points' => [15.5, 18.5, 22.5, 25.5],
-            'rebounds' => [6.5, 8.5, 10.5, 12.5],
-            'assists' => [3.5, 5.5, 7.5, 9.5],
-            'steals' => [0.5, 1.5, 2.5],
-            'blocks' => [0.5, 1.5, 2.5],
-        ];
+        $playerId = $player['athlete_id'] ?? $player['id'];
+        $playerName = $player['name'] ?? $player['athlete_display_name'] ?? '';
 
         foreach ($statTypes as $statType) {
-            $lines = $commonLines[$statType] ?? [10.5];
-
-            // Use the best line for this stat type (usually the middle one)
-            $bestLineIndex = floor(count($lines) / 2);
-            $line = $lines[$bestLineIndex];
-
             try {
-                // Use the same prediction system as the individual predictions
-                $playerId = $player['athlete_id'] ?? $player['id'];
-
-                // Always use the fallback prediction with odds since PropsPredictionService
-                // requires specific player/game ID combinations that may not exist
-                $prediction = $this->generatePredictionWithOdds($player, $statType, $line);
-
-                // Get odds data - always fetch if not included in prediction data
-                $oddsData = $prediction['odds_data'] ?? [];
-
-                // Check if odds data is empty, null, or invalid
-                $needsOddsData = empty($oddsData) ||
-                               $oddsData === null ||
-                               ! isset($oddsData['over_odds']) ||
-                               $oddsData['over_odds'] === null ||
-                               ! isset($oddsData['available']);
-
-                if ($needsOddsData) {
-                    // Fetch odds data if not included in prediction
-                    $oddsData = $this->getRealBettingLines($player['name'] ?? $player['athlete_display_name'], $statType);
-                    if (empty($oddsData) || ! isset($oddsData['available']) || ! $oddsData['available']) {
-                        // Use fallback odds if real odds not available
-                        $oddsData = $this->getFallbackOdds($statType);
-                    }
+                $recentStats = $this->getPlayerRecentStats((int) $playerId, $statType);
+                $oddsData = $this->getRealBettingLines($playerName, $statType);
+                if (empty($oddsData) || ! ($oddsData['available'] ?? false)) {
+                    $oddsData = $this->getFallbackOdds($statType);
                 }
 
-                // Calculate expected value using real odds
+                $resolved = $this->propLineResolver->resolve($oddsData, $recentStats);
+                $line = $resolved['line'];
+                if ($line === null || $line <= 0) {
+                    continue;
+                }
+
+                $prediction = $this->generatePredictionWithOdds($player, $statType, $line);
+                // Keep the odds/line we already resolved (prediction helper may re-fetch)
+                if (! empty($prediction['odds_data']['available'])) {
+                    $oddsData = $prediction['odds_data'];
+                    $resolved = $this->propLineResolver->resolve($oddsData, $recentStats);
+                    $line = $resolved['line'] ?? $line;
+                }
+
                 $expectedValue = $this->calculateExpectedValueWithRealOdds(
                     $prediction['prediction']['over_probability'] ?? 0.5,
                     $prediction['prediction']['confidence_score'] ?? 0.75,
@@ -708,25 +699,27 @@ class PredictionsController extends Controller
                 );
 
                 Log::info('DEBUG: Generated prop for player', [
-                    'player_name' => $player['name'] ?? $player['athlete_display_name'] ?? 'unknown',
+                    'player_name' => $playerName ?: 'unknown',
                     'stat_type' => $statType,
+                    'line' => $line,
+                    'line_source' => $resolved['source'],
                     'expected_value' => $expectedValue,
                     'confidence' => $prediction['prediction']['confidence_score'] ?? 0,
                     'will_include' => ($expectedValue > -5.0 && ($prediction['prediction']['confidence_score'] ?? 0) > 0.5),
                 ]);
 
-                // Include props with positive expected value or decent confidence
                 if ($expectedValue > -5.0 && ($prediction['prediction']['confidence_score'] ?? 0) > 0.5) {
-                    $recentAvg = $prediction['recent_average'] ?? $line;
+                    $recentAvg = $prediction['recent_average'] ?? $recentStats['recent_average'] ?? $line;
                     $props[] = [
                         'player_id' => $playerId,
-                        'player_name' => $player['name'] ?? $player['athlete_display_name'],
+                        'player_name' => $playerName,
                         'team_abbreviation' => $this->getTeamAbbreviation($player['team_id'] ?? null),
                         'opponent' => $game ? $this->getOpponent($player['team_id'] ?? 1, $game) : 'TBD',
                         'game_id' => $game['game_id'] ?? null,
                         'game_time' => $game ? $this->formatGameTime($game['game_date_time'] ?? '') : 'TBD',
                         'stat_type' => $statType,
                         'suggested_line' => $line,
+                        'line_source' => $resolved['source'],
                         'predicted_value' => $prediction['prediction']['predicted_value'] ?? $line,
                         'confidence' => ($prediction['prediction']['confidence_score'] ?? 0.75) * 100,
                         'recommendation' => $this->getRecommendationFromPrediction($prediction, $line, $statType),
@@ -734,7 +727,7 @@ class PredictionsController extends Controller
                         'probability_over' => ($prediction['prediction']['over_probability'] ?? 0.5) * 100,
                         'probability_under' => ($prediction['prediction']['under_probability'] ?? 0.5) * 100,
                         'recent_form' => $recentAvg,
-                        'season_average' => $prediction['season_average'] ?? $line,
+                        'season_average' => $prediction['season_average'] ?? $recentStats['season_average'] ?? $line,
                         'matchup_difficulty' => $game ? $this->getMatchupDifficulty($player, $game) : 'neutral',
                         'betting_value' => $this->getBettingValue($expectedValue),
                         'reasoning' => $this->generateReasoningWithOddsData(
@@ -751,7 +744,6 @@ class PredictionsController extends Controller
                             'recent_average' => $recentAvg,
                         ],
                         'model_version' => $prediction['model_version'] ?? $this->paramStore->championVersion(),
-                        // Add odds data for frontend display
                         'odds_api_line' => $oddsData['line'] ?? $line,
                         'odds_api_odds' => [
                             'over' => $oddsData['over_odds'] ?? -110,
@@ -775,7 +767,7 @@ class PredictionsController extends Controller
         }
 
         Log::info('DEBUG: generatePlayerPropsWithOdds result', [
-            'player_name' => $player['name'] ?? $player['athlete_display_name'] ?? 'unknown',
+            'player_name' => $playerName ?: 'unknown',
             'props_generated' => count($props),
         ]);
 
@@ -790,8 +782,8 @@ class PredictionsController extends Controller
         // Get recent stats for the player
         $recentStats = $this->getPlayerRecentStats($player['id'] ?? $player['athlete_id'], $statType);
 
-        // Generate basic prediction
-        $prediction = $this->generateMockPrediction($player, $statType, $recentStats);
+        // Generate basic prediction against the market-like line being evaluated
+        $prediction = $this->generateMockPrediction($player, $statType, $recentStats, $line);
 
         // Add odds data
         $oddsData = $this->getRealBettingLines($player['name'] ?? $player['athlete_display_name'], $statType);
@@ -1460,9 +1452,7 @@ class PredictionsController extends Controller
                         'athlete_id' => $player->athlete_id,
                         'name' => $player->name,
                         'position' => $player->position ?? 'G',
-                    ], $validated['stat'], array_merge($recentStats, [
-                        'suggested_line' => $validated['line'],
-                    ]));
+                    ], $validated['stat'], $recentStats, (float) $validated['line']);
 
                     // Add odds data to fallback - always use fallback odds since real API failed
                     $fallbackOdds = $this->getFallbackOdds($validated['stat']);
@@ -1776,8 +1766,11 @@ class PredictionsController extends Controller
 
     /**
      * Generate mock prediction with realistic values using real odds
+     *
+     * @param  array<string, mixed>  $player
+     * @param  array{recent_average?: float|int, season_average?: float|int, suggested_line?: float|int}  $recentStats
      */
-    private function generateMockPrediction(array $player, string $statType, array $recentStats): array
+    private function generateMockPrediction(array $player, string $statType, array $recentStats, float $line): array
     {
         $baseValue = $recentStats['recent_average'];
 
@@ -1792,8 +1785,8 @@ class PredictionsController extends Controller
         $predictedValue = max(0.5, $baseValue + $variance);
         $predictedValue = round($predictedValue * 2) / 2; // Round to .5 increments
 
-        // Calculate probability based on how much higher/lower than line
-        $lineDiff = $predictedValue - $recentStats['suggested_line'];
+        // Probability vs the actual line being evaluated (book or market-like)
+        $lineDiff = $predictedValue - $line;
         $probabilityOver = 50 + ($lineDiff * 5); // Reduced from 8 to 5 for less extreme probabilities
         $probabilityOver = max(35, min(70, $probabilityOver)); // Keep between 35-70% instead of 20-80%
 
@@ -1823,14 +1816,41 @@ class PredictionsController extends Controller
             $playerOdds = $this->oddsApi->getPlayerOdds($playerName, $statType, 'basketball_wnba');
 
             if ($playerOdds && ! empty($playerOdds)) {
+                $overOdds = $playerOdds['over_odds'] ?? null;
+                $underOdds = $playerOdds['under_odds'] ?? null;
+                $bookmakerOver = $playerOdds['over_bookmaker'] ?? null;
+                $bookmakerUnder = $playerOdds['under_bookmaker'] ?? null;
+
+                // Tank01 props expose Over/Under inside bookmakers[]
+                foreach ($playerOdds['bookmakers'] ?? [] as $bookmaker) {
+                    $name = strtolower((string) ($bookmaker['name'] ?? ''));
+                    $price = $bookmaker['price'] ?? null;
+                    if ($price === null) {
+                        continue;
+                    }
+                    if (str_contains($name, 'over') && $overOdds === null) {
+                        $overOdds = (int) $price;
+                        $bookmakerOver = $bookmaker['bookmaker'] ?? 'consensus';
+                    }
+                    if (str_contains($name, 'under') && $underOdds === null) {
+                        $underOdds = (int) $price;
+                        $bookmakerUnder = $bookmaker['bookmaker'] ?? 'consensus';
+                    }
+                }
+
+                $line = $playerOdds['line'] ?? null;
+                if ($line === null || (float) $line <= 0) {
+                    return $this->getFallbackOdds($statType);
+                }
+
                 return [
-                    'line' => $playerOdds['line'] ?? null,
-                    'over_odds' => $playerOdds['over_odds'] ?? -110,
-                    'under_odds' => $playerOdds['under_odds'] ?? -110,
+                    'line' => (float) $line,
+                    'over_odds' => $overOdds ?? -110,
+                    'under_odds' => $underOdds ?? -110,
                     'available' => true,
                     'source' => 'odds_api',
-                    'bookmaker_over' => $playerOdds['over_bookmaker'] ?? 'Multiple',
-                    'bookmaker_under' => $playerOdds['under_bookmaker'] ?? 'Multiple',
+                    'bookmaker_over' => $bookmakerOver ?? 'Multiple',
+                    'bookmaker_under' => $bookmakerUnder ?? 'Multiple',
                     'last_update' => now()->toISOString(),
                     'event_id' => $playerOdds['event_id'] ?? null,
                     'commence_time' => $playerOdds['commence_time'] ?? null,

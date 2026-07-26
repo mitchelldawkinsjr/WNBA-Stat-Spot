@@ -6,9 +6,12 @@ use App\Http\Controllers\Controller;
 use App\Jobs\ScanPlayerProps;
 use App\Models\WnbaPlayer;
 use App\Models\WnbaGame;
+use App\Services\Odds\OddsService;
+use App\Services\WNBA\Predictions\PropLineResolver;
 use App\Services\WNBA\Predictions\PropsPredictionService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 
@@ -16,9 +19,18 @@ class PropScannerController extends Controller
 {
     protected $propsPredictionService;
 
-    public function __construct(PropsPredictionService $propsPredictionService)
-    {
+    protected OddsService $oddsApi;
+
+    protected PropLineResolver $propLineResolver;
+
+    public function __construct(
+        PropsPredictionService $propsPredictionService,
+        OddsService $oddsApi,
+        PropLineResolver $propLineResolver,
+    ) {
         $this->propsPredictionService = $propsPredictionService;
+        $this->oddsApi = $oddsApi;
+        $this->propLineResolver = $propLineResolver;
     }
 
     /**
@@ -205,83 +217,155 @@ class PropScannerController extends Controller
     {
         $results = [];
         $statTypes = ['points', 'rebounds', 'assists', 'steals', 'blocks'];
-
-        // Common prop lines for each stat type
-        $commonLines = [
-            'points' => [15.5, 18.5, 22.5, 25.5],
-            'rebounds' => [6.5, 8.5, 10.5, 12.5],
-            'assists' => [3.5, 5.5, 7.5, 9.5],
-            'steals' => [0.5, 1.5, 2.5],
-            'blocks' => [0.5, 1.5, 2.5]
-        ];
+        $playerName = $player->athlete_display_name ?? $player->athlete_short_name ?? '';
 
         foreach ($statTypes as $statType) {
-            $lines = $commonLines[$statType] ?? [10.5];
+            $resolved = $this->resolveScannerLine($player, $playerName, $statType);
+            $line = $resolved['line'];
+            if ($line === null) {
+                continue;
+            }
 
-            foreach ($lines as $line) {
-                try {
-                    // Use the appropriate prediction method based on stat type
-                    $prediction = match($statType) {
-                        'points' => $this->propsPredictionService->predictPoints($player->id, $game->id, $line),
-                        'rebounds' => $this->propsPredictionService->predictRebounds($player->id, $game->id, $line),
-                        'assists' => $this->propsPredictionService->predictAssists($player->id, $game->id, $line),
-                        'steals' => $this->propsPredictionService->predictSteals($player->id, $game->id, $line),
-                        'blocks' => $this->propsPredictionService->predictBlocks($player->id, $game->id, $line),
-                        default => $this->propsPredictionService->predictProp($player->id, $game->id, $statType, $line)
-                    };
+            try {
+                $prediction = match ($statType) {
+                    'points' => $this->propsPredictionService->predictPoints($player->id, $game->id, $line),
+                    'rebounds' => $this->propsPredictionService->predictRebounds($player->id, $game->id, $line),
+                    'assists' => $this->propsPredictionService->predictAssists($player->id, $game->id, $line),
+                    'steals' => $this->propsPredictionService->predictSteals($player->id, $game->id, $line),
+                    'blocks' => $this->propsPredictionService->predictBlocks($player->id, $game->id, $line),
+                    default => $this->propsPredictionService->predictProp($player->id, $game->id, $statType, $line)
+                };
 
-                    $results[] = [
-                        'player_id' => $player->athlete_id,
-                        'player_name' => $player->athlete_display_name ?? $player->athlete_short_name,
-                        'team_id' => null, // We don't have team_id in WnbaPlayer model
-                        'game_id' => $game->id,
-                        'game_date' => $game->game_date,
-                        'stat_type' => $statType,
-                        'line_value' => $line,
-                        'line_source' => $prediction['line_source'] ?? 'estimated',
-                        'odds_data' => $prediction['odds_data'] ?? null,
-                        'prediction' => [
-                            'over_probability' => $prediction['prediction']['over_probability'] ?? 0.5,
-                            'expected_value' => $prediction['prediction']['expected_value'] ?? 0,
-                            'confidence' => $prediction['prediction']['confidence_score'] ?? 'medium',
-                            'reasoning' => $prediction['reasoning'] ?? 'Based on recent performance',
-                            'recent_average' => $prediction['recent_average'] ?? $line,
-                            'season_average' => $prediction['season_average'] ?? $line
-                        ]
-                    ];
-                } catch (\Exception $e) {
-                    Log::warning('Failed to generate prediction for player prop', [
-                        'player_id' => $player->athlete_id,
-                        'stat_type' => $statType,
-                        'line' => $line,
-                        'error' => $e->getMessage()
-                    ]);
+                $results[] = [
+                    'player_id' => $player->athlete_id,
+                    'player_name' => $playerName,
+                    'team_id' => null,
+                    'game_id' => $game->id,
+                    'game_date' => $game->game_date,
+                    'stat_type' => $statType,
+                    'line_value' => $line,
+                    'line_source' => $resolved['source'],
+                    'odds_data' => $prediction['odds_data'] ?? $resolved['odds_data'],
+                    'prediction' => [
+                        'over_probability' => $prediction['prediction']['over_probability'] ?? 0.5,
+                        'expected_value' => $prediction['prediction']['expected_value'] ?? 0,
+                        'confidence' => $prediction['prediction']['confidence_score'] ?? 'medium',
+                        'reasoning' => $prediction['reasoning'] ?? 'Based on recent performance',
+                        'recent_average' => $prediction['recent_average'] ?? $line,
+                        'season_average' => $prediction['season_average'] ?? $line,
+                    ],
+                ];
+            } catch (\Exception $e) {
+                Log::warning('Failed to generate prediction for player prop', [
+                    'player_id' => $player->athlete_id,
+                    'stat_type' => $statType,
+                    'line' => $line,
+                    'error' => $e->getMessage(),
+                ]);
 
-                    // Add a fallback prediction
-                    $results[] = [
-                        'player_id' => $player->athlete_id,
-                        'player_name' => $player->athlete_display_name ?? $player->athlete_short_name,
-                        'team_id' => null,
-                        'game_id' => $game->id,
-                        'game_date' => $game->game_date,
-                        'stat_type' => $statType,
-                        'line_value' => $line,
-                        'line_source' => 'estimated',
-                        'odds_data' => null,
-                        'prediction' => [
-                            'over_probability' => 0.5,
-                            'expected_value' => 0,
-                            'confidence' => 'low',
-                            'reasoning' => 'Insufficient data for prediction',
-                            'recent_average' => $line,
-                            'season_average' => $line
-                        ]
-                    ];
-                }
+                $results[] = [
+                    'player_id' => $player->athlete_id,
+                    'player_name' => $playerName,
+                    'team_id' => null,
+                    'game_id' => $game->id,
+                    'game_date' => $game->game_date,
+                    'stat_type' => $statType,
+                    'line_value' => $line,
+                    'line_source' => $resolved['source'],
+                    'odds_data' => $resolved['odds_data'],
+                    'prediction' => [
+                        'over_probability' => 0.5,
+                        'expected_value' => 0,
+                        'confidence' => 'low',
+                        'reasoning' => 'Insufficient data for prediction',
+                        'recent_average' => $line,
+                        'season_average' => $line,
+                    ],
+                ];
             }
         }
 
         return $results;
+    }
+
+    /**
+     * Prefer live book line; otherwise half-point round of recent/season average.
+     *
+     * @return array{line: float|null, source: string, odds_data: array<string, mixed>|null}
+     */
+    private function resolveScannerLine(WnbaPlayer $player, string $playerName, string $statType): array
+    {
+        $oddsPayload = null;
+        $oddsData = ['available' => false, 'line' => null];
+
+        try {
+            $playerOdds = $this->oddsApi->getPlayerOdds($playerName, $statType, 'basketball_wnba');
+            if ($playerOdds && isset($playerOdds['line']) && (float) $playerOdds['line'] > 0) {
+                $oddsPayload = $playerOdds;
+                $oddsData = [
+                    'available' => true,
+                    'line' => (float) $playerOdds['line'],
+                ];
+            }
+        } catch (\Throwable $e) {
+            Log::info('Prop scanner odds lookup failed', [
+                'player' => $playerName,
+                'stat_type' => $statType,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        $recentStats = $this->estimatePlayerAverages($player->id, $statType);
+        $resolved = $this->propLineResolver->resolve($oddsData, $recentStats);
+
+        return [
+            'line' => $resolved['line'],
+            'source' => $resolved['source'],
+            'odds_data' => $oddsPayload,
+        ];
+    }
+
+    /**
+     * @return array{recent_average?: float, season_average?: float, suggested_line?: float}
+     */
+    private function estimatePlayerAverages(int $playerId, string $statType): array
+    {
+        $numericStats = ['points', 'rebounds', 'assists', 'steals', 'blocks'];
+        if (! in_array($statType, $numericStats, true)) {
+            return [];
+        }
+
+        $season = (int) config('wnba.seasons.current_season');
+
+        try {
+            $recent = DB::table('wnba_player_games as pg')
+                ->join('wnba_games as g', 'pg.game_id', '=', 'g.id')
+                ->where('pg.player_id', $playerId)
+                ->where('g.season', $season)
+                ->orderByDesc('g.game_date')
+                ->orderByDesc('g.id')
+                ->limit(5)
+                ->pluck('pg.'.$statType);
+
+            if ($recent->isEmpty()) {
+                return [];
+            }
+
+            $recentAvg = (float) $recent->avg();
+            $seasonAvg = (float) (DB::table('wnba_player_games as pg')
+                ->join('wnba_games as g', 'pg.game_id', '=', 'g.id')
+                ->where('pg.player_id', $playerId)
+                ->where('g.season', $season)
+                ->avg('pg.'.$statType) ?? $recentAvg);
+
+            return [
+                'recent_average' => round($recentAvg, 1),
+                'season_average' => round($seasonAvg, 1),
+                'suggested_line' => max(0.5, round((($recentAvg + $seasonAvg) / 2) * 2) / 2),
+            ];
+        } catch (\Throwable $e) {
+            return [];
+        }
     }
 
     /**
