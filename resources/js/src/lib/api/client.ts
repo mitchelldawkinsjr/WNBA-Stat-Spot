@@ -451,6 +451,22 @@ export interface PredictionAccuracyDashboard {
         accuracy: number | null;
         correct: number;
         by_stat: Array<{ stat_type: string; graded: number; accuracy: number | null }>;
+        recent: Array<{
+            player_id: string;
+            player_name: string;
+            team_abbreviation: string | null;
+            opponent: string | null;
+            game_id: string | null;
+            stat_type: string;
+            recommendation: string;
+            line: number;
+            predicted_value: number;
+            actual_value: number | null;
+            correct: boolean;
+            is_top_prop: boolean;
+            prediction_date: string | null;
+            graded_at: string | null;
+        }>;
         top_prop_accuracy: number | null;
         top_prop_graded: number;
         top_prop_correct: number;

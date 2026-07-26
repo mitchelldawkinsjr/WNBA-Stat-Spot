@@ -64,6 +64,8 @@ class PredictionAccuracyApiTest extends TestCase
             ->assertJsonPath('success', true)
             ->assertJsonPath('data.game_scores.winner_accuracy', 100)
             ->assertJsonPath('data.props.accuracy', 100)
+            ->assertJsonPath('data.props.recent.0.player_name', 'Star Player')
+            ->assertJsonPath('data.props.recent.0.correct', true)
             ->assertJsonPath('data.top_prop_of_day.player_name', 'Star Player');
     }
 

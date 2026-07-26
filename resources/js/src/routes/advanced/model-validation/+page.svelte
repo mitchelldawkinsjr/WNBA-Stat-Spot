@@ -108,8 +108,20 @@
                                             <span class="badge bg-primary-subtle text-primary-emphasis">
                                                 {formatStat(topProp.stat_type)}
                                             </span>
+                                            {#if topProp.graded}
+                                                {#if topProp.correct}
+                                                    <span class="badge bg-success-subtle text-success">Hit</span>
+                                                {:else if topProp.correct === false}
+                                                    <span class="badge bg-danger-subtle text-danger">Miss</span>
+                                                {:else}
+                                                    <span class="badge bg-secondary-subtle text-secondary">Push</span>
+                                                {/if}
+                                            {/if}
                                             <span class="text-muted small">
                                                 Predicted {topProp.predicted_value}
+                                                {#if topProp.graded && topProp.actual_value != null}
+                                                    · Actual {topProp.actual_value}
+                                                {/if}
                                                 · EV {formatNum(topProp.expected_value)}
                                                 · Conf {formatNum(topProp.confidence, 0)}%
                                             </span>
@@ -317,7 +329,63 @@
                                 </div>
                             </div>
 
+                            {#if dashboard.props.recent.length > 0}
+                                <div class="table-responsive mb-3">
+                                    <table class="table table-sm align-middle mb-0">
+                                        <thead>
+                                            <tr>
+                                                <th>Player</th>
+                                                <th>Pick</th>
+                                                <th>Pred</th>
+                                                <th>Actual</th>
+                                                <th>Result</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {#each dashboard.props.recent as row}
+                                                <tr>
+                                                    <td>
+                                                        <div class="fw-semibold">{row.player_name}</div>
+                                                        <div class="small text-muted">
+                                                            {#if row.team_abbreviation}
+                                                                {row.team_abbreviation}
+                                                            {/if}
+                                                            {#if row.opponent}
+                                                                {' '}{row.opponent}
+                                                            {/if}
+                                                            {#if row.is_top_prop}
+                                                                <span class="badge bg-primary-subtle text-primary-emphasis ms-1">Top</span>
+                                                            {/if}
+                                                        </div>
+                                                    </td>
+                                                    <td class="small">
+                                                        <span class="badge bg-{row.recommendation === 'over' ? 'success' : 'danger'}">
+                                                            {row.recommendation?.toUpperCase()} {row.line}
+                                                        </span>
+                                                        <div class="text-muted mt-1">{formatStat(row.stat_type)}</div>
+                                                    </td>
+                                                    <td class="small">{formatNum(row.predicted_value)}</td>
+                                                    <td class="small">{formatNum(row.actual_value)}</td>
+                                                    <td>
+                                                        {#if row.correct}
+                                                            <span class="badge bg-success-subtle text-success">Hit</span>
+                                                        {:else}
+                                                            <span class="badge bg-danger-subtle text-danger">Miss</span>
+                                                        {/if}
+                                                    </td>
+                                                </tr>
+                                            {/each}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            {:else}
+                                <p class="text-muted mb-3">
+                                    No graded props yet. Today's best props are tracked automatically and scored after box scores land.
+                                </p>
+                            {/if}
+
                             {#if dashboard.props.by_stat.length > 0}
+                                <p class="ds-section-label mb-2">By Stat</p>
                                 <div class="table-responsive">
                                     <table class="table table-sm align-middle mb-0">
                                         <thead>
@@ -338,10 +406,6 @@
                                         </tbody>
                                     </table>
                                 </div>
-                            {:else}
-                                <p class="text-muted mb-0">
-                                    No graded props yet. Today's best props are tracked automatically and scored after box scores land.
-                                </p>
                             {/if}
                         </div>
                     </div>
