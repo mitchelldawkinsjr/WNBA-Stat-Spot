@@ -169,11 +169,8 @@
                                                         <small class="text-muted">{team.team_id}</small>
                                                     </td>
                                                     <td class="text-center">
-                                                        <a href="/teams/{team.team_id}" class="btn btn-outline-primary btn-sm me-1" title="View Team Details">
+                                                        <a href="/teams/{team.team_id}" class="btn btn-outline-primary btn-sm" title="View team profile">
                                                             <i class="fas fa-eye"></i>
-                                                        </a>
-                                                        <a href="/teams/{team.team_id}/players" class="btn btn-outline-secondary btn-sm" title="View Players">
-                                                            <i class="fas fa-users"></i>
                                                         </a>
                                                     </td>
                                                 </tr>
@@ -231,11 +228,8 @@
                                 </div>
 
                                 <div class="mt-3">
-                                    <a href="/teams/{team.team_id}" class="btn btn-outline-primary btn-sm me-2">
-                                        View Details
-                                    </a>
-                                    <a href="/teams/{team.team_id}/players" class="btn btn-outline-secondary btn-sm">
-                                        Players
+                                    <a href="/teams/{team.team_id}" class="btn btn-outline-primary btn-sm">
+                                        View profile
                                     </a>
                                 </div>
                             </div>

@@ -752,6 +752,7 @@ export interface TeamPlayersResponse {
     data: Player[];
     meta: {
         total: number;
+        season?: number;
         team: Team;
     };
 }
@@ -848,7 +849,7 @@ async function fetchApi<T>(endpoint: string, options?: RequestInit & { cacheTtl?
     }
 }
 
-/** DataAggregator aggregated player stats (players/{id}/data page). Shared by api.players & api.wnba.data. */
+/** DataAggregator aggregated player stats (players/{id}/stats page). Shared by api.players & api.wnba.data. */
 function fetchAggregatedPlayerDataApi(
     playerId: string,
     options?: { season?: number; last_n_games?: number }
@@ -913,7 +914,15 @@ export const api = {
         getSummary: () => fetchApi<ApiResponse<Team[]>>('/teams/summary', { cacheTtl: 'long' }),
         clearCache: () => fetchApi<ApiResponse<any>>('/teams/clear-cache', { method: 'POST' }),
         getById: (teamId: string) => fetchApi<ApiResponse<Team>>(`/teams/${teamId}`, { cacheTtl: 'medium' }),
-        getPlayers: (teamId: string) => fetchApi<TeamPlayersResponse>(`/teams/${teamId}/players`, { cacheTtl: 'medium' }),
+        getPlayers: (teamId: string, options?: { season?: number }) => {
+            const params = new URLSearchParams();
+            if (options?.season != null) params.append('season', String(options.season));
+            const qs = params.toString();
+            return fetchApi<TeamPlayersResponse>(
+                `/teams/${teamId}/players${qs ? `?${qs}` : ''}`,
+                { cacheTtl: 'medium' },
+            );
+        },
     },
     players: {
         getAll: (params?: {

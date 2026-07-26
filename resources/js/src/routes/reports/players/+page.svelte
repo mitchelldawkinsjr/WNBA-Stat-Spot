@@ -388,9 +388,9 @@
                                                             <i class="fas fa-eye"></i>
                                                         </a>
                                                         <a
-                                                            href="/players/{player.athlete_id}/data"
+                                                            href="/players/{player.athlete_id}/stats"
                                                             class="btn btn-sm btn-outline-info"
-                                                            title="View Data"
+                                                            title="View season stats"
                                                         >
                                                             <i class="fas fa-database"></i>
                                                         </a>

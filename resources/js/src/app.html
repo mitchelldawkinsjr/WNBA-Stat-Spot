@@ -9,23 +9,23 @@
 		<script>
 			(function () {
 				var STORAGE_KEY = 'reback_svelte_layout';
-				var defaults = { theme: 'light', topBarColor: 'light', leftSideBarColor: 'light' };
+				var defaults = { theme: 'dark', topBarColor: 'dark', leftSideBarColor: 'dark' };
 				try {
 					var raw = localStorage.getItem(STORAGE_KEY);
 					var config = raw ? JSON.parse(raw) : defaults;
-					var theme = config.theme === 'dark' ? 'dark' : 'light';
-					var topBar = config.topBarColor === 'dark' ? 'dark' : 'light';
-					var menu = config.leftSideBarColor === 'dark' ? 'dark' : 'light';
+					var theme = config.theme === 'light' ? 'light' : 'dark';
+					var topBar = config.topBarColor === 'light' ? 'light' : 'dark';
+					var menu = config.leftSideBarColor === 'light' ? 'light' : 'dark';
 					var root = document.documentElement;
 					root.setAttribute('data-bs-theme', theme);
 					root.setAttribute('data-topbar-color', topBar);
 					root.setAttribute('data-menu-color', menu);
 					root.style.colorScheme = theme;
 				} catch (error) {
-					document.documentElement.setAttribute('data-bs-theme', 'light');
-					document.documentElement.setAttribute('data-topbar-color', 'light');
-					document.documentElement.setAttribute('data-menu-color', 'light');
-					document.documentElement.style.colorScheme = 'light';
+					document.documentElement.setAttribute('data-bs-theme', 'dark');
+					document.documentElement.setAttribute('data-topbar-color', 'dark');
+					document.documentElement.setAttribute('data-menu-color', 'dark');
+					document.documentElement.style.colorScheme = 'dark';
 				}
 			})();
 		</script>

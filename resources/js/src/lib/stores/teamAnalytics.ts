@@ -59,11 +59,13 @@ function createTeamAnalyticsStore() {
 
     return {
         subscribe,
-        fetchAnalytics: async (teamId: string) => {
+        fetchAnalytics: async (teamId: string, options?: { season?: number }) => {
             update(state => ({ ...state, loading: true, error: null }));
 
             try {
-                const response = await api.wnba.analytics.getTeam(teamId);
+                const response = await api.wnba.analytics.getTeam(teamId, {
+                    season: options?.season,
+                });
                 const analytics = response.data;
 
                 update(state => ({

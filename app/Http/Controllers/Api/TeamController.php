@@ -8,6 +8,7 @@ use App\Http\Traits\CacheHelper;
 use App\Models\WnbaPlayer;
 use App\Models\WnbaPlayerGame;
 use App\Models\WnbaTeam;
+use App\Services\WNBA\Data\Support\TeamForeignKeyResolver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -63,9 +64,10 @@ class TeamController extends Controller
         return $this->successResponse($team);
     }
 
-    public function players(string $teamId): JsonResponse
+    public function players(Request $request, string $teamId): JsonResponse
     {
-        $team = WnbaTeam::where('team_id', $teamId)->first();
+        $team = WnbaTeam::where('team_id', $teamId)->first()
+            ?? WnbaTeam::find($teamId);
 
         if (! $team) {
             return response()->json([
@@ -73,18 +75,23 @@ class TeamController extends Controller
             ], 404);
         }
 
-        // Match wnba_player_games.team_id / wnba_game_teams.team_id — ESPN team_id string on wnba_teams, not internal id.
-        $playerIds = WnbaPlayerGame::where('team_id', $team->team_id)
+        $season = (int) ($request->input('season') ?? config('wnba.seasons.current_season'));
+        $teamKeys = TeamForeignKeyResolver::foreignKeysForTeam($team);
+
+        // Season-scoped roster: players who appeared in a box score for this team in the selected year.
+        $playerIds = WnbaPlayerGame::query()
+            ->whereIn('team_id', $teamKeys)
             ->where('did_not_play', false)
+            ->whereHas('game', function ($q) use ($season) {
+                $q->where('season', $season);
+            })
             ->distinct()
             ->pluck('player_id');
 
-        // Get the actual player records
         $players = WnbaPlayer::whereIn('id', $playerIds)
             ->orderBy('athlete_display_name')
             ->get();
 
-        // Add team information to each player
         $playersWithTeam = $players->map(function ($player) use ($team) {
             $playerArray = $player->toArray();
             $playerArray['current_team'] = [
@@ -101,6 +108,7 @@ class TeamController extends Controller
             'data' => $playersWithTeam,
             'meta' => [
                 'total' => $playersWithTeam->count(),
+                'season' => $season,
                 'team' => $team,
             ],
         ]);
