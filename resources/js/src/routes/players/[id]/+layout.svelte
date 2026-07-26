@@ -144,7 +144,13 @@
                         {#if profile.nextGame}
                             <p class="player-profile__next mb-0">
                                 <strong>Next:</strong>
-                                {profile.nextGame.name ?? profile.nextGame.short_name}
+                                {#if profile.nextGame.game_id}
+                                    <a href="/games/{profile.nextGame.game_id}">
+                                        {profile.nextGame.name ?? profile.nextGame.short_name ?? 'Matchup preview'}
+                                    </a>
+                                {:else}
+                                    {profile.nextGame.name ?? profile.nextGame.short_name}
+                                {/if}
                                 {#if profile.nextGame.date}
                                     · {new Date(String(profile.nextGame.date)).toLocaleString()}
                                 {/if}

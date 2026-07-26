@@ -566,7 +566,7 @@ export interface AggregatedPlayerData {
         plus_minus: number;
         starter: boolean;
     }>;
-    performance_trends: Record<string, number>;
+    performance_trends: Record<string, number | Record<string, number | null>>;
     situational_stats: {
         home: Record<string, any>;
         away: Record<string, any>;
@@ -576,12 +576,15 @@ export interface AggregatedPlayerData {
         rest_days: Record<string, any>;
     };
     advanced_metrics: {
-        usage_rate: number;
-        true_shooting_pct: number;
-        effective_fg_pct: number;
-        assist_turnover_ratio: number;
-        per_36_stats: Record<string, any>;
-        player_efficiency_rating: number;
+        usage_rate: number | null;
+        true_shooting_pct: number | null;
+        effective_fg_pct: number | null;
+        assist_turnover_ratio: number | null;
+        game_score_avg?: number | null;
+        plus_minus_avg?: number | null;
+        per_30_stats?: Record<string, number | null>;
+        per_36_stats: Record<string, number | null>;
+        player_efficiency_rating: number | null;
     };
     consistency_metrics: {
         points_consistency: number;

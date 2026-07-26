@@ -9,33 +9,55 @@
         type ProfileGameRow,
     } from '$lib/utils/playerGamelog';
 
-    let recentGames: ProfileGameRow[] = [];
+    type SnapshotWindow = 'l5' | 'l10' | 'l20' | 'all';
+
+    const SNAPSHOT_WINDOWS: Array<{ key: SnapshotWindow; label: string }> = [
+        { key: 'l5', label: 'L5' },
+        { key: 'l10', label: 'L10' },
+        { key: 'l20', label: 'L20' },
+        { key: 'all', label: 'All' },
+    ];
+
+    let seasonGames: ProfileGameRow[] = [];
+    let snapshotWindow: SnapshotWindow = 'all';
     let gamelogLoading = false;
     let loadedForKey = '';
 
     $: profile = $playerProfile;
     $: playerId = $page.params.id ?? '';
     $: season = profile.season;
-    $: averages = computeAverages(recentGames);
+    $: snapshotGames =
+        snapshotWindow === 'l5'
+            ? seasonGames.slice(0, 5)
+            : snapshotWindow === 'l10'
+              ? seasonGames.slice(0, 10)
+              : snapshotWindow === 'l20'
+                ? seasonGames.slice(0, 20)
+                : seasonGames;
+    $: averages = computeAverages(snapshotGames);
     $: live = profile.seasonStats;
+    $: windowLabel =
+        SNAPSHOT_WINDOWS.find((w) => w.key === snapshotWindow)?.label ?? 'All';
 
     async function loadRecent() {
         if (!playerId || !season) return;
         const key = `${playerId}:${season}`;
         if (key === loadedForKey) return;
         loadedForKey = key;
+        seasonGames = [];
         gamelogLoading = true;
         try {
-            const response = await api.players.getGamelog(playerId, { season, last_n_games: 10 });
+            // Full season (API caps at 50); window toggle slices client-side.
+            const response = await api.players.getGamelog(playerId, { season });
             if (response.success && response.data?.games?.length) {
-                recentGames = response.data.games
+                seasonGames = response.data.games
                     .map((row) => mapGamelogToPlayerGame(row, season))
                     .filter((g) => !g.did_not_play);
             } else {
-                recentGames = [];
+                seasonGames = [];
             }
         } catch {
-            recentGames = [];
+            seasonGames = [];
         } finally {
             gamelogLoading = false;
         }
@@ -70,9 +92,24 @@
 {/if}
 
 <div class="card mb-3">
-    <div class="card-header d-flex justify-content-between align-items-center">
+    <div class="card-header d-flex flex-wrap gap-2 justify-content-between align-items-center">
         <h5 class="card-title mb-0">Season snapshot</h5>
-        <a href={tabHref(playerId, '/stats', season)} class="small">Full stats →</a>
+        <div class="d-flex flex-wrap gap-2 align-items-center">
+            <div class="btn-group btn-group-sm" role="radiogroup" aria-label="Snapshot window">
+                {#each SNAPSHOT_WINDOWS as w}
+                    <input
+                        type="radio"
+                        class="btn-check"
+                        name="snapshot-window"
+                        id="snapshot-{w.key}"
+                        value={w.key}
+                        bind:group={snapshotWindow}
+                    />
+                    <label class="btn btn-outline-primary" for="snapshot-{w.key}">{w.label}</label>
+                {/each}
+            </div>
+            <a href={tabHref(playerId, '/stats', season)} class="small">Full stats →</a>
+        </div>
     </div>
     <div class="card-body">
         {#if averages}
@@ -99,8 +136,15 @@
                     </div>
                 {/each}
             </div>
-            <p class="text-muted small mt-3 mb-0">{averages.games} games in {season} gamelog sample</p>
-        {:else if live}
+            <p class="text-muted small mt-3 mb-0">
+                {averages.games} game{averages.games === 1 ? '' : 's'} · {windowLabel}
+                {#if snapshotWindow !== 'all' && seasonGames.length > snapshotGames.length}
+                    <span class="text-muted">(of {seasonGames.length} in {season})</span>
+                {:else}
+                    <span class="text-muted">· {season}</span>
+                {/if}
+            </p>
+        {:else if live && snapshotWindow === 'all'}
             <div class="row g-3 text-center">
                 <div class="col-4 col-md-2"><strong>{live.avgPoints ?? '—'}</strong><div class="text-muted small">PPG</div></div>
                 <div class="col-4 col-md-2"><strong>{live.avgRebounds ?? '—'}</strong><div class="text-muted small">RPG</div></div>
@@ -112,7 +156,7 @@
         {:else if gamelogLoading}
             <div class="text-center py-3 text-muted">Loading snapshot...</div>
         {:else}
-            <p class="text-muted mb-0">No season averages available yet.</p>
+            <p class="text-muted mb-0">No averages available for this window yet.</p>
         {/if}
     </div>
 </div>
@@ -125,9 +169,9 @@
                 <a href={tabHref(playerId, '/gamelog', season)} class="small">Full game log →</a>
             </div>
             <div class="card-body p-0">
-                {#if gamelogLoading && recentGames.length === 0}
+                {#if gamelogLoading && seasonGames.length === 0}
                     <div class="text-center py-4 text-muted">Loading games...</div>
-                {:else if recentGames.length > 0}
+                {:else if seasonGames.length > 0}
                     <div class="table-responsive">
                         <table class="table table-sm table-hover mb-0">
                             <thead>
@@ -141,7 +185,7 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                {#each recentGames.slice(0, 5) as game}
+                                {#each seasonGames.slice(0, 5) as game}
                                     <tr>
                                         <td><small>{new Date(game.game?.game_date || '').toLocaleDateString()}</small></td>
                                         <td><small>{game.team?.team_abbreviation || 'N/A'}</small></td>
