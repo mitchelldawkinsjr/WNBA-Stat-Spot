@@ -104,53 +104,75 @@ class EntityIntegrityServiceTest extends TestCase
         $this->assertSame(0, WnbaDataConflict::count());
     }
 
-    public function test_identical_home_and_away_team_is_flagged(): void
+    public function test_mapping_gaps_split_espn_vs_tank01(): void
     {
-        WnbaTeam::create([
-            'team_id' => '131935',
-            'team_name' => 'Tempo',
-            'team_location' => 'Toronto',
-            'team_abbreviation' => 'TOR',
-            'team_display_name' => 'Toronto Tempo',
+        $team = WnbaTeam::create([
+            'team_id' => '17',
+            'team_name' => 'Aces',
+            'team_location' => 'Las Vegas',
+            'team_abbreviation' => 'LV',
+            'team_display_name' => 'Las Vegas Aces',
         ]);
 
         $game = \App\Models\WnbaGame::create([
-            'game_id' => '401857083',
+            'game_id' => '401857999',
             'season' => 2026,
             'season_type' => 2,
-            'game_date' => '2026-07-21',
-            'game_date_time' => '2026-07-21 00:00:00',
+            'game_date' => '2026-07-20',
+            'game_date_time' => '2026-07-20 19:00:00',
         ]);
 
-        \App\Models\WnbaGameTeam::create([
-            'game_id' => $game->id,
-            'team_id' => '131935',
-            'opponent_team_id' => '131935',
-            'home_away' => 'home',
-            'team_winner' => false,
-            'team_score' => 83,
-            'opponent_team_score' => 109,
-            'field_goals_made' => 0,
-            'field_goals_attempted' => 0,
-            'three_point_field_goals_made' => 0,
-            'three_point_field_goals_attempted' => 0,
-            'free_throws_made' => 0,
-            'free_throws_attempted' => 0,
-            'offensive_rebounds' => 0,
-            'defensive_rebounds' => 0,
-            'rebounds' => 0,
-            'assists' => 0,
-            'steals' => 0,
-            'blocks' => 0,
-            'turnovers' => 0,
-            'fouls' => 0,
+        // Missing ESPN mapping only
+        $espnGap = WnbaPlayer::create([
+            'athlete_id' => '9000001',
+            'espn_athlete_id' => null,
+            'tank01_player_id' => 'tank-1',
+            'athlete_display_name' => 'Espn Gap',
+            'athlete_short_name' => 'E. Gap',
         ]);
+
+        // Missing Tank01 mapping only
+        $tankGap = WnbaPlayer::create([
+            'athlete_id' => '9000002',
+            'espn_athlete_id' => '9000002',
+            'tank01_player_id' => null,
+            'athlete_display_name' => 'Tank Gap',
+            'athlete_short_name' => 'T. Gap',
+        ]);
+
+        foreach ([$espnGap, $tankGap] as $player) {
+            \App\Models\WnbaPlayerGame::create([
+                'game_id' => $game->id,
+                'player_id' => $player->id,
+                'team_id' => $team->team_id,
+                'points' => 10,
+                'rebounds' => 2,
+                'assists' => 1,
+                'field_goals_made' => 4,
+                'field_goals_attempted' => 8,
+                'three_point_field_goals_made' => 0,
+                'three_point_field_goals_attempted' => 1,
+                'free_throws_made' => 2,
+                'free_throws_attempted' => 2,
+                'offensive_rebounds' => 0,
+                'defensive_rebounds' => 2,
+                'steals' => 0,
+                'blocks' => 0,
+                'turnovers' => 1,
+                'fouls' => 1,
+                'plus_minus' => 0,
+                'starter' => false,
+                'ejected' => false,
+                'did_not_play' => false,
+                'active' => true,
+            ]);
+        }
 
         $findings = $this->service->audit(2026);
 
-        $this->assertGreaterThan(0, $findings['identical_opponents']);
-        $this->assertTrue(
-            WnbaDataConflict::where('field', 'identical_opponents')->exists()
-        );
+        $this->assertSame(1, $findings['mapping_gaps_espn']);
+        $this->assertSame(1, $findings['mapping_gaps_tank01']);
+        // Blocking metric is ESPN-only
+        $this->assertSame(1, $findings['mapping_gaps']);
     }
 }

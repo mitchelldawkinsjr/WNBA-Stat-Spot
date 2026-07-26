@@ -8,6 +8,7 @@ use App\Models\WnbaInjuryReport;
 use App\Models\WnbaOddsSnapshot;
 use App\Models\WnbaPlayer;
 use App\Services\Odds\Providers\Tank01OddsProvider;
+use App\Services\RapidApi\Tank01UsageTracker;
 use App\Services\WNBA\Data\EntityMergeService;
 use App\Services\WNBA\Data\Providers\EspnWnbaProvider;
 use App\Services\WNBA\Data\WnbaProviderResolver;
@@ -204,9 +205,21 @@ class DataAgentService
     private function persistOddsSnapshots(): void
     {
         $oddsProvider = app(Tank01OddsProvider::class);
+        $usageTracker = app(Tank01UsageTracker::class);
+
+        // Nightly data-agent odds are essential so daily_target does not starve
+        // snapshots while monthly budget remains. If monthly is exhausted, skip
+        // cleanly instead of returning empty without a signal.
+        if (! $usageTracker->canMakeRequest(essential: true)) {
+            $this->reporter->increment('odds_skipped_budget');
+            $this->reporter->warn('odds skipped: Tank01 API budget exhausted');
+
+            return;
+        }
+
         $capturedAt = now();
 
-        $events = $oddsProvider->getWnbaEvents();
+        $events = $oddsProvider->getWnbaEvents(['essential' => true]);
         if ($events !== []) {
             $stored = $this->rawPayloadStore->store('tank01', 'odds_events', $events);
             if ($stored['changed']) {
@@ -216,10 +229,12 @@ class DataAgentService
                         'game_date' => $this->gameDateFromCommence($event['commence_time'] ?? null),
                     ]);
                 }
+            } else {
+                $this->reporter->increment('odds_snapshots_unchanged');
             }
         }
 
-        $props = $oddsProvider->getWnbaPlayerProps();
+        $props = $oddsProvider->getWnbaPlayerProps(['essential' => true]);
         if ($props !== []) {
             $stored = $this->rawPayloadStore->store('tank01', 'odds_player_props', $props);
             if ($stored['changed']) {
@@ -232,6 +247,8 @@ class DataAgentService
                         'line' => $prop['line'] ?? null,
                     ]);
                 }
+            } else {
+                $this->reporter->increment('odds_snapshots_unchanged');
             }
         }
     }

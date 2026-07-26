@@ -2,14 +2,13 @@
 
 namespace App\Services\Odds\Providers;
 
-use App\Contracts\OddsProvider;
 use App\Services\Odds\Mappers\Tank01OddsMapper;
 use App\Services\RapidApi\RapidApiClient;
 use App\Services\RapidApi\Tank01UsageTracker;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
-class Tank01OddsProvider implements OddsProvider
+class Tank01OddsProvider
 {
     public function __construct(
         private RapidApiClient $client,
@@ -78,7 +77,8 @@ class Tank01OddsProvider implements OddsProvider
             $markets = explode(',', $markets);
         }
 
-        $props = $this->fetchPlayerProps();
+        $essential = (bool) ($options['essential'] ?? false);
+        $props = $this->fetchPlayerProps($essential);
         $playerName = $options['player_name'] ?? null;
 
         return array_values(array_filter($props, function (array $prop) use ($markets, $playerName) {
@@ -90,9 +90,13 @@ class Tank01OddsProvider implements OddsProvider
         }));
     }
 
-    public function getWnbaEvents(): array
+    /**
+     * @param  array{essential?: bool}  $options
+     * @return array<int, array<string, mixed>>
+     */
+    public function getWnbaEvents(array $options = []): array
     {
-        return $this->fetchBettingOdds();
+        return $this->fetchBettingOdds((bool) ($options['essential'] ?? false));
     }
 
     public function getPlayerOdds(string $playerName, string $statType, string $sport = 'basketball_wnba'): ?array
@@ -133,12 +137,12 @@ class Tank01OddsProvider implements OddsProvider
     /**
      * @return array<int, array<string, mixed>>
      */
-    private function fetchRawBettingOdds(): array
+    private function fetchRawBettingOdds(bool $essential = false): array
     {
         $cacheKey = config('tank01.cache_prefix').'betting_odds_raw';
 
-        return Cache::remember($cacheKey, config('tank01.cache_ttl.odds'), function () use ($cacheKey) {
-            if (! $this->usageTracker->canMakeRequest()) {
+        return Cache::remember($cacheKey, config('tank01.cache_ttl.odds'), function () use ($cacheKey, $essential) {
+            if (! $this->usageTracker->canMakeRequest($essential)) {
                 return Cache::get($cacheKey.'_backup', []);
             }
 
@@ -147,6 +151,7 @@ class Tank01OddsProvider implements OddsProvider
                     config('tank01.endpoints.betting_odds'),
                     [],
                     null,
+                    $essential,
                 );
                 $games = is_array($body) && array_is_list($body) ? $body : [$body];
                 Cache::put($cacheKey.'_backup', $games, config('tank01.cache_ttl.odds') * 2);
@@ -163,16 +168,16 @@ class Tank01OddsProvider implements OddsProvider
     /**
      * @return array<int, array<string, mixed>>
      */
-    private function fetchBettingOdds(): array
+    private function fetchBettingOdds(bool $essential = false): array
     {
-        return $this->mapper->mapToEvents($this->fetchRawBettingOdds());
+        return $this->mapper->mapToEvents($this->fetchRawBettingOdds($essential));
     }
 
     /**
      * @return array<int, array<string, mixed>>
      */
-    private function fetchPlayerProps(): array
+    private function fetchPlayerProps(bool $essential = false): array
     {
-        return $this->mapper->mapToPlayerProps($this->fetchRawBettingOdds());
+        return $this->mapper->mapToPlayerProps($this->fetchRawBettingOdds($essential));
     }
 }

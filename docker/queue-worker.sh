@@ -133,7 +133,7 @@ echo "🚀 Starting queue worker with optimized settings..."
 exec php artisan queue:work \
     --verbose \
     --tries=3 \
-    --timeout=300 \
+    --timeout=3600 \
     --sleep=3 \
     --max-jobs=100 \
     --max-time=3600 \

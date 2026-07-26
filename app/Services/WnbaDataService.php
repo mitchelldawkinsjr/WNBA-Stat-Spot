@@ -14,6 +14,7 @@ use App\Services\WNBA\Agents\BoxScoreValidator;
 use App\Services\WNBA\Agents\ConflictResolver;
 use App\Services\WNBA\Agents\RawPayloadStore;
 use App\Services\WNBA\Data\EntityMergeService;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
 class WnbaDataService
@@ -498,132 +499,147 @@ class WnbaDataService
         $provider = $this->getProviderName();
 
         foreach ($records as $record) {
-            $record = $merge->normalizeTeamBoxRecord($record, $provider);
+            try {
+                $record = $merge->normalizeTeamBoxRecord($record, $provider);
 
-            // Skip records with missing required fields
-            if (empty($record['game_id']) || empty($record['team_id']) || empty($record['opponent_team_id'])) {
-                continue;
-            }
+                // Skip records with missing required fields
+                if (empty($record['game_id']) || empty($record['team_id']) || empty($record['opponent_team_id'])) {
+                    continue;
+                }
 
-            // Skip records with invalid home_away values
-            if (empty($record['home_away']) || ! in_array($record['home_away'], ['home', 'away'])) {
-                continue;
-            }
+                // Skip records with invalid home_away values
+                if (empty($record['home_away']) || ! in_array($record['home_away'], ['home', 'away'])) {
+                    continue;
+                }
 
-            // Create or update game
-            $game = WnbaGame::updateOrCreate(
-                ['game_id' => $record['game_id']],
-                [
-                    'season' => $record['season'],
-                    'season_type' => $this->normalizeSeasonType($record['season_type'] ?? null),
-                    'game_date' => $record['game_date'],
-                    'game_date_time' => $record['game_date_time'],
-                ]
-            );
+                // Create or update game
+                $game = WnbaGame::updateOrCreate(
+                    ['game_id' => $record['game_id']],
+                    [
+                        'season' => $record['season'] ?? null,
+                        'season_type' => $this->normalizeSeasonType($record['season_type'] ?? null),
+                        'game_date' => $record['game_date'] ?? null,
+                        'game_date_time' => $record['game_date_time'] ?? null,
+                    ]
+                );
 
-            // Create or update team
-            $team = WnbaTeam::updateOrCreate(
-                ['team_id' => $record['team_id']],
-                [
-                    'team_name' => $record['team_name'],
-                    'team_location' => $record['team_location'],
-                    'team_abbreviation' => $record['team_abbreviation'],
-                    'team_display_name' => $record['team_display_name'],
-                    'team_uid' => $record['team_uid'] ?? null,
-                    'team_slug' => $record['team_slug'] ?? null,
-                    'team_logo' => $record['team_logo'],
-                    'team_color' => $record['team_color'],
-                    'team_alternate_color' => $record['team_alternate_color'],
-                ]
-            );
+                // Create or update team — optional metadata stays null when absent
+                $team = WnbaTeam::updateOrCreate(
+                    ['team_id' => $record['team_id']],
+                    [
+                        'team_name' => $record['team_name'] ?? 'Unknown',
+                        'team_location' => $record['team_location'] ?? 'Unknown',
+                        'team_abbreviation' => $record['team_abbreviation'] ?? 'UNK',
+                        'team_display_name' => $record['team_display_name'] ?? 'Unknown Team',
+                        'team_uid' => $record['team_uid'] ?? null,
+                        'team_slug' => $record['team_slug'] ?? null,
+                        'team_logo' => $record['team_logo'] ?? null,
+                        'team_color' => $record['team_color'] ?? null,
+                        'team_alternate_color' => $record['team_alternate_color'] ?? null,
+                    ]
+                );
 
-            // Create or update opponent team
-            $opponentTeam = WnbaTeam::updateOrCreate(
-                ['team_id' => $record['opponent_team_id']],
-                [
-                    'team_name' => $record['opponent_team_name'],
-                    'team_location' => $record['opponent_team_location'],
-                    'team_abbreviation' => $record['opponent_team_abbreviation'],
-                    'team_display_name' => $record['opponent_team_display_name'],
-                    'team_uid' => $record['opponent_team_uid'] ?? null,
-                    'team_slug' => $record['opponent_team_slug'] ?? null,
-                    'team_logo' => $record['opponent_team_logo'],
-                    'team_color' => $record['opponent_team_color'],
-                    'team_alternate_color' => $record['opponent_team_alternate_color'],
-                ]
-            );
+                // Create or update opponent team
+                $opponentTeam = WnbaTeam::updateOrCreate(
+                    ['team_id' => $record['opponent_team_id']],
+                    [
+                        'team_name' => $record['opponent_team_name'] ?? 'Unknown',
+                        'team_location' => $record['opponent_team_location'] ?? 'Unknown',
+                        'team_abbreviation' => $record['opponent_team_abbreviation'] ?? 'UNK',
+                        'team_display_name' => $record['opponent_team_display_name'] ?? 'Unknown Team',
+                        'team_uid' => $record['opponent_team_uid'] ?? null,
+                        'team_slug' => $record['opponent_team_slug'] ?? null,
+                        'team_logo' => $record['opponent_team_logo'] ?? null,
+                        'team_color' => $record['opponent_team_color'] ?? null,
+                        'team_alternate_color' => $record['opponent_team_alternate_color'] ?? null,
+                    ]
+                );
 
-            $statValues = [
-                'team_score' => $record['team_score'] ?? 0,
-                'opponent_team_score' => $record['opponent_team_score'] ?? 0,
-                'field_goals_made' => $record['field_goals_made'] ?? 0,
-                'field_goals_attempted' => $record['field_goals_attempted'] ?? 0,
-                'three_point_field_goals_made' => $record['three_point_field_goals_made'] ?? 0,
-                'three_point_field_goals_attempted' => $record['three_point_field_goals_attempted'] ?? 0,
-                'free_throws_made' => $record['free_throws_made'] ?? 0,
-                'free_throws_attempted' => $record['free_throws_attempted'] ?? 0,
-                'offensive_rebounds' => $record['offensive_rebounds'] ?? 0,
-                'defensive_rebounds' => $record['defensive_rebounds'] ?? 0,
-                'rebounds' => $record['rebounds'] ?? 0,
-                'assists' => $record['assists'] ?? 0,
-                'steals' => $record['steals'] ?? 0,
-                'blocks' => $record['blocks'] ?? 0,
-                'turnovers' => $record['turnovers'] ?? 0,
-                'fouls' => $record['fouls'] ?? 0,
-            ];
+                $statValues = [
+                    'team_score' => $record['team_score'] ?? 0,
+                    'opponent_team_score' => $record['opponent_team_score'] ?? 0,
+                    'field_goals_made' => $record['field_goals_made'] ?? 0,
+                    'field_goals_attempted' => $record['field_goals_attempted'] ?? 0,
+                    'three_point_field_goals_made' => $record['three_point_field_goals_made'] ?? 0,
+                    'three_point_field_goals_attempted' => $record['three_point_field_goals_attempted'] ?? 0,
+                    'free_throws_made' => $record['free_throws_made'] ?? 0,
+                    'free_throws_attempted' => $record['free_throws_attempted'] ?? 0,
+                    'offensive_rebounds' => $record['offensive_rebounds'] ?? 0,
+                    'defensive_rebounds' => $record['defensive_rebounds'] ?? 0,
+                    'rebounds' => $record['rebounds'] ?? 0,
+                    'assists' => $record['assists'] ?? 0,
+                    'steals' => $record['steals'] ?? 0,
+                    'blocks' => $record['blocks'] ?? 0,
+                    'turnovers' => $record['turnovers'] ?? 0,
+                    'fouls' => $record['fouls'] ?? 0,
+                ];
 
-            $validation = app(BoxScoreValidator::class)->validateTeamRecord($record);
-            if ($validation['status'] === BoxScoreValidator::STATUS_INVALID) {
-                $this->agentReporter?->increment('records_quarantined');
-                $this->agentReporter?->warn(sprintf(
-                    'invalid team box row (game %s, team %s): %s',
-                    $record['game_id'],
-                    $record['team_id'],
-                    implode('; ', $validation['failures'])
-                ));
-            }
+                $validation = app(BoxScoreValidator::class)->validateTeamRecord($record);
+                if ($validation['status'] === BoxScoreValidator::STATUS_INVALID) {
+                    $this->agentReporter?->increment('records_quarantined');
+                    $this->agentReporter?->warn(sprintf(
+                        'invalid team box row (game %s, team %s): %s',
+                        $record['game_id'],
+                        $record['team_id'],
+                        implode('; ', $validation['failures'])
+                    ));
+                }
 
-            if ($this->conflictResolver !== null) {
-                $existing = WnbaGameTeam::where('game_id', $game->id)
-                    ->where('team_id', $team->team_id)
-                    ->first();
+                if ($this->conflictResolver !== null) {
+                    $existing = WnbaGameTeam::where('game_id', $game->id)
+                        ->where('team_id', $team->team_id)
+                        ->first();
 
-                // Schedule import seeds 0-0 placeholder rows; those are not
-                // conflicting observations.
-                $isPlaceholder = $existing !== null
-                    && ((int) $existing->team_score + (int) $existing->opponent_team_score) === 0;
+                    // Schedule import seeds 0-0 placeholder rows; those are not
+                    // conflicting observations.
+                    $isPlaceholder = $existing !== null
+                        && ((int) $existing->team_score + (int) $existing->opponent_team_score) === 0;
 
-                if ($existing !== null && ! $isPlaceholder) {
-                    $incomingWins = $this->conflictResolver->resolveStatConflicts(
-                        'team_game_stat',
-                        $record['game_id'].'|'.$record['team_id'],
-                        $existing->source_id,
-                        $this->getProviderName(),
-                        $existing->only(array_keys($statValues)),
-                        $statValues,
-                    );
+                    if ($existing !== null && ! $isPlaceholder) {
+                        $incomingWins = $this->conflictResolver->resolveStatConflicts(
+                            'team_game_stat',
+                            $record['game_id'].'|'.$record['team_id'],
+                            $existing->source_id,
+                            $this->getProviderName(),
+                            $existing->only(array_keys($statValues)),
+                            $statValues,
+                        );
 
-                    if (! $incomingWins) {
-                        $this->agentReporter?->increment('records_kept_higher_priority_source');
+                        if (! $incomingWins) {
+                            $this->agentReporter?->increment('records_kept_higher_priority_source');
 
-                        continue;
+                            continue;
+                        }
                     }
                 }
-            }
 
-            // Create or update game team
-            $gameTeam = WnbaGameTeam::updateOrCreate(
-                [
-                    'game_id' => $game->id,
-                    'team_id' => $team->team_id,
-                ],
-                array_merge($statValues, [
-                    'opponent_team_id' => $opponentTeam->team_id,
-                    'home_away' => $record['home_away'],
-                    'team_winner' => $record['team_winner'] ?? false,
-                ], $this->lineageFields($validation['status']))
-            );
-            $this->trackWrite($gameTeam);
+                // Create or update game team
+                $gameTeam = WnbaGameTeam::updateOrCreate(
+                    [
+                        'game_id' => $game->id,
+                        'team_id' => $team->team_id,
+                    ],
+                    array_merge($statValues, [
+                        'opponent_team_id' => $opponentTeam->team_id,
+                        'home_away' => $record['home_away'],
+                        'team_winner' => $record['team_winner'] ?? false,
+                    ], $this->lineageFields($validation['status']))
+                );
+                $this->trackWrite($gameTeam);
+            } catch (\Throwable $e) {
+                $this->agentReporter?->increment('records_skipped');
+                $this->agentReporter?->warn(sprintf(
+                    'skipped team box row (game %s, team %s): %s',
+                    $record['game_id'] ?? 'unknown',
+                    $record['team_id'] ?? 'unknown',
+                    $e->getMessage()
+                ));
+                Log::warning('saveTeamData skipped row', [
+                    'game_id' => $record['game_id'] ?? null,
+                    'team_id' => $record['team_id'] ?? null,
+                    'error' => $e->getMessage(),
+                ]);
+            }
         }
     }
 
@@ -633,101 +649,118 @@ class WnbaDataService
         $provider = $this->getProviderName();
 
         foreach ($records as $record) {
-            $record = $merge->normalizeScheduleRecord($record, $provider);
+            try {
+                $record = $merge->normalizeScheduleRecord($record, $provider);
 
-            // Create or update game
-            $game = WnbaGame::updateOrCreate(
-                ['game_id' => $record['game_id']],
-                [
-                    'espn_game_id' => $record['espn_game_id'] ?? null,
-                    'tank01_game_id' => $record['tank01_game_id'] ?? null,
-                    'season' => $record['season'],
-                    'season_type' => $this->normalizeSeasonType($record['season_type'] ?? null),
-                    'game_date' => $record['game_date'],
-                    'game_date_time' => $record['game_date_time'],
-                    'venue_id' => $record['venue_id'],
-                    'venue_name' => $record['venue_name'],
-                    'venue_city' => $record['venue_city'],
-                    'venue_state' => $record['venue_state'],
-                    'venue_country' => $record['venue_country'],
-                    'venue_capacity' => $record['venue_capacity'],
-                    'venue_surface' => $record['venue_surface'],
-                    'venue_indoor' => $record['venue_indoor'],
-                    'status_id' => $record['status_id'],
-                    'status_name' => $record['status_name'],
-                    'status_type' => $record['status_type'],
-                    'status_abbreviation' => $record['status_abbreviation'],
-                    'source_id' => $this->getProviderName(),
-                    'raw_payload_id' => $this->currentRawPayloadId,
-                    'ingested_at' => now(),
-                ]
-            );
-            $this->trackWrite($game);
+                if (empty($record['game_id'])) {
+                    continue;
+                }
 
-            $homeTeam = null;
-            $awayTeam = null;
-
-            // Create or update home team (only if home_team_id is not null)
-            if (! empty($record['home_team_id'])) {
-                $homeTeam = WnbaTeam::updateOrCreate(
-                    ['team_id' => $record['home_team_id']],
+                // Create or update game — optional venue/status metadata stays null
+                $game = WnbaGame::updateOrCreate(
+                    ['game_id' => $record['game_id']],
                     [
-                        'team_name' => $record['home_team_name'] ?? 'Unknown',
-                        'team_location' => $record['home_team_location'] ?? 'Unknown',
-                        'team_abbreviation' => $record['home_team_abbreviation'] ?? 'UNK',
-                        'team_display_name' => $record['home_team_display_name'] ?? 'Unknown Team',
-                        'team_uid' => $record['home_team_uid'],
-                        'team_slug' => $record['home_team_slug'],
-                        'team_logo' => $record['home_team_logo'],
-                        'team_color' => $record['home_team_color'],
-                        'team_alternate_color' => $record['home_team_alternate_color'],
+                        'espn_game_id' => $record['espn_game_id'] ?? null,
+                        'tank01_game_id' => $record['tank01_game_id'] ?? null,
+                        'season' => $record['season'] ?? null,
+                        'season_type' => $this->normalizeSeasonType($record['season_type'] ?? null),
+                        'game_date' => $record['game_date'] ?? null,
+                        'game_date_time' => $record['game_date_time'] ?? null,
+                        'venue_id' => $record['venue_id'] ?? null,
+                        'venue_name' => $record['venue_name'] ?? null,
+                        'venue_city' => $record['venue_city'] ?? null,
+                        'venue_state' => $record['venue_state'] ?? null,
+                        'venue_country' => $record['venue_country'] ?? null,
+                        'venue_capacity' => $record['venue_capacity'] ?? null,
+                        'venue_surface' => $record['venue_surface'] ?? null,
+                        'venue_indoor' => $record['venue_indoor'] ?? null,
+                        'status_id' => $record['status_id'] ?? null,
+                        'status_name' => $record['status_name'] ?? null,
+                        'status_type' => $record['status_type'] ?? null,
+                        'status_abbreviation' => $record['status_abbreviation'] ?? null,
+                        'source_id' => $this->getProviderName(),
+                        'raw_payload_id' => $this->currentRawPayloadId,
+                        'ingested_at' => now(),
                     ]
                 );
-            }
+                $this->trackWrite($game);
 
-            // Create or update away team (only if away_team_id is not null)
-            if (! empty($record['away_team_id'])) {
-                $awayTeam = WnbaTeam::updateOrCreate(
-                    ['team_id' => $record['away_team_id']],
-                    [
-                        'team_name' => $record['away_team_name'] ?? 'Unknown',
-                        'team_location' => $record['away_team_location'] ?? 'Unknown',
-                        'team_abbreviation' => $record['away_team_abbreviation'] ?? 'UNK',
-                        'team_display_name' => $record['away_team_display_name'] ?? 'Unknown Team',
-                        'team_uid' => $record['away_team_uid'],
-                        'team_slug' => $record['away_team_slug'],
-                        'team_logo' => $record['away_team_logo'],
-                        'team_color' => $record['away_team_color'],
-                        'team_alternate_color' => $record['away_team_alternate_color'],
-                    ]
-                );
-            }
+                $homeTeam = null;
+                $awayTeam = null;
 
-            // Create placeholder WnbaGameTeam rows so upcoming games appear in
-            // schedules. firstOrCreate (not updateOrCreate) so a schedule sync
-            // can never reset real box-score values back to zero.
-            if ($homeTeam && $awayTeam) {
-                WnbaGameTeam::firstOrCreate(
-                    [
-                        'game_id' => $game->id,
-                        'team_id' => $homeTeam->team_id,
-                    ],
-                    array_merge($this->placeholderGameTeamStats(), [
-                        'opponent_team_id' => $awayTeam->team_id,
-                        'home_away' => 'home',
-                    ], $this->lineageFields())
-                );
+                // Create or update home team (only if home_team_id is not null)
+                if (! empty($record['home_team_id'])) {
+                    $homeTeam = WnbaTeam::updateOrCreate(
+                        ['team_id' => $record['home_team_id']],
+                        [
+                            'team_name' => $record['home_team_name'] ?? 'Unknown',
+                            'team_location' => $record['home_team_location'] ?? 'Unknown',
+                            'team_abbreviation' => $record['home_team_abbreviation'] ?? 'UNK',
+                            'team_display_name' => $record['home_team_display_name'] ?? 'Unknown Team',
+                            'team_uid' => $record['home_team_uid'] ?? null,
+                            'team_slug' => $record['home_team_slug'] ?? null,
+                            'team_logo' => $record['home_team_logo'] ?? null,
+                            'team_color' => $record['home_team_color'] ?? null,
+                            'team_alternate_color' => $record['home_team_alternate_color'] ?? null,
+                        ]
+                    );
+                }
 
-                WnbaGameTeam::firstOrCreate(
-                    [
-                        'game_id' => $game->id,
-                        'team_id' => $awayTeam->team_id,
-                    ],
-                    array_merge($this->placeholderGameTeamStats(), [
-                        'opponent_team_id' => $homeTeam->team_id,
-                        'home_away' => 'away',
-                    ], $this->lineageFields())
-                );
+                // Create or update away team (only if away_team_id is not null)
+                if (! empty($record['away_team_id'])) {
+                    $awayTeam = WnbaTeam::updateOrCreate(
+                        ['team_id' => $record['away_team_id']],
+                        [
+                            'team_name' => $record['away_team_name'] ?? 'Unknown',
+                            'team_location' => $record['away_team_location'] ?? 'Unknown',
+                            'team_abbreviation' => $record['away_team_abbreviation'] ?? 'UNK',
+                            'team_display_name' => $record['away_team_display_name'] ?? 'Unknown Team',
+                            'team_uid' => $record['away_team_uid'] ?? null,
+                            'team_slug' => $record['away_team_slug'] ?? null,
+                            'team_logo' => $record['away_team_logo'] ?? null,
+                            'team_color' => $record['away_team_color'] ?? null,
+                            'team_alternate_color' => $record['away_team_alternate_color'] ?? null,
+                        ]
+                    );
+                }
+
+                // Create placeholder WnbaGameTeam rows so upcoming games appear in
+                // schedules. firstOrCreate (not updateOrCreate) so a schedule sync
+                // can never reset real box-score values back to zero.
+                if ($homeTeam && $awayTeam) {
+                    WnbaGameTeam::firstOrCreate(
+                        [
+                            'game_id' => $game->id,
+                            'team_id' => $homeTeam->team_id,
+                        ],
+                        array_merge($this->placeholderGameTeamStats(), [
+                            'opponent_team_id' => $awayTeam->team_id,
+                            'home_away' => 'home',
+                        ], $this->lineageFields())
+                    );
+
+                    WnbaGameTeam::firstOrCreate(
+                        [
+                            'game_id' => $game->id,
+                            'team_id' => $awayTeam->team_id,
+                        ],
+                        array_merge($this->placeholderGameTeamStats(), [
+                            'opponent_team_id' => $homeTeam->team_id,
+                            'home_away' => 'away',
+                        ], $this->lineageFields())
+                    );
+                }
+            } catch (\Throwable $e) {
+                $this->agentReporter?->increment('records_skipped');
+                $this->agentReporter?->warn(sprintf(
+                    'skipped schedule row (game %s): %s',
+                    $record['game_id'] ?? 'unknown',
+                    $e->getMessage()
+                ));
+                Log::warning('saveTeamScheduleData skipped row', [
+                    'game_id' => $record['game_id'] ?? null,
+                    'error' => $e->getMessage(),
+                ]);
             }
         }
     }

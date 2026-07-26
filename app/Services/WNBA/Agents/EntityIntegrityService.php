@@ -35,11 +35,19 @@ class EntityIntegrityService
             'duplicate_players' => $this->auditDuplicatePlayers(),
             'duplicate_games' => $this->auditDuplicateGames($season),
             'identical_opponents' => $this->auditIdenticalOpponents($season),
-            'mapping_gaps' => $this->auditMappingGaps($season),
+            'mapping_gaps_espn' => 0,
+            'mapping_gaps_tank01' => 0,
+            'mapping_gaps' => 0,
             'metadata_gaps' => $this->auditMetadataGaps($season),
             'unknown_abbreviations' => $this->auditUnknownAbbreviations(),
             'multi_team_players' => $this->auditMultiTeamPlayers($season),
         ];
+
+        $mappingGaps = $this->auditMappingGaps($season);
+        $findings['mapping_gaps_espn'] = $mappingGaps['espn'];
+        $findings['mapping_gaps_tank01'] = $mappingGaps['tank01'];
+        // Blocking / loud metric is ESPN-only (canonical IDs).
+        $findings['mapping_gaps'] = $mappingGaps['espn'];
 
         foreach ($findings as $check => $count) {
             $this->reporter?->set("findings_{$check}", $count);
@@ -208,22 +216,30 @@ class EntityIntegrityService
     /**
      * Cross-provider mapping gaps for entities that have stats. Reported, not
      * auto-fixed: EntityMergeService sync is the safe fixer and runs separately.
+     *
+     * ESPN gaps are the blocking metric (canonical IDs). Tank01 gaps are
+     * informational — expected when Tank01 quota is tight.
+     *
+     * @return array{espn: int, tank01: int}
      */
-    private function auditMappingGaps(?int $season): int
+    private function auditMappingGaps(?int $season): array
     {
-        $playersQuery = WnbaPlayer::query()
+        $playersWithStats = fn () => WnbaPlayer::query()
             ->whereHas('playerGames', function ($query) use ($season) {
                 if ($season !== null) {
                     $query->whereHas('game', fn ($gameQuery) => $gameQuery->where('season', $season));
                 }
-            })
-            ->where(function ($query) {
-                $query->whereNull('espn_athlete_id')->orWhereNull('tank01_player_id');
             });
 
-        $count = $playersQuery->count();
-        if ($count > 0) {
-            $this->reporter?->warn("{$count} players with game stats are missing an ESPN or Tank01 identity mapping (run app:sync-entity-identities)");
+        $espnGaps = $playersWithStats()->whereNull('espn_athlete_id')->count();
+        $tank01Gaps = $playersWithStats()->whereNull('tank01_player_id')->count();
+
+        if ($espnGaps > 0) {
+            $this->reporter?->warn("{$espnGaps} players with game stats are missing an ESPN identity mapping (run app:sync-entity-identities)");
+        }
+
+        if ($tank01Gaps > 0) {
+            $this->reporter?->warn("{$tank01Gaps} players with game stats are missing a Tank01 identity mapping (informational; may reflect API quota)");
         }
 
         // Two players claiming the same external ID is impossible via the unique
@@ -245,7 +261,10 @@ class EntityIntegrityService
             );
         }
 
-        return $count + $collisions->count();
+        return [
+            'espn' => $espnGaps + $collisions->count(),
+            'tank01' => $tank01Gaps,
+        ];
     }
 
     private function auditMetadataGaps(?int $season): int

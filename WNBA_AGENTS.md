@@ -14,6 +14,10 @@ Nightly chain: **data → entity (audit) → analytics → cache clear**. The
 evening Tank01 live sync (`app:sync-wnba-live`) also records agent runs with
 mode `live`.
 
+**Queue worker timeout:** `docker/queue-worker.sh` must use `--timeout` ≥ the
+longest agent job timeout (`RunDataAgent` = 3600s). A worker timeout below the
+job timeout will kill long data backfills mid-run.
+
 ## CLI
 
 ```bash
