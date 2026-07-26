@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\AgentRunController;
+use App\Http\Controllers\Api\ChampionReportController;
 use App\Http\Controllers\Api\DataAggregatorController;
 use App\Http\Controllers\Api\GameController;
 use App\Http\Controllers\Api\HealthController;
@@ -162,6 +163,10 @@ Route::prefix('wnba')->group(function () {
         Route::get('/todays-best', [PredictionsController::class, 'getTodaysBestProps']);
         Route::get('/accuracy', [PredictionsController::class, 'getPredictionAccuracy']);
         Route::get('/top-prop', [PredictionsController::class, 'getTopPropOfDay']);
+        Route::get('/champion-reports', [ChampionReportController::class, 'index']);
+        Route::get('/champion-reports/{id}', [ChampionReportController::class, 'show']);
+        Route::get('/feedback-runs', [ChampionReportController::class, 'feedbackRuns']);
+        Route::get('/champion', [ChampionReportController::class, 'currentChampion']);
     });
 
     // Analytics

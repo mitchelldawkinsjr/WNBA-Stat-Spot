@@ -38,6 +38,8 @@ COPY docker/nginx.conf /etc/nginx/sites-available/default
 
 # Copy supervisor configuration
 COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+COPY docker/schedule-worker.sh /usr/local/bin/schedule-worker.sh
+RUN chmod +x /usr/local/bin/schedule-worker.sh
 
 # Create startup script
 COPY docker/startup.sh /startup.sh

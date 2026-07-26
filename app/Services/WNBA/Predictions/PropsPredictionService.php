@@ -20,16 +20,20 @@ class PropsPredictionService
 
     private \App\Services\WNBA\Predictions\StatisticalEngineService $statisticalEngine;
 
+    private PredictionModelParamStore $paramStore;
+
     public function __construct(
         PredictionEngine $predictionEngine,
         PlayerAnalyticsService $playerAnalytics,
         DataAggregatorService $dataAggregator,
-        \App\Services\WNBA\Predictions\StatisticalEngineService $statisticalEngine
+        \App\Services\WNBA\Predictions\StatisticalEngineService $statisticalEngine,
+        PredictionModelParamStore $paramStore
     ) {
         $this->predictionEngine = $predictionEngine;
         $this->playerAnalytics = $playerAnalytics;
         $this->dataAggregator = $dataAggregator;
         $this->statisticalEngine = $statisticalEngine;
+        $this->paramStore = $paramStore;
     }
 
     /**
@@ -312,17 +316,21 @@ class PropsPredictionService
         $overEV = ($overProbability * ($overDecimal - 1)) - ((1 - $overProbability) * 1);
         $underEV = ($underProbability * ($underDecimal - 1)) - ((1 - $underProbability) * 1);
 
-        // Determine recommendation
+        // Determine recommendation using champion gates
+        $gates = $this->paramStore->gates($statType);
+        $minConfidence = (float) $gates['min_confidence'];
+        $minEv = (float) $gates['min_ev'];
+
         $recommendation = 'avoid';
         $bestBet = null;
         $expectedValue = 0;
 
-        if ($confidence >= 0.6) {
-            if ($overEV > 0.05 && $overEV > $underEV) {
+        if ($confidence >= $minConfidence) {
+            if ($overEV > $minEv && $overEV > $underEV) {
                 $recommendation = 'over';
                 $bestBet = 'over';
                 $expectedValue = $overEV;
-            } elseif ($underEV > 0.05 && $underEV > $overEV) {
+            } elseif ($underEV > $minEv && $underEV > $overEV) {
                 $recommendation = 'under';
                 $bestBet = 'under';
                 $expectedValue = $underEV;
@@ -343,6 +351,12 @@ class PropsPredictionService
             'odds' => [
                 'over' => $oddsOver,
                 'under' => $oddsUnder,
+            ],
+            'model_version' => $prediction['model_version'] ?? $this->paramStore->championVersion(),
+            'feature_snapshot' => $prediction['feature_snapshot'] ?? null,
+            'gates_used' => [
+                'min_confidence' => $minConfidence,
+                'min_ev' => $minEv,
             ],
         ];
     }
@@ -686,12 +700,16 @@ class PropsPredictionService
     {
         $bestBet = $expectedValue['best_bet'];
         $edge = $expectedValue['edge'];
+        $gates = $this->paramStore->gates();
+        $minConfidence = (float) $gates['min_confidence'];
+        // edge is stored as percentage-ish in calculateExpectedValue; gate min_ev is decimal EV.
+        $minEdge = (float) $gates['min_ev'] * 100;
 
-        if ($confidence < 0.6) {
+        if ($confidence < $minConfidence) {
             return ['action' => 'pass', 'reason' => 'Low confidence in prediction'];
         }
 
-        if ($edge < 2) {
+        if ($edge < $minEdge) {
             return ['action' => 'pass', 'reason' => 'Insufficient edge'];
         }
 

@@ -41,6 +41,43 @@ return [
         'current_season_label' => env('WNBA_CURRENT_SEASON_LABEL', '2026-2027'),
     ],
 
+    'predictions' => [
+        'auto_tune_enabled' => env('WNBA_PREDICTION_AUTO_TUNE', true),
+        'eval_window_size' => (int) env('WNBA_PREDICTION_EVAL_WINDOW', 120),
+        'min_learn_samples' => (int) env('WNBA_PREDICTION_MIN_LEARN_SAMPLES', 40),
+        'max_weight_step' => (float) env('WNBA_PREDICTION_MAX_WEIGHT_STEP', 0.03),
+        'promotion' => [
+            'brier_improvement' => 0.002,
+            'hit_rate_improvement' => 0.02,
+            'max_brier_regression' => 0.005,
+        ],
+        'defaults' => [
+            'adjustments' => [
+                'rest_b2b' => 0.9,
+                'rest_well' => 1.1,
+                'home' => 1.05,
+                'opponent_scale' => 0.001,
+            ],
+            'calibration' => [
+                'shrinkage' => 0.0,
+            ],
+            'gates' => [
+                'min_confidence' => 0.6,
+                'min_ev' => 0.05,
+                'by_stat' => [],
+            ],
+        ],
+        'clamps' => [
+            'rest_b2b' => [0.80, 1.00],
+            'rest_well' => [1.00, 1.15],
+            'home' => [1.00, 1.10],
+            'opponent_scale' => [0.0005, 0.002],
+            'shrinkage' => [0.0, 0.5],
+            'min_confidence' => [0.5, 0.8],
+            'min_ev' => [0.0, 0.15],
+        ],
+    ],
+
     'agents' => [
         // Lower number wins conflicts. ESPN is the canonical-ID source of truth.
         'source_priority' => [

@@ -2,7 +2,6 @@
 
 namespace App\Services\WNBA\Predictions;
 
-use App\Models\WnbaPlayerGame;
 use App\Models\WnbaGame;
 use App\Models\WnbaPlayer;
 use App\Services\WNBA\Analytics\PlayerAnalyticsService;
@@ -13,33 +12,39 @@ use Illuminate\Support\Facades\Log;
 class PredictionEngine
 {
     private StatisticalEngineService $statisticalEngine;
+
     private PlayerAnalyticsService $playerAnalytics;
+
     private DataAggregatorService $dataAggregator;
+
+    private PredictionModelParamStore $paramStore;
 
     public function __construct(
         StatisticalEngineService $statisticalEngine,
         PlayerAnalyticsService $playerAnalytics,
-        DataAggregatorService $dataAggregator
+        DataAggregatorService $dataAggregator,
+        PredictionModelParamStore $paramStore
     ) {
         $this->statisticalEngine = $statisticalEngine;
         $this->playerAnalytics = $playerAnalytics;
         $this->dataAggregator = $dataAggregator;
+        $this->paramStore = $paramStore;
     }
 
     /**
      * Generate prediction for any stat type
      */
-    public function predict(string $statType, int $playerId, int $gameId, float $lineValue = null): array
+    public function predict(string $statType, int $playerId, int $gameId, ?float $lineValue = null): array
     {
         $cacheKey = "prediction_{$statType}_{$playerId}_{$gameId}";
 
-        return Cache::remember($cacheKey, 1800, function() use ($statType, $playerId, $gameId, $lineValue) {
+        return Cache::remember($cacheKey, 1800, function () use ($statType, $playerId, $gameId, $lineValue) {
             try {
                 // Get player and game context
                 $player = WnbaPlayer::find($playerId);
                 $game = WnbaGame::find($gameId);
 
-                if (!$player || !$game) {
+                if (! $player || ! $game) {
                     throw new \InvalidArgumentException('Invalid player or game ID');
                 }
 
@@ -60,13 +65,15 @@ class PredictionEngine
                     $this->calculateProbabilities($adjustedPrediction, $lineValue) :
                     null;
 
+                $modelVersion = $this->paramStore->championVersion();
+
                 return [
                     'prediction_id' => uniqid('wnba_pred_'),
                     'player' => [
                         'id' => $player->id,
                         'name' => $player->athlete_display_name,
                         'position' => $player->athlete_position_abbreviation,
-                        'team_id' => $gameContext['player_team_id']
+                        'team_id' => $gameContext['player_team_id'],
                     ],
                     'game_context' => $gameContext,
                     'stat_type' => $statType,
@@ -74,27 +81,35 @@ class PredictionEngine
                         'base_value' => $basePrediction['value'],
                         'adjusted_value' => $adjustedPrediction['value'],
                         'confidence' => $adjustedPrediction['confidence'],
-                        'distribution' => $adjustedPrediction['distribution']
+                        'distribution' => $adjustedPrediction['distribution'],
                     ],
                     'probabilities' => $probabilities,
                     'factors' => [
                         'historical' => $historicalData['stat_distribution'],
                         'situational' => $gameContext,
-                        'adjustments' => $adjustedPrediction['adjustments']
+                        'adjustments' => $adjustedPrediction['adjustments'],
                     ],
+                    'feature_snapshot' => $this->buildFeatureSnapshot(
+                        $basePrediction,
+                        $adjustedPrediction,
+                        $gameContext
+                    ),
+                    'model_version' => $modelVersion,
                     'metadata' => [
                         'version' => '2.0',
+                        'model_version' => $modelVersion,
                         'generated_at' => now()->toISOString(),
-                        'data_points' => $historicalData['games_played']
-                    ]
+                        'data_points' => $historicalData['games_played'],
+                    ],
                 ];
             } catch (\Exception $e) {
                 Log::error('Prediction failed', [
                     'stat_type' => $statType,
                     'player_id' => $playerId,
                     'game_id' => $gameId,
-                    'error' => $e->getMessage()
+                    'error' => $e->getMessage(),
                 ]);
+
                 return $this->getEmptyPrediction($statType);
             }
         });
@@ -111,7 +126,7 @@ class PredictionEngine
         $distributionType = $this->determineDistributionType($distribution);
 
         // Calculate base value using appropriate method
-        $baseValue = match($distributionType) {
+        $baseValue = match ($distributionType) {
             'poisson' => $this->calculatePoissonBase($distribution),
             'normal' => $this->calculateNormalBase($distribution),
             'binomial' => $this->calculateBinomialBase($distribution),
@@ -125,7 +140,7 @@ class PredictionEngine
             'value' => $normalizedBaseValue,
             'distribution_type' => $distributionType,
             'confidence' => $this->calculateBaseConfidence($distribution),
-            'distribution' => $distribution
+            'distribution' => $distribution,
         ];
     }
 
@@ -138,7 +153,7 @@ class PredictionEngine
             'pace' => $this->calculatePaceAdjustment($gameContext),
             'rest' => $this->calculateRestAdjustment($gameContext),
             'opponent' => $this->calculateOpponentAdjustment($gameContext),
-            'situation' => $this->calculateSituationalAdjustment($gameContext)
+            'situation' => $this->calculateSituationalAdjustment($gameContext),
         ];
 
         $adjustedValue = $basePrediction['value'];
@@ -153,7 +168,7 @@ class PredictionEngine
             'value' => $adjustedValue,
             'confidence' => $this->calculateAdjustedConfidence($basePrediction['confidence'], $adjustments),
             'distribution' => $this->adjustDistribution($basePrediction['distribution'], $adjustments),
-            'adjustments' => $adjustments
+            'adjustments' => $adjustments,
         ];
     }
 
@@ -185,12 +200,33 @@ class PredictionEngine
         $distribution = $prediction['distribution'];
         $value = $prediction['value'];
 
+        $overRaw = $this->statisticalEngine->calculateOverProbability($distribution, $lineValue);
+        $over = $this->paramStore->applyShrinkage((float) $overRaw);
+
         return [
-            'over' => $this->statisticalEngine->calculateOverProbability($distribution, $lineValue),
-            'under' => 1 - $this->statisticalEngine->calculateOverProbability($distribution, $lineValue),
+            'over' => $over,
+            'under' => 1 - $over,
             'line_value' => $lineValue,
             'predicted_value' => $value,
-            'edge' => $this->calculateEdge($value, $lineValue)
+            'edge' => $this->calculateEdge($value, $lineValue),
+            'over_raw' => $overRaw,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function buildFeatureSnapshot(array $basePrediction, array $adjustedPrediction, array $gameContext): array
+    {
+        return [
+            'base_value' => $basePrediction['value'] ?? null,
+            'adjusted_value' => $adjustedPrediction['value'] ?? null,
+            'distribution_type' => $basePrediction['distribution_type'] ?? null,
+            'adjustments' => $adjustedPrediction['adjustments'] ?? [],
+            'pace_factor' => $gameContext['pace_factor'] ?? null,
+            'rest_days' => $gameContext['rest_days'] ?? null,
+            'home_away' => $gameContext['home_away'] ?? null,
+            'opponent_defense_rating' => $gameContext['opponent_defense_rating'] ?? null,
         ];
     }
 
@@ -200,7 +236,7 @@ class PredictionEngine
         // Analyze distribution shape to determine appropriate type
         $shape = $this->statisticalEngine->analyzeDistributionShape($distribution['values']);
 
-        return match(true) {
+        return match (true) {
             $shape['symmetry'] === 'symmetric' => 'normal',
             $shape['tail_heaviness'] === 'heavy_tailed' => 'poisson',
             $distribution['max'] <= 1 => 'binomial',
@@ -211,18 +247,21 @@ class PredictionEngine
     private function calculatePoissonBase(array $distribution): float
     {
         $value = $distribution['mean'] ?? 0;
+
         return $this->normalizeBaseValue($value);
     }
 
     private function calculateNormalBase(array $distribution): float
     {
         $value = $distribution['mean'] ?? 0;
+
         return $this->normalizeBaseValue($value);
     }
 
     private function calculateBinomialBase(array $distribution): float
     {
         $value = $distribution['mean'] ?? 0;
+
         return $this->normalizeBaseValue($value);
     }
 
@@ -231,40 +270,47 @@ class PredictionEngine
         return $this->statisticalEngine->calculateConfidence([
             'sample_size' => $distribution['count'] ?? 0,
             'variance' => $distribution['variance'] ?? 0,
-            'consistency' => $distribution['consistency_score'] ?? 0
+            'consistency' => $distribution['consistency_score'] ?? 0,
         ]);
     }
 
     private function calculatePaceAdjustment(array $gameContext): array
     {
         $paceFactor = $gameContext['pace_factor'] ?? 1.0;
+
         return [
             'factor' => $paceFactor,
-            'description' => 'Game pace adjustment'
+            'description' => 'Game pace adjustment',
         ];
     }
 
     private function calculateRestAdjustment(array $gameContext): array
     {
+        $adjustments = $this->paramStore->adjustments();
         $restDays = $gameContext['rest_days'] ?? 0;
-        $factor = match(true) {
-            $restDays <= 1 => 0.9,  // Back-to-back
-            $restDays >= 4 => 1.1,  // Well rested
-            default => 1.0
+        $factor = match (true) {
+            $restDays <= 1 => (float) $adjustments['rest_b2b'],
+            $restDays >= 4 => (float) $adjustments['rest_well'],
+            default => 1.0,
         };
+
         return [
             'factor' => $factor,
-            'description' => 'Rest days adjustment'
+            'description' => 'Rest days adjustment',
+            'key' => $restDays <= 1 ? 'rest_b2b' : ($restDays >= 4 ? 'rest_well' : 'rest_neutral'),
         ];
     }
 
     private function calculateOpponentAdjustment(array $gameContext): array
     {
+        $scale = (float) $this->paramStore->adjustments()['opponent_scale'];
         $defenseRating = $gameContext['opponent_defense_rating'] ?? 100;
-        $factor = 1 + (($defenseRating - 100) / 1000);
+        $factor = 1 + (($defenseRating - 100) * $scale);
+
         return [
             'factor' => $factor,
-            'description' => 'Opponent strength adjustment'
+            'description' => 'Opponent strength adjustment',
+            'key' => 'opponent_scale',
         ];
     }
 
@@ -272,21 +318,24 @@ class PredictionEngine
     {
         $factor = 1.0;
         $description = 'Situational factors';
+        $key = 'situation_neutral';
 
-        if ($gameContext['home_away'] === 'home') {
-            $factor *= 1.05;
+        if (($gameContext['home_away'] ?? null) === 'home') {
+            $factor *= (float) $this->paramStore->adjustments()['home'];
             $description .= ' (Home court advantage)';
+            $key = 'home';
         }
 
         return [
             'factor' => $factor,
-            'description' => $description
+            'description' => $description,
+            'key' => $key,
         ];
     }
 
     private function calculateAdjustedConfidence(float $baseConfidence, array $adjustments): float
     {
-        $adjustmentFactors = array_map(fn($adj) => $adj['factor'], $adjustments);
+        $adjustmentFactors = array_map(fn ($adj) => $adj['factor'], $adjustments);
         $adjustmentImpact = array_sum($adjustmentFactors) / count($adjustmentFactors);
 
         return $baseConfidence * (1 - abs(1 - $adjustmentImpact) * 0.2);
@@ -295,7 +344,7 @@ class PredictionEngine
     private function adjustDistribution(array $distribution, array $adjustments): array
     {
         $adjustedDistribution = $distribution;
-        $adjustmentFactor = array_product(array_map(fn($adj) => $adj['factor'], $adjustments));
+        $adjustmentFactor = array_product(array_map(fn ($adj) => $adj['factor'], $adjustments));
 
         if (isset($adjustedDistribution['mean'])) {
             $adjustedMean = $adjustedDistribution['mean'] * $adjustmentFactor;
@@ -323,7 +372,7 @@ class PredictionEngine
                 'base_value' => 0,
                 'adjusted_value' => 0,
                 'confidence' => 0,
-                'distribution' => []
+                'distribution' => [],
             ],
             'probabilities' => null,
             'factors' => [],
@@ -331,8 +380,8 @@ class PredictionEngine
                 'version' => '2.0',
                 'generated_at' => now()->toISOString(),
                 'data_points' => 0,
-                'error' => 'Insufficient data for prediction'
-            ]
+                'error' => 'Insufficient data for prediction',
+            ],
         ];
     }
 }

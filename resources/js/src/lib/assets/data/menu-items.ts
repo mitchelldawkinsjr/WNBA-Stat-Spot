@@ -124,6 +124,12 @@ export const MENU_ITEMS: MenuItemType[] = [
         url: '/advanced/data-management',
     },
     {
+        key: 'model-feedback',
+        icon: 'iconamoon:file-document-duotone',
+        label: 'Model Feedback',
+        url: '/advanced/model-feedback',
+    },
+    {
         key: 'system-section',
         label: 'SYSTEM',
         isTitle: true,

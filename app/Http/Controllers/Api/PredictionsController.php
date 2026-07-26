@@ -11,6 +11,7 @@ use App\Services\WNBA\Analytics\TeamAnalyticsService;
 use App\Services\WNBA\Data\DataAggregatorService;
 use App\Services\WNBA\Data\GameScheduleService;
 use App\Services\WNBA\Predictions\PredictionAccuracyService;
+use App\Services\WNBA\Predictions\PredictionModelParamStore;
 use App\Services\WNBA\Predictions\PropsPredictionService;
 use App\Services\WNBA\Predictions\StatisticalEngineService;
 use Carbon\Carbon;
@@ -39,6 +40,8 @@ class PredictionsController extends Controller
 
     private GamePreviewService $gamePreview;
 
+    private PredictionModelParamStore $paramStore;
+
     public function __construct(
         PropsPredictionService $propsPrediction,
         StatisticalEngineService $statisticalEngine,
@@ -49,6 +52,7 @@ class PredictionsController extends Controller
         OddsService $oddsApi,
         PredictionAccuracyService $predictionAccuracy,
         GamePreviewService $gamePreview,
+        PredictionModelParamStore $paramStore,
     ) {
         $this->propsPrediction = $propsPrediction;
         $this->statisticalEngine = $statisticalEngine;
@@ -59,6 +63,7 @@ class PredictionsController extends Controller
         $this->oddsApi = $oddsApi;
         $this->predictionAccuracy = $predictionAccuracy;
         $this->gamePreview = $gamePreview;
+        $this->paramStore = $paramStore;
     }
 
     /**
@@ -699,6 +704,7 @@ class PredictionsController extends Controller
 
                 // Include props with positive expected value or decent confidence
                 if ($expectedValue > -5.0 && ($prediction['prediction']['confidence_score'] ?? 0) > 0.5) {
+                    $recentAvg = $prediction['recent_average'] ?? $line;
                     $props[] = [
                         'player_id' => $playerId,
                         'player_name' => $player['name'] ?? $player['athlete_display_name'],
@@ -710,11 +716,11 @@ class PredictionsController extends Controller
                         'suggested_line' => $line,
                         'predicted_value' => $prediction['prediction']['predicted_value'] ?? $line,
                         'confidence' => ($prediction['prediction']['confidence_score'] ?? 0.75) * 100,
-                        'recommendation' => $this->getRecommendationFromPrediction($prediction, $line),
+                        'recommendation' => $this->getRecommendationFromPrediction($prediction, $line, $statType),
                         'expected_value' => $expectedValue,
                         'probability_over' => ($prediction['prediction']['over_probability'] ?? 0.5) * 100,
                         'probability_under' => ($prediction['prediction']['under_probability'] ?? 0.5) * 100,
-                        'recent_form' => $prediction['recent_average'] ?? $line,
+                        'recent_form' => $recentAvg,
                         'season_average' => $prediction['season_average'] ?? $line,
                         'matchup_difficulty' => $game ? $this->getMatchupDifficulty($player, $game) : 'neutral',
                         'betting_value' => $this->getBettingValue($expectedValue),
@@ -725,6 +731,13 @@ class PredictionsController extends Controller
                             $line,
                             $oddsData
                         ),
+                        'feature_snapshot' => $prediction['feature_snapshot'] ?? [
+                            'base_value' => $prediction['prediction']['predicted_value'] ?? $line,
+                            'adjusted_value' => $prediction['prediction']['predicted_value'] ?? $line,
+                            'distribution_type' => 'empirical',
+                            'recent_average' => $recentAvg,
+                        ],
+                        'model_version' => $prediction['model_version'] ?? $this->paramStore->championVersion(),
                         // Add odds data for frontend display
                         'odds_api_line' => $oddsData['line'] ?? $line,
                         'odds_api_odds' => [
@@ -773,26 +786,35 @@ class PredictionsController extends Controller
         return [
             'prediction' => [
                 'predicted_value' => $prediction['predicted_value'],
-                'over_probability' => $prediction['probability_over'] / 100,
-                'under_probability' => $prediction['probability_under'] / 100,
+                'over_probability' => $this->paramStore->applyShrinkage($prediction['probability_over'] / 100),
+                'under_probability' => 1 - $this->paramStore->applyShrinkage($prediction['probability_over'] / 100),
                 'confidence_score' => $prediction['confidence'] / 100,
             ],
             'odds_data' => $oddsData,
             'recent_average' => $recentStats['recent_average'],
             'season_average' => $recentStats['season_average'],
+            'feature_snapshot' => [
+                'base_value' => $prediction['predicted_value'],
+                'adjusted_value' => $prediction['predicted_value'],
+                'distribution_type' => 'empirical',
+                'recent_average' => $recentStats['recent_average'],
+                'season_average' => $recentStats['season_average'],
+            ],
+            'model_version' => $this->paramStore->championVersion(),
         ];
     }
 
     /**
      * Get recommendation from prediction data
      */
-    private function getRecommendationFromPrediction(array $prediction, float $line): string
+    private function getRecommendationFromPrediction(array $prediction, float $line, ?string $statType = null): string
     {
         $predictedValue = $prediction['prediction']['predicted_value'] ?? $line;
         $confidence = $prediction['prediction']['confidence_score'] ?? 0.5;
+        $gates = $this->paramStore->gates($statType);
+        $minConfidence = (float) $gates['min_confidence'];
 
-        // Reduced from 0.6 to 0.55 for more realistic recommendations
-        if ($confidence < 0.55) {
+        if ($confidence < $minConfidence) {
             return 'avoid';
         }
 
@@ -801,7 +823,7 @@ class PredictionsController extends Controller
         $significantDifference = $difference > ($line * 0.08); // 8% difference threshold
 
         // If prediction is very close to line, be more cautious
-        if (! $significantDifference && $confidence < 0.65) {
+        if (! $significantDifference && $confidence < max($minConfidence, 0.65)) {
             return 'avoid';
         }
 

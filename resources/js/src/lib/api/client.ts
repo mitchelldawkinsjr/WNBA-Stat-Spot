@@ -456,7 +456,64 @@ export interface PredictionAccuracyDashboard {
         top_prop_correct: number;
     };
     top_prop_of_day: TodaysProp | null;
+    model?: {
+        model_version: string;
+        gates: Record<string, unknown>;
+        calibration: { shrinkage: number };
+        adjustments: Record<string, number>;
+        auto_tune_enabled: boolean;
+        latest_feedback_run: {
+            run_uuid: string;
+            status: string;
+            promoted: boolean;
+            sample_size: number;
+            metrics: Record<string, unknown> | null;
+            champion_version: string | null;
+            challenger_version: string | null;
+            champion_report_id: number | null;
+            finished_at: string | null;
+        } | null;
+        latest_champion_report: {
+            report_uuid: string;
+            headline: string;
+            from_version: string;
+            to_version: string;
+            promoted_at: string | null;
+        } | null;
+    };
     updated_at: string;
+}
+
+export interface ChampionReportListItem {
+    report_uuid: string;
+    headline: string;
+    from_version: string;
+    to_version: string;
+    promoted_at: string | null;
+    brier_before: number | null;
+    brier_after: number | null;
+    brier_delta: number | null;
+    reasons: string[];
+}
+
+export interface ChampionReportDetail {
+    report_uuid: string;
+    feedback_run_id: number | null;
+    from_version: string;
+    to_version: string;
+    promoted_at: string | null;
+    headline: string;
+    summary_markdown: string;
+    changes: Array<{ path: string; from: unknown; to: unknown; why: string | null }>;
+    metrics_before: Record<string, unknown> | null;
+    metrics_after: Record<string, unknown> | null;
+    reasons: string[];
+    calibration_buckets: Array<{
+        bucket: string;
+        predicted: number;
+        observed: number;
+        count: number;
+    }> | null;
 }
 
 // Data Aggregator Interfaces
@@ -1043,6 +1100,24 @@ export const api = {
                     { cacheTtl: 'short' }
                 );
             },
+            getChampionReports: (limit = 20) =>
+                fetchApi<{
+                    success: boolean;
+                    data: {
+                        champion: { version: string; params: Record<string, unknown> };
+                        reports: ChampionReportListItem[];
+                    };
+                }>(`/wnba/predictions/champion-reports?limit=${limit}`, { cacheTtl: 'short' }),
+            getChampionReport: (id: string) =>
+                fetchApi<{ success: boolean; data: ChampionReportDetail }>(
+                    `/wnba/predictions/champion-reports/${id}`,
+                    { cacheTtl: 'short' }
+                ),
+            getFeedbackRuns: (limit = 20) =>
+                fetchApi<{ success: boolean; data: Array<Record<string, unknown>> }>(
+                    `/wnba/predictions/feedback-runs?limit=${limit}`,
+                    { cacheTtl: 'short' }
+                ),
         },
         analytics: {
             getPlayer: (playerId: string, options?: { season?: number; last_n_games?: number }) => {

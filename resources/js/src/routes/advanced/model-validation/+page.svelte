@@ -131,6 +131,36 @@
                 </div>
             </div>
 
+            {#if dashboard.model}
+                <div class="row mb-4">
+                    <div class="col-12">
+                        <div class="card">
+                            <div class="card-body d-flex flex-wrap justify-content-between align-items-center gap-3">
+                                <div>
+                                    <p class="text-muted mb-1">Active model</p>
+                                    <div class="d-flex flex-wrap gap-2 align-items-center">
+                                        <span class="badge bg-primary">{dashboard.model.model_version}</span>
+                                        <span class="small text-muted">
+                                            shrinkage {dashboard.model.calibration?.shrinkage ?? 0}
+                                            · min conf {dashboard.model.gates?.min_confidence ?? '—'}
+                                            · auto-tune {dashboard.model.auto_tune_enabled ? 'on' : 'off'}
+                                        </span>
+                                    </div>
+                                    {#if dashboard.model.latest_champion_report}
+                                        <p class="small text-muted mb-0 mt-2">
+                                            Latest promotion: {dashboard.model.latest_champion_report.headline}
+                                        </p>
+                                    {/if}
+                                </div>
+                                <a href="/advanced/model-feedback" class="btn btn-outline-primary">
+                                    View promotion reports
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            {/if}
+
             <!-- Accuracy summary -->
             <div class="row g-3 mb-4">
                 <div class="col-md-3">

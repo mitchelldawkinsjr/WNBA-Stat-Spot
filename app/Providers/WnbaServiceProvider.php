@@ -11,6 +11,7 @@ use App\Services\WNBA\Data\EntityMergeService;
 use App\Services\WNBA\Data\PlayerGamelogService;
 use App\Services\WNBA\Data\WnbaProviderResolver;
 use App\Services\WNBA\Predictions\PredictionEngine;
+use App\Services\WNBA\Predictions\PredictionModelParamStore;
 use App\Services\WNBA\Predictions\PropsPredictionService;
 use App\Services\WNBA\Predictions\StatisticalEngineService;
 use App\Services\WnbaDataService;
@@ -41,6 +42,7 @@ class WnbaServiceProvider extends ServiceProvider
         $this->app->singleton(GameAnalyticsService::class);
         $this->app->singleton(PredictionEngine::class);
         $this->app->singleton(PropsPredictionService::class);
+        $this->app->singleton(PredictionModelParamStore::class);
 
         $this->app->alias(PropsPredictionService::class, 'wnba.predictions');
         $this->app->alias(PlayerAnalyticsService::class, 'wnba.player.analytics');

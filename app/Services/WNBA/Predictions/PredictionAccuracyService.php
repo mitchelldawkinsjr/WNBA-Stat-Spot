@@ -3,6 +3,8 @@
 namespace App\Services\WNBA\Predictions;
 
 use App\Models\GameScorePrediction;
+use App\Models\PredictionChampionReport;
+use App\Models\PredictionFeedbackRun;
 use App\Models\TrackedPropPrediction;
 use App\Models\WnbaGame;
 use App\Models\WnbaPlayer;
@@ -12,6 +14,10 @@ use Illuminate\Support\Facades\Log;
 
 class PredictionAccuracyService
 {
+    public function __construct(
+        private PredictionModelParamStore $paramStore
+    ) {}
+
     /**
      * Persist a game score prediction. Does not overwrite graded rows.
      *
@@ -52,6 +58,13 @@ class PredictionAccuracyService
             'win_probability_home' => isset($winProb['home']) ? (float) $winProb['home'] : null,
             'win_probability_away' => isset($winProb['away']) ? (float) $winProb['away'] : null,
             'confidence' => isset($prediction['confidence']) ? (float) $prediction['confidence'] : null,
+            'feature_snapshot' => $preview['feature_snapshot']
+                ?? $prediction['feature_snapshot']
+                ?? $preview['factors']
+                ?? null,
+            'model_version' => $preview['model_version']
+                ?? $prediction['model_version']
+                ?? $this->paramStore->championVersion(),
             'predicted_at' => now(),
         ];
 
@@ -81,6 +94,7 @@ class PredictionAccuracyService
 
         $predictionDate = Carbon::now($timezone ?? 'America/New_York')->toDateString();
         $recorded = [];
+        $championVersion = $this->paramStore->championVersion();
 
         TrackedPropPrediction::query()
             ->whereDate('prediction_date', $predictionDate)
@@ -117,6 +131,8 @@ class PredictionAccuracyService
                     'probability_under' => isset($prop['probability_under']) ? (float) $prop['probability_under'] : null,
                     'betting_value' => $prop['betting_value'] ?? null,
                     'reasoning' => $prop['reasoning'] ?? null,
+                    'feature_snapshot' => $prop['feature_snapshot'] ?? null,
+                    'model_version' => $prop['model_version'] ?? $championVersion,
                     'is_top_prop' => $rank === 1,
                     'rank' => $rank,
                     'predicted_at' => now(),
@@ -358,7 +374,44 @@ class PredictionAccuracyService
                 'top_prop_correct' => $topPropCorrect,
             ],
             'top_prop_of_day' => $this->getTopPropOfDay($timezone),
+            'model' => $this->modelFeedbackSummary(),
             'updated_at' => now()->toIso8601String(),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function modelFeedbackSummary(): array
+    {
+        $champion = $this->paramStore->champion();
+        $latestRun = PredictionFeedbackRun::query()->orderByDesc('id')->first();
+        $latestReport = PredictionChampionReport::query()->orderByDesc('promoted_at')->first();
+
+        return [
+            'model_version' => $champion['version'],
+            'gates' => $champion['gates'],
+            'calibration' => $champion['calibration'],
+            'adjustments' => $champion['adjustments'],
+            'auto_tune_enabled' => (bool) config('wnba.predictions.auto_tune_enabled', true),
+            'latest_feedback_run' => $latestRun === null ? null : [
+                'run_uuid' => $latestRun->run_uuid,
+                'status' => $latestRun->status,
+                'promoted' => $latestRun->promoted,
+                'sample_size' => $latestRun->sample_size,
+                'metrics' => $latestRun->metrics,
+                'champion_version' => $latestRun->champion_version,
+                'challenger_version' => $latestRun->challenger_version,
+                'champion_report_id' => $latestRun->champion_report_id,
+                'finished_at' => $latestRun->finished_at?->toIso8601String(),
+            ],
+            'latest_champion_report' => $latestReport === null ? null : [
+                'report_uuid' => $latestReport->report_uuid,
+                'headline' => $latestReport->headline,
+                'from_version' => $latestReport->from_version,
+                'to_version' => $latestReport->to_version,
+                'promoted_at' => $latestReport->promoted_at?->toIso8601String(),
+            ],
         ];
     }
 

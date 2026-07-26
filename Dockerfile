@@ -105,12 +105,15 @@ COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 # Copy and set up startup script
 COPY docker/startup.sh /usr/local/bin/start.sh
 COPY docker/queue-worker.sh /usr/local/bin/queue-worker.sh
+COPY docker/schedule-worker.sh /usr/local/bin/schedule-worker.sh
 COPY docker/monitor-queue.sh /usr/local/bin/monitor-queue.sh
 RUN chmod +x /usr/local/bin/start.sh \
     && chmod +x /usr/local/bin/queue-worker.sh \
+    && chmod +x /usr/local/bin/schedule-worker.sh \
     && chmod +x /usr/local/bin/monitor-queue.sh \
     && ls -la /usr/local/bin/start.sh \
     && ls -la /usr/local/bin/queue-worker.sh \
+    && ls -la /usr/local/bin/schedule-worker.sh \
     && ls -la /usr/local/bin/monitor-queue.sh
 
 # Set default port (can be overridden by environment)

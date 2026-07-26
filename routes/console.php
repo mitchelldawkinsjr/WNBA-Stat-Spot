@@ -38,6 +38,22 @@ Schedule::command('app:grade-predictions')
     ->withoutOverlapping()
     ->onOneServer();
 
+// Morning slate capture so feedback has feature snapshots even if no UI hit.
+Schedule::command('app:record-todays-predictions')
+    ->dailyAt('10:00')
+    ->timezone('America/New_York')
+    ->description("Record today's predictions with feature snapshots")
+    ->withoutOverlapping()
+    ->onOneServer();
+
+// Nightly learning loop after data agent / finals land.
+Schedule::command('app:run-prediction-feedback')
+    ->dailyAt('03:30')
+    ->timezone('America/New_York')
+    ->description('Calibrate and auto-tune prediction model params')
+    ->withoutOverlapping()
+    ->onOneServer();
+
 Schedule::command('queue:health-check')
     ->everyThirtyMinutes()
     ->description('Check queue health')
