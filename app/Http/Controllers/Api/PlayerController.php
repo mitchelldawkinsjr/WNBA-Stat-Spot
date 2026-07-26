@@ -17,13 +17,14 @@ use Illuminate\Support\Facades\Schema;
 class PlayerController extends Controller
 {
     use ApiResponseTrait, CacheHelper;
+
     private const PER_PAGE = 100;
 
     public function index(Request $request): JsonResponse
     {
         try {
             // Check if the table exists
-            if (!Schema::hasTable('wnba_players')) {
+            if (! Schema::hasTable('wnba_players')) {
                 return $this->successResponse([
                     'data' => [],
                     'meta' => [
@@ -33,7 +34,7 @@ class PlayerController extends Controller
                         'total' => 0,
                         'from' => null,
                         'to' => null,
-                    ]
+                    ],
                 ], 'Database is still being set up. Please try again in a few minutes.');
             }
 
@@ -45,11 +46,11 @@ class PlayerController extends Controller
 
             $cacheKey = "players_list_{$page}_{$perPage}_{$search}_{$team}_{$position}";
 
-            $result = Cache::remember($cacheKey, $this->defaultCacheTtl, function () use ($perPage, $search, $team, $position) {
+            $result = Cache::remember($cacheKey, $this->defaultCacheTtl, function () use ($perPage, $search, $position) {
                 $query = WnbaPlayer::select([
                     'id', 'athlete_id', 'athlete_display_name', 'athlete_position_abbreviation',
                     'athlete_jersey', 'athlete_headshot_href', 'athlete_position_name',
-                    'athlete_short_name', 'created_at', 'updated_at'
+                    'athlete_short_name', 'created_at', 'updated_at',
                 ]);
 
                 if ($search) {
@@ -61,7 +62,7 @@ class PlayerController extends Controller
                 }
 
                 return $query->orderBy('athlete_display_name')
-                            ->paginate($perPage);
+                    ->paginate($perPage);
             });
 
             return $this->successResponse([
@@ -73,7 +74,7 @@ class PlayerController extends Controller
                     'total' => $result->total(),
                     'from' => $result->firstItem(),
                     'to' => $result->lastItem(),
-                ]
+                ],
             ], 'Players retrieved successfully');
         } catch (\Exception $e) {
             return $this->handleException($e, 'Retrieving players');
@@ -239,6 +240,13 @@ class PlayerController extends Controller
             return null;
         }
 
+        // Prefer the Analytics Agent's precomputed season aggregates; fall back
+        // to the on-the-fly query until the first agent run populates them.
+        $aggregate = $this->topSeasonLeaderFromAggregates($season, $statColumn, $label, $abbr, $minGames);
+        if ($aggregate !== null) {
+            return $aggregate;
+        }
+
         $row = DB::table('wnba_player_games as pg')
             ->join('wnba_games as g', 'g.id', '=', 'pg.game_id')
             ->join('wnba_players as p', 'p.id', '=', 'pg.player_id')
@@ -270,10 +278,71 @@ class PlayerController extends Controller
     }
 
     /**
+     * @return array<string, mixed>|null
+     */
+    private function topSeasonLeaderFromAggregates(int $season, string $statColumn, string $label, string $abbr, int $minGames): ?array
+    {
+        if (! Schema::hasTable('wnba_player_season_stats')) {
+            return null;
+        }
+
+        $avgColumn = $statColumn.'_avg';
+
+        $row = DB::table('wnba_player_season_stats as pss')
+            ->join('wnba_players as p', 'p.id', '=', 'pss.player_id')
+            ->where('pss.season', $season)
+            ->where('pss.games_played', '>=', $minGames)
+            ->orderByDesc('pss.'.$avgColumn)
+            ->select(
+                'p.id as db_id',
+                'p.athlete_id',
+                'p.athlete_display_name',
+                'p.athlete_short_name',
+                'p.athlete_headshot_href',
+                'p.athlete_position_abbreviation',
+                'pss.'.$avgColumn.' as avg_stat',
+                'pss.games_played'
+            )
+            ->first();
+
+        if (! $row || $row->avg_stat === null) {
+            return null;
+        }
+
+        return [
+            'db_id' => (int) $row->db_id,
+            'player_id' => (string) $row->athlete_id,
+            'name' => $row->athlete_short_name ?: $row->athlete_display_name,
+            'headshot' => $row->athlete_headshot_href,
+            'position' => $row->athlete_position_abbreviation,
+            'category' => $label,
+            'category_abbr' => $abbr,
+            'value' => round((float) $row->avg_stat, 1),
+            'games_played' => (int) $row->games_played,
+        ];
+    }
+
+    /**
      * @return array<string, float|null>
      */
     private function playerSeasonAverages(int $playerDbId, int $season, int $minGames): array
     {
+        if (Schema::hasTable('wnba_player_season_stats')) {
+            $aggregate = DB::table('wnba_player_season_stats')
+                ->where('player_id', $playerDbId)
+                ->where('season', $season)
+                ->where('games_played', '>=', $minGames)
+                ->first(['points_avg', 'rebounds_avg', 'assists_avg']);
+
+            if ($aggregate !== null && $aggregate->points_avg !== null) {
+                return [
+                    'points' => round((float) $aggregate->points_avg, 1),
+                    'rebounds' => round((float) $aggregate->rebounds_avg, 1),
+                    'assists' => round((float) $aggregate->assists_avg, 1),
+                ];
+            }
+        }
+
         $row = DB::table('wnba_player_games as pg')
             ->join('wnba_games as g', 'g.id', '=', 'pg.game_id')
             ->where('pg.player_id', $playerDbId)
@@ -322,21 +391,21 @@ class PlayerController extends Controller
                 'playerGames.team:id,team_id,team_abbreviation,team_display_name,team_logo',
                 'playerGames.game:id,game_id,game_date,season',
             ])
-            ->where('athlete_id', $id)
-            ->orWhere('espn_athlete_id', $id)
-            ->orWhere('tank01_player_id', $id)
-            ->first();
+                ->where('athlete_id', $id)
+                ->orWhere('espn_athlete_id', $id)
+                ->orWhere('tank01_player_id', $id)
+                ->first();
         });
 
-        if (!$player) {
+        if (! $player) {
             return response()->json([
-                'message' => 'Player not found'
+                'message' => 'Player not found',
             ], 404);
         }
 
         return response()->json([
             'data' => $player,
-            'message' => 'Player retrieved successfully'
+            'message' => 'Player retrieved successfully',
         ]);
     }
 
@@ -347,33 +416,33 @@ class PlayerController extends Controller
     {
         try {
             // Check if the table exists
-            if (!Schema::hasTable('wnba_players')) {
+            if (! Schema::hasTable('wnba_players')) {
                 return response()->json([
                     'data' => [],
-                    'message' => 'Database is still being set up. Please try again in a few minutes.'
+                    'message' => 'Database is still being set up. Please try again in a few minutes.',
                 ]);
             }
 
-            $cacheKey = "players_summary";
+            $cacheKey = 'players_summary';
 
             $players = Cache::remember($cacheKey, $this->defaultCacheTtl * 2, function () {
                 return WnbaPlayer::select([
                     'id', 'athlete_id', 'athlete_display_name', 'athlete_position_abbreviation',
-                    'athlete_position_name'
+                    'athlete_position_name',
                 ])
-                ->orderBy('athlete_display_name')
-                ->get();
+                    ->orderBy('athlete_display_name')
+                    ->get();
             });
 
             return response()->json([
                 'data' => $players,
-                'message' => 'Players summary retrieved successfully'
+                'message' => 'Players summary retrieved successfully',
             ]);
         } catch (\Exception $e) {
             return response()->json([
                 'data' => [],
                 'message' => 'Database is still being set up. Please try again in a few minutes.',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 503);
         }
     }
@@ -390,7 +459,7 @@ class PlayerController extends Controller
         }
 
         return response()->json([
-            'message' => 'Player cache cleared successfully'
+            'message' => 'Player cache cleared successfully',
         ]);
     }
 }

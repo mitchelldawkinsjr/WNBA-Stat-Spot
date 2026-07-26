@@ -21,14 +21,12 @@ return [
             'play_by_play' => env('WNBA_PBP_PROVIDER', 'sportsdataverse'),
         ],
         'base_url' => rtrim(env('SPORTSBLAZE_WNBA_BASE_URL', 'https://api.sportsblaze.com'), '/'),
-        'cache_base_url' => rtrim(env('SPORTSBLAZE_CACHE_BASE_URL', 'https://cache.sportsblaze.com'), '/'),
         'league_id' => env('SPORTSBLAZE_LEAGUE_ID', 'wnba'),
         'api_key' => env('SPORTSBLAZE_API_KEY'),
         'feeds' => [
             'player_boxscores' => env('SPORTSBLAZE_WNBA_PLAYER_BOXSCORES_URL'),
             'team_boxscores' => env('SPORTSBLAZE_WNBA_TEAM_BOXSCORES_URL'),
             'schedule' => env('SPORTSBLAZE_WNBA_SCHEDULE_URL'),
-            'rosters' => env('SPORTSBLAZE_WNBA_ROSTERS_URL'),
             'play_by_play' => env('SPORTSBLAZE_WNBA_PLAY_BY_PLAY_URL'),
         ],
         'fallback_to_sportsdataverse' => env('WNBA_FALLBACK_TO_SPORTSDATAVERSE', false),
@@ -41,6 +39,24 @@ return [
     'seasons' => [
         'current_season' => (int) env('WNBA_CURRENT_SEASON', 2026),
         'current_season_label' => env('WNBA_CURRENT_SEASON_LABEL', '2026-2027'),
+    ],
+
+    'agents' => [
+        // Lower number wins conflicts. ESPN is the canonical-ID source of truth.
+        'source_priority' => [
+            'espn' => 1,
+            'tank01' => 2,
+            'sportsdataverse' => 3,
+            'sportsblaze' => 4,
+        ],
+        // Ingest current-season play-by-play in the nightly data-agent run.
+        'pbp_default' => env('WNBA_PBP_DEFAULT', true),
+        // Persist injury reports / odds snapshots during data-agent runs.
+        'persist_injuries' => env('WNBA_PERSIST_INJURIES', true),
+        'persist_odds' => env('WNBA_PERSIST_ODDS', true),
+        // Raw payloads older than this are prunable (roughly one season + buffer).
+        'raw_payload_retention_days' => (int) env('WNBA_RAW_PAYLOAD_RETENTION_DAYS', 400),
+        'queue' => env('WNBA_AGENT_QUEUE', 'default'),
     ],
 
     'teams' => [

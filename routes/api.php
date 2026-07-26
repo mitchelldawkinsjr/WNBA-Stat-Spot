@@ -1,20 +1,21 @@
 <?php
 
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Route;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
-use App\Http\Controllers\Api\TeamController;
-use App\Http\Controllers\Api\PlayerController;
-use App\Http\Controllers\Api\GameController;
-use App\Http\Controllers\Api\StatsController;
+use App\Http\Controllers\Api\AgentRunController;
 use App\Http\Controllers\Api\DataAggregatorController;
-use App\Http\Controllers\Api\PropScannerController;
-use App\Http\Controllers\Api\PredictionTestingController;
-use App\Http\Controllers\Api\PredictionsController;
-use App\Http\Controllers\Api\OddsController;
+use App\Http\Controllers\Api\GameController;
 use App\Http\Controllers\Api\HealthController;
+use App\Http\Controllers\Api\OddsController;
+use App\Http\Controllers\Api\PlayerController;
+use App\Http\Controllers\Api\PredictionsController;
+use App\Http\Controllers\Api\PredictionTestingController;
+use App\Http\Controllers\Api\PropScannerController;
+use App\Http\Controllers\Api\StatsController;
+use App\Http\Controllers\Api\TeamController;
 use App\Http\Controllers\Api\WnbaIntelController;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Schema;
 
 Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
     return $request->user();
@@ -57,7 +58,7 @@ Route::get('/status', function () {
                 'job_batches' => false,
             ],
             'setup_complete' => false,
-            'message' => 'Checking database status...'
+            'message' => 'Checking database status...',
         ];
 
         // Test database connection
@@ -65,7 +66,8 @@ Route::get('/status', function () {
             DB::connection()->getPdo();
             $status['database_connected'] = true;
         } catch (\Exception $e) {
-            $status['message'] = 'Database connection failed: ' . $e->getMessage();
+            $status['message'] = 'Database connection failed: '.$e->getMessage();
+
             return response()->json($status, 503);
         }
 
@@ -75,6 +77,7 @@ Route::get('/status', function () {
             $status['migrations_table'] = true;
         } catch (\Exception $e) {
             $status['message'] = 'Migrations table not found. Database setup in progress...';
+
             return response()->json($status, 503);
         }
 
@@ -118,8 +121,8 @@ Route::get('/status', function () {
             'api' => 'ok',
             'database_connected' => false,
             'setup_complete' => false,
-            'message' => 'Status check failed: ' . $e->getMessage(),
-            'error' => $e->getMessage()
+            'message' => 'Status check failed: '.$e->getMessage(),
+            'error' => $e->getMessage(),
         ], 503);
     }
 });
@@ -176,6 +179,13 @@ Route::prefix('wnba')->group(function () {
         Route::get('/stats/summary', [DataAggregatorController::class, 'getDataSummary']);
         Route::get('/quota', [DataAggregatorController::class, 'getApiQuota']);
         Route::post('/sync-identities', [DataAggregatorController::class, 'syncIdentities']);
+
+        // Agent runs (data / analytics / entity integrity)
+        Route::post('/agent-run', [AgentRunController::class, 'store']);
+        Route::get('/agent-runs', [AgentRunController::class, 'index']);
+        Route::get('/agent-runs/{id}', [AgentRunController::class, 'show']);
+        Route::get('/review-queue', [AgentRunController::class, 'reviewQueue']);
+        Route::post('/review-queue/{id}/resolve', [AgentRunController::class, 'resolveReviewItem']);
 
         // Individual data type imports
         Route::post('/import/teams', [DataAggregatorController::class, 'importTeams']);

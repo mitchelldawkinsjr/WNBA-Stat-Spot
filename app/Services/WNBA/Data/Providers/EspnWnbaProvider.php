@@ -78,23 +78,9 @@ class EspnWnbaProvider implements WnbaStatsProvider
         return $records;
     }
 
-    public function fetchAvailableSeasons(): array
-    {
-        return [
-            ['year' => $this->seasonYear() - 2, 'season' => (string) ($this->seasonYear() - 2)],
-            ['year' => $this->seasonYear() - 1, 'season' => (string) ($this->seasonYear() - 1)],
-            ['year' => $this->seasonYear(), 'season' => (string) config('wnba.seasons.current_season_label', $this->seasonYear())],
-        ];
-    }
-
     public function supportsPlayByPlay(): bool
     {
         return false;
-    }
-
-    public function supportsIncremental(): bool
-    {
-        return true;
     }
 
     public function pendingBoxScoreGameIds(int $season, array $options = []): array

@@ -22,11 +22,16 @@ class WnbaPlay extends Model
         'play_text',
         'score_value',
         'score_team_id',
+        'source_id',
+        'raw_payload_id',
+        'ingested_at',
+        'validation_status',
     ];
 
     protected $casts = [
         'play_sequence_number' => 'integer',
         'score_value' => 'integer',
+        'ingested_at' => 'datetime',
     ];
 
     public function game(): BelongsTo

@@ -29,6 +29,10 @@ class WnbaGameTeam extends Model
         'blocks',
         'turnovers',
         'fouls',
+        'source_id',
+        'raw_payload_id',
+        'ingested_at',
+        'validation_status',
     ];
 
     protected $casts = [
@@ -49,6 +53,7 @@ class WnbaGameTeam extends Model
         'blocks' => 'integer',
         'turnovers' => 'integer',
         'fouls' => 'integer',
+        'ingested_at' => 'datetime',
     ];
 
     public function game(): BelongsTo

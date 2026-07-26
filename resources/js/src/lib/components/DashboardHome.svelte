@@ -124,6 +124,11 @@
         return desc.length > 120 ? `${desc.slice(0, 120)}…` : desc;
     }
 
+    function newsUrl(item: Record<string, unknown>): string | null {
+        const url = item.url ?? item.link;
+        return typeof url === 'string' && url.startsWith('http') ? url : null;
+    }
+
     function formatStat(value: number | null | undefined): string {
         return value != null ? value.toFixed(1) : '—';
     }
@@ -305,9 +310,18 @@
             {#each newsItems.slice(0, 4) as item, i}
                 <article class="ds-news-item" class:ds-news-item--featured={i === 0}>
                     <span class="ds-news-tag">News</span>
-                    <h4 class="ds-news-title">{newsTitle(item)}</h4>
+                    <h4 class="ds-news-title">
+                        {#if newsUrl(item)}
+                            <a href={newsUrl(item)} target="_blank" rel="noopener noreferrer" class="ds-news-link">{newsTitle(item)}</a>
+                        {:else}
+                            {newsTitle(item)}
+                        {/if}
+                    </h4>
                     {#if newsDescription(item)}
                         <p class="ds-news-desc">{newsDescription(item)}</p>
+                    {/if}
+                    {#if newsUrl(item)}
+                        <a href={newsUrl(item)} target="_blank" rel="noopener noreferrer" class="ds-news-source">Read source article <DsIcon name="open_in_new" size={12} /></a>
                     {/if}
                 </article>
             {:else}
@@ -525,6 +539,22 @@
         line-height: 1.3;
         margin: 0 0 6px;
     }
+    .ds-news-link {
+        color: inherit;
+        text-decoration: none;
+    }
+    .ds-news-link:hover { color: var(--ds-primary); text-decoration: underline; }
+    .ds-news-source {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        margin-top: 4px;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--ds-primary);
+        text-decoration: none;
+    }
+    .ds-news-source:hover { text-decoration: underline; }
     .ds-news-desc {
         font-size: 14px;
         color: var(--ds-text-muted);

@@ -626,32 +626,6 @@
                 </div>
             {/if}
 
-            {#if playerNews.length > 0}
-                <div class="row mb-4">
-                    <div class="col-12">
-                        <div class="card">
-                            <div class="card-header d-flex justify-content-between align-items-center">
-                                <h5 class="card-title mb-0">News</h5>
-                                {#if intelLoading}<span class="spinner-border spinner-border-sm text-muted"></span>{/if}
-                            </div>
-                            <div class="list-group list-group-flush">
-                                {#each playerNews.slice(0, 8) as item}
-                                    <div class="list-group-item">
-                                        <div class="fw-semibold">{item.headline}</div>
-                                        {#if item.description && item.description !== item.headline}
-                                            <p class="mb-1 text-muted small">{item.description}</p>
-                                        {/if}
-                                        {#if item.published}
-                                            <small class="text-muted">{new Date(String(item.published)).toLocaleString()}</small>
-                                        {/if}
-                                    </div>
-                                {/each}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            {/if}
-
             <!-- Season Averages -->
             {#if averages}
                 <div class="row mb-4">
@@ -739,6 +713,33 @@
                                         </div>
                                     </div>
                                 </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            {/if}
+
+            {#if playerNews.length > 0}
+                <div class="row mb-4">
+                    <div class="col-12">
+                        <div class="card">
+                            <div class="card-body py-2">
+                                <div class="d-flex align-items-center gap-2 mb-1">
+                                    <h6 class="text-muted text-uppercase small mb-0">Recent News</h6>
+                                    {#if intelLoading}<span class="spinner-border spinner-border-sm text-muted"></span>{/if}
+                                </div>
+                                {#each playerNews.slice(0, 3) as item, i}
+                                    <div class="small py-1" class:border-bottom={i < Math.min(playerNews.length, 3) - 1}>
+                                        {#if typeof item.url === 'string' && item.url.startsWith('http')}
+                                            <a href={item.url} target="_blank" rel="noopener noreferrer">{item.headline}</a>
+                                        {:else}
+                                            <span>{item.headline}</span>
+                                        {/if}
+                                        {#if item.published}
+                                            <span class="text-muted ms-1">· {new Date(String(item.published)).toLocaleDateString()}</span>
+                                        {/if}
+                                    </div>
+                                {/each}
                             </div>
                         </div>
                     </div>

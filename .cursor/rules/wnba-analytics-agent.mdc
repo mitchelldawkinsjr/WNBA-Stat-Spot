@@ -1,0 +1,59 @@
+---
+description: WNBA Analytics Agent — precomputed aggregates, advanced stat formulas, and formula conventions. Apply when working on analytics, season stats, advanced metrics, matchup summaries, or the aggregate tables.
+---
+
+# WNBA Analytics Agent
+
+The Analytics Agent precomputes every derived statistic into database tables so
+API responses never depend on request-time math. It is a deterministic in-app
+pipeline: `app/Services/WNBA/Agents/AggregateComputationService.php`, queued
+via `app/Jobs/RunAnalyticsAgent.php`, triggered by the nightly data-agent chain,
+`app:wnba-agent analytics`, or `POST /api/wnba/data/agent-run`.
+
+## Output tables (written ONLY by this agent)
+
+- `wnba_player_season_stats` — totals, per-game averages, shooting
+  percentages, home/away + per-36 splits (one row per player per season)
+- `wnba_team_season_stats` — record, pace, off/def/net rating, Four Factors
+  (own + opponent), home/away splits
+- `wnba_player_game_advanced` — per game: TS%, eFG%, usage%, game score,
+  points per shot, decimal minutes
+- `wnba_matchup_summaries` — head-to-head per season: wins, avg total, avg
+  margin, avg pace, recent meetings
+
+API controllers read these tables (see `PlayerController::leaders`); they fall
+back to on-the-fly queries only when the aggregate table is empty. New derived
+stats belong in these tables (or a new agent-owned table), not in controllers.
+
+## Formula conventions (formula_version `v1-box-estimate`)
+
+- Percentages are decimals 0..1. Safe division: denominator 0 → `null`,
+  never 0 or NaN. `null` inputs propagate to `null` outputs.
+- Possessions (box estimate, matches `TeamAnalyticsService`):
+  `FGA + 0.44·FTA − ORB + TOV`. WNBA games are 40 minutes (200 team minutes).
+- TS% = PTS / (2·(FGA + 0.44·FTA)); eFG% = (FGM + 0.5·3PM) / FGA.
+- Usage% (box estimate): `(FGA + 0.44·FTA + TOV)·(TeamMin/5) / (MP·(TmFGA + 0.44·TmFTA + TmTOV))`.
+- Game Score: Hollinger formula.
+- Ratings: points (allowed) × 100 / possessions; net = off − def.
+- Every aggregate row records `formula_version`, `computed_at`, and
+  `agent_run_id`. If you change a formula, bump the version string and
+  recompute — never mix versions within a table silently.
+
+## Input discipline
+
+- Inputs are the canonical tables (`wnba_player_games`, `wnba_game_teams`,
+  `wnba_games`), excluding rows with `validation_status = 'invalid'` and DNP
+  rows, and excluding 0-0 placeholder game-team rows (scheduled games).
+- Players/teams with open identity conflicts in `wnba_data_conflicts`
+  (`requires_review = true`, unresolved) are skipped so a mis-mapped entity
+  cannot poison aggregates; the skip is counted in the run summary.
+- Adjusted plus-minus / RAPM-style metrics are out of scope for v1 (needs
+  stint data from PBP); raw plus-minus comes straight from box scores.
+
+## Run contract
+
+Runs record counters (`player_season_stats_computed`, etc.) to
+`wnba_agent_runs` via `AgentRunReporter`. Recomputation is idempotent
+(`updateOrCreate` on natural keys) — recomputing a season with unchanged
+inputs yields identical rows. After a successful run the response cache is
+cleared so the API serves fresh aggregates.

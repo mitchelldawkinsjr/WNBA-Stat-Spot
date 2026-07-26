@@ -33,6 +33,10 @@ class WnbaPlayerGame extends Model
         'did_not_play',
         'reason',
         'active',
+        'source_id',
+        'raw_payload_id',
+        'ingested_at',
+        'validation_status',
     ];
 
     protected $casts = [
@@ -56,6 +60,7 @@ class WnbaPlayerGame extends Model
         'ejected' => 'boolean',
         'did_not_play' => 'boolean',
         'active' => 'boolean',
+        'ingested_at' => 'datetime',
     ];
 
     public function game(): BelongsTo

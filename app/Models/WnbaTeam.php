@@ -13,6 +13,7 @@ class WnbaTeam extends Model
         'team_id',
         'espn_team_id',
         'tank01_team_id',
+        'sportsblaze_team_id',
         'team_name',
         'team_location',
         'team_abbreviation',

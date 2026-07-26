@@ -4,7 +4,6 @@ namespace App\Services\WNBA\Data\Providers;
 
 use App\Contracts\WnbaStatsProvider;
 use App\Services\WNBA\Data\Support\SportsBlazeFetcher;
-use App\Services\WNBA\Data\Support\SportsDataverseFetcher;
 
 class SportsBlazeWnbaProvider implements WnbaStatsProvider
 {
@@ -37,17 +36,7 @@ class SportsBlazeWnbaProvider implements WnbaStatsProvider
         return $this->fetcher->fetchTeamBoxscores($season, $options);
     }
 
-    public function fetchAvailableSeasons(): array
-    {
-        return $this->fetcher->fetchAvailableSeasons();
-    }
-
     public function supportsPlayByPlay(): bool
-    {
-        return false;
-    }
-
-    public function supportsIncremental(): bool
     {
         return false;
     }

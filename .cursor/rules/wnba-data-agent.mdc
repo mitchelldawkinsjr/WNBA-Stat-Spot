@@ -1,0 +1,77 @@
+---
+description: WNBA Data Agent — ingestion, normalization, validation, and conflict rules. Apply when working on data ingestion, providers, mappers, WnbaDataService, raw payloads, injuries/odds persistence, or the data agent pipeline.
+---
+
+# WNBA Data Agent
+
+The Data Agent is a deterministic in-app pipeline (not an LLM). It ingests WNBA
+data from all configured sources, normalizes it into the canonical schema,
+validates it, resolves cross-source conflicts, and records lineage. It runs on
+production via the Laravel scheduler, `app:wnba-agent data`, or
+`POST /api/wnba/data/agent-run`.
+
+## Architecture
+
+- Orchestrator: `app/Services/WNBA/Agents/DataAgentService.php`, queued via
+  `app/Jobs/RunDataAgent.php` (chains Entity → Analytics agents on success).
+- Write path: all canonical writes go through `app/Services/WnbaDataService.php`
+  (`saveBoxScoreData`, `saveTeamData`, `saveTeamScheduleData`, `savePbpData`).
+  Never write `wnba_*` canonical tables from anywhere else.
+- Providers (task routing in `config/wnba.php` → `data_source.routing`):
+  - `espn` — canonical IDs, incremental imports, injuries (site + core APIs)
+  - `tank01` — live sync + odds (RapidAPI, quota-capped via `Tank01UsageTracker`)
+  - `sportsdataverse` — bulk backfill + play-by-play (free GitHub CSVs)
+  - `sportsblaze` — optional JSON feeds
+- Scheduled runs (`routes/console.php`): nightly 02:00 data agent, evening
+  Tank01 live sync every 30 min, hourly prediction grading.
+
+## Canonical identity rules
+
+- ESPN IDs are canonical: `wnba_players.athlete_id`, `wnba_teams.team_id`,
+  `wnba_games.game_id`. Provider IDs merge via `espn_*`, `tank01_*`, and
+  `sportsblaze_*` columns (`EntityMergeService`, `TeamCatalog`).
+- Team abbreviations normalize through `TeamCatalog::canonicalAbbreviation()`
+  using `config('wnba.teams.abbreviation_aliases')`. Never hardcode aliases.
+- Never match players across sources on name alone — name matches go to the
+  review queue (`wnba_data_conflicts.requires_review = true`).
+
+## Non-negotiable data rules
+
+1. **Never invent values.** Missing data stays `null`; `null` is not `0`
+   (e.g. `wnba_player_games.minutes` is nullable — a missing minutes value must
+   not become `0`).
+2. **Raw payloads first.** Provider responses are stored untouched in
+   `wnba_raw_payloads` (sha256-deduped by `RawPayloadStore`) before
+   normalization. Retention: `config('wnba.agents.raw_payload_retention_days')`.
+3. **Lineage on every write.** Canonical rows carry `source_id`,
+   `raw_payload_id`, `ingested_at`, `validation_status`.
+4. **Validate before accept.** `BoxScoreValidator` enforces basketball logic
+   (FGM ≤ FGA, 3PM ≤ FGM, points = 2·(FGM−3PM) + 3·3PM + FTM, minutes ≤ 60,
+   no negatives). Invalid rows are quarantined in place with
+   `validation_status = 'invalid'` — stored for audit, excluded downstream.
+5. **Conflicts are resolved by source priority, never silently.**
+   `ConflictResolver` uses `config('wnba.agents.source_priority')`
+   (espn=1 > tank01=2 > sportsdataverse=3 > sportsblaze=4). A lower-priority
+   source never overwrites a higher-priority value; every disagreement is
+   logged to `wnba_data_conflicts` with both candidates. Differences > 5 on a
+   counting stat require human review.
+6. **Schedule saves never zero out finals.** Schedule imports create
+   placeholder `wnba_game_teams` rows with `firstOrCreate` only — they must
+   never reset real box-score values.
+7. **Append-only history.** `wnba_injury_reports` and `wnba_odds_snapshots`
+   are never updated in place; new rows are hash-deduped. This is what allows
+   prediction grading against the line/status that existed at prediction time.
+8. **Play-by-play is on by default** for the current season
+   (`config('wnba.agents.pbp_default')`, SportsDataverse CSVs — no API quota).
+9. **Respect quotas.** Tank01 calls go through `Tank01UsageTracker`; ESPN
+   through `EspnApiClient` throttling. Bulk/backfill work belongs on
+   SportsDataverse, not metered APIs.
+
+## Run contract
+
+Every run writes a structured summary to `wnba_agent_runs` via
+`AgentRunReporter`: mode, season, status (`success|partial|failed`), counters
+(records created/updated/unchanged/quarantined, conflicts, raw payloads),
+warnings, errors. Modes: `incremental` (default), `backfill`, `repair`,
+`live`. `--dry-run` reports without writing. A partially failing step must not
+abort the run — it is recorded as an error and the run continues.

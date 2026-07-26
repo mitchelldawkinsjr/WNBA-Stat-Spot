@@ -3,7 +3,6 @@
 namespace App\Services\WNBA\Data\Support;
 
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Storage;
 
 class SportsBlazeFetcher
 {
@@ -12,24 +11,6 @@ class SportsBlazeFetcher
     public function __construct()
     {
         $this->dataSeasonYear = (int) config('wnba.seasons.current_season');
-    }
-
-    /**
-     * @return array<int, array{year: int, season: string}>
-     */
-    public function fetchAvailableSeasons(): array
-    {
-        $league = $this->sportsBlazeLeagueId();
-        $cacheBase = rtrim((string) config('wnba.data_source.cache_base_url'), '/');
-        $response = Http::acceptJson()
-            ->timeout((int) config('wnba.api.timeout', 30))
-            ->get("{$cacheBase}/seasons/{$league}");
-
-        if (! $response->successful()) {
-            throw new \Exception("Failed to fetch SportsBlaze seasons for {$league}");
-        }
-
-        return $response->json('seasons', []);
     }
 
     /**

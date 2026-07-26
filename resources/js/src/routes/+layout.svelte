@@ -1,6 +1,7 @@
 <script lang="ts">
     import {onMount} from "svelte";
     import {page} from '$app/stores';
+    import GoogleAnalytics from '$lib/components/GoogleAnalytics.svelte';
 
     const favicon = '/favicon.ico';
 
@@ -29,6 +30,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=swap" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
 </svelte:head>
+
+<GoogleAnalytics/>
 
 {#key $page.url.pathname}
     <slot/>

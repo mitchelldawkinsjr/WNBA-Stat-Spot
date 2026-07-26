@@ -8,9 +8,18 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-Schedule::command('app:import-wnba-data')
+// Nightly Data Agent run: ingests schedule/boxes/PBP/injuries/odds with raw
+// payload lineage, then chains the Entity Integrity and Analytics agents.
+Schedule::command('app:wnba-agent data --mode=incremental')
     ->dailyAt('02:00')
-    ->description('Incremental WNBA data import')
+    ->description('WNBA data agent: incremental ingest + chained audits/aggregates')
+    ->withoutOverlapping()
+    ->onOneServer();
+
+// Weekly full-database entity audit across all seasons.
+Schedule::command('app:wnba-agent entity --mode=audit --season=all')
+    ->weeklyOn(1, '03:00')
+    ->description('WNBA entity integrity agent: weekly full audit')
     ->withoutOverlapping()
     ->onOneServer();
 
@@ -20,6 +29,14 @@ Schedule::command('app:sync-wnba-live')
     ->description('Live WNBA sync via Tank01')
     ->withoutOverlapping()
     ->when(fn () => config('wnba.features.enable_live_updates') || config('tank01.live_sync.enabled'));
+
+// Grading only reads the local DB, so an hourly run is cheap. It picks up
+// finals from the evening live sync and from the 02:00 daily import.
+Schedule::command('app:grade-predictions')
+    ->hourly()
+    ->description('Grade pending predictions against final results')
+    ->withoutOverlapping()
+    ->onOneServer();
 
 Schedule::command('queue:health-check')
     ->everyThirtyMinutes()

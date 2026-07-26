@@ -101,24 +101,9 @@ class Tank01WnbaProvider implements WnbaStatsProvider
         return $records;
     }
 
-    public function fetchAvailableSeasons(): array
-    {
-        return [
-            [
-                'year' => (int) config('wnba.seasons.current_season'),
-                'season' => (string) config('wnba.seasons.current_season_label'),
-            ],
-        ];
-    }
-
     public function supportsPlayByPlay(): bool
     {
         return false;
-    }
-
-    public function supportsIncremental(): bool
-    {
-        return true;
     }
 
     /**

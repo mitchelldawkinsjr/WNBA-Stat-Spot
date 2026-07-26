@@ -30,14 +30,7 @@ interface WnbaStatsProvider
      */
     public function fetchTeamBoxscores(int $season, array $options = []): array;
 
-    /**
-     * @return array<int, array{year: int, season: string}>
-     */
-    public function fetchAvailableSeasons(): array;
-
     public function supportsPlayByPlay(): bool;
-
-    public function supportsIncremental(): bool;
 
     /**
      * @param  array<string, mixed>  $options

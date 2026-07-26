@@ -56,19 +56,6 @@ class SportsDataverseFetcher
         return $this->parsePbpCsv($content);
     }
 
-    /**
-     * @return array<int, array{year: int, season: string}>
-     */
-    public function fetchAvailableSeasons(): array
-    {
-        return [
-            [
-                'year' => $this->dataSeasonYear,
-                'season' => (string) config('wnba.seasons.current_season_label'),
-            ],
-        ];
-    }
-
     private function playerBoxUrl(int $season): string
     {
         return config('wnba.data_source.feeds.player_boxscores')

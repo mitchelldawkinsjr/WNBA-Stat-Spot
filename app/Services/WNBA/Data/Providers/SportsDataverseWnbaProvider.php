@@ -36,19 +36,9 @@ class SportsDataverseWnbaProvider implements WnbaStatsProvider
         return $this->fetcher->fetchTeamBoxscores($season, $options);
     }
 
-    public function fetchAvailableSeasons(): array
-    {
-        return $this->fetcher->fetchAvailableSeasons();
-    }
-
     public function supportsPlayByPlay(): bool
     {
         return true;
-    }
-
-    public function supportsIncremental(): bool
-    {
-        return false;
     }
 
     public function pendingBoxScoreGameIds(int $season, array $options = []): array

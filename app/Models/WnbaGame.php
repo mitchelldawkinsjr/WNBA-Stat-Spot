@@ -27,6 +27,11 @@ class WnbaGame extends Model
         'status_name',
         'status_type',
         'status_abbreviation',
+        'sportsblaze_game_id',
+        'source_id',
+        'raw_payload_id',
+        'ingested_at',
+        'validation_status',
     ];
 
     protected $casts = [
@@ -34,6 +39,7 @@ class WnbaGame extends Model
         'game_date_time' => 'datetime',
         'venue_capacity' => 'integer',
         'venue_indoor' => 'boolean',
+        'ingested_at' => 'datetime',
     ];
 
     public function gameTeams(): HasMany

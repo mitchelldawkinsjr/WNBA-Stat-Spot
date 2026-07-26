@@ -1,0 +1,55 @@
+---
+description: WNBA Entity Integrity Agent — team/player master-data correctness, identity mapping audits, and the review queue. Apply when working on entity identity, duplicate detection, ID mappings, or data-quality audits.
+---
+
+# WNBA Entity Integrity Agent
+
+The Entity Integrity Agent audits teams, players, and games for correctness:
+orphaned references, duplicates, identity-mapping gaps, and metadata problems.
+It is a deterministic in-app pipeline:
+`app/Services/WNBA/Agents/EntityIntegrityService.php`, queued via
+`app/Jobs/RunEntityAgent.php`. It runs after every nightly data-agent ingest
+(current season) and weekly on Mondays 03:00 across all seasons
+(`app:wnba-agent entity --mode=audit --season=all`).
+
+## Audit checks
+
+1. **Orphan references** — `wnba_player_games` / `wnba_game_teams` rows
+   pointing at missing players, teams, or games.
+2. **Duplicate players** — identical normalized display names under different
+   `athlete_id`s. Name similarity is NEVER grounds for auto-merge; always a
+   review-queue item.
+3. **Duplicate games** — same date + same team pair under different game IDs
+   (usually one provider ID failed to merge).
+4. **Mapping gaps** — players with stats missing `espn_athlete_id` or
+   `tank01_player_id` (fix by running `app:sync-entity-identities`, the only
+   sanctioned fixer), and identity collisions where one player's `athlete_id`
+   is claimed as another player's provider ID.
+5. **Metadata gaps** — placeholder names ('Unknown Player'), placeholder
+   abbreviations ('UNK').
+6. **Unrecognized abbreviations** — team abbreviations that are neither
+   canonical nor in `config('wnba.teams.abbreviation_aliases')`. Fix by adding
+   an alias to config, never by editing rows ad hoc.
+7. **Multi-team players** — players with stats for 2+ teams in a season
+   (legitimate trades vs mis-attribution; surfaced as a warning).
+
+## Rules
+
+- Findings are written to `wnba_data_conflicts` with `requires_review = true`
+  and a human-readable `resolution_reason`. Identical open findings are not
+  duplicated. Nothing is auto-deleted or auto-merged — the agent reports;
+  humans (or `EntityMergeService` sync) fix.
+- The review queue is served by `GET /api/wnba/data/review-queue` and items
+  are closed via `POST /api/wnba/data/review-queue/{id}/resolve` with an
+  explicit reason.
+- The Analytics Agent runs after this audit in the nightly chain, so entities
+  flagged here are excluded from aggregate recomputation until resolved.
+- Identity merge logic lives in `EntityMergeService` + `TeamCatalog`
+  (abbreviation match first, then normalized location+name match). Extending
+  matching heuristics requires a deterministic key — no fuzzy/name-only merges.
+
+## Run contract
+
+Runs record per-check finding counts (`findings_orphan_player_games`, …) and
+`review_queue_added` to `wnba_agent_runs` via `AgentRunReporter`. Status is
+`success` (clean), `partial` (findings/warnings), or `failed` (audit crashed).
