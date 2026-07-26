@@ -6,9 +6,9 @@
     import DefaultLayout from '$lib/layouts/DefaultLayout.svelte';
     import PageHeader from '$lib/components/ui/PageHeader.svelte';
     import StatusBadge from '$lib/components/ui/StatusBadge.svelte';
-    import LoadingSpinner from '$lib/components/LoadingSpinner.svelte';
     import ErrorMessage from '$lib/components/ErrorMessage.svelte';
     import GamePreviewPanel from '$lib/components/GamePreviewPanel.svelte';
+    import MatchupLoadingScreen from '$lib/components/MatchupLoadingScreen.svelte';
 
     let game: Game | null = null;
     let preview: GamePreview | null = null;
@@ -18,10 +18,27 @@
     let error: string | null = null;
     let previewError: string | null = null;
     let activeTab: 'preview' | 'boxscore' = 'preview';
+    let loadProgress = 8;
+    let landedOnMain = false;
 
     $: gameId = $page.params.id;
     $: isScheduled = game?.status_name === 'STATUS_SCHEDULED' || !game?.status_name;
     $: showPreviewTab = game?.status_name !== 'STATUS_FINAL' || preview !== null;
+    $: pageReady = !loading && !previewLoading;
+
+    $: {
+        // Game + preview each contribute half; keep a small baseline so the fill is visible immediately.
+        let next = 8;
+        if (!loading) next += 46;
+        if (!previewLoading) next += 46;
+        loadProgress = next;
+    }
+
+    // Once both fetches finish, land on the main Preview tab (box score only if preview isn't available).
+    $: if (pageReady && game && !landedOnMain) {
+        landedOnMain = true;
+        activeTab = showPreviewTab ? 'preview' : 'boxscore';
+    }
 
     onMount(() => {
         void loadGame();
@@ -36,9 +53,6 @@
             const response = await api.games.getById(gameId, { season: 2026 });
             game = response.data;
             boxScore = response.data.box_score ?? [];
-            if (response.data.status_name === 'STATUS_FINAL' && boxScore.length > 0) {
-                activeTab = 'boxscore';
-            }
         } catch (e) {
             error = e instanceof Error ? e.message : 'Failed to load game';
             game = null;
@@ -130,17 +144,22 @@
 </svelte:head>
 
 <DefaultLayout>
-    <PageHeader title="Game Preview" subtitle="Data-driven matchup analysis and prediction">
-        <svelte:fragment slot="actions">
-            <a href="/games" class="btn btn-outline-primary btn-sm">← All Games</a>
-        </svelte:fragment>
-    </PageHeader>
-
-    {#if loading}
-        <LoadingSpinner />
+    {#if !pageReady}
+        <MatchupLoadingScreen progress={loadProgress} />
     {:else if error}
+        <PageHeader title="Game Preview" subtitle="Data-driven matchup analysis and prediction">
+            <svelte:fragment slot="actions">
+                <a href="/games" class="btn btn-outline-primary btn-sm">← All Games</a>
+            </svelte:fragment>
+        </PageHeader>
         <ErrorMessage message={error} />
     {:else if game}
+        <PageHeader title="Game Preview" subtitle="Data-driven matchup analysis and prediction">
+            <svelte:fragment slot="actions">
+                <a href="/games" class="btn btn-outline-primary btn-sm">← All Games</a>
+            </svelte:fragment>
+        </PageHeader>
+
         <div class="game-detail-page">
             <div class="card game-detail-page__header-card">
                 <div class="card-body">
@@ -223,9 +242,7 @@
                 {/if}
 
             {#if activeTab === 'preview'}
-                {#if previewLoading}
-                    <div class="game-detail-page__tab-panel"><LoadingSpinner /></div>
-                {:else if previewError}
+                {#if previewError}
                     <div class="game-detail-page__tab-panel"><ErrorMessage message={previewError} /></div>
                 {:else if preview?.home_team}
                     <div class="game-detail-page__tab-panel">
