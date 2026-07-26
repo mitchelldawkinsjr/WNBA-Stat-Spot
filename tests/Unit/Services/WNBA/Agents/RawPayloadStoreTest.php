@@ -54,6 +54,26 @@ class RawPayloadStoreTest extends TestCase
         $this->assertSame(2, WnbaRawPayload::count());
     }
 
+    public function test_oversized_payload_stores_hash_but_truncates_body(): void
+    {
+        config(['wnba.agents.raw_payload_max_bytes' => 100]);
+        $store = new RawPayloadStore;
+        $payload = [['play_text' => str_repeat('x', 500)]];
+
+        $first = $store->store('sportsdataverse', 'play_by_play', $payload, 2026);
+        $row = WnbaRawPayload::find($first['id']);
+
+        $this->assertTrue($first['changed']);
+        $this->assertSame(1, $row->record_count);
+        $this->assertTrue(json_decode($row->payload, true)['truncated']);
+        $this->assertLessThan(500, strlen($row->payload));
+
+        // Dedupe still keys off the full-payload hash.
+        $second = $store->store('sportsdataverse', 'play_by_play', $payload, 2026);
+        $this->assertFalse($second['changed']);
+        $this->assertSame($first['id'], $second['id']);
+    }
+
     public function test_prune_removes_only_old_payloads(): void
     {
         $store = new RawPayloadStore;

@@ -22,7 +22,9 @@ class RawPayloadStore
         ?int $season = null,
         ?string $endpoint = null,
     ): array {
-        $hash = $this->hash($payload);
+        $encoded = json_encode($payload);
+        $hash = hash('sha256', $encoded);
+        $bytes = strlen($encoded);
 
         $existing = WnbaRawPayload::query()
             ->where('source_id', $sourceId)
@@ -34,13 +36,25 @@ class RawPayloadStore
             return ['id' => $existing->id, 'changed' => false];
         }
 
+        // Oversized payloads (e.g. full-season play-by-play) keep their content
+        // hash for change detection but are not stored inline: they would bloat
+        // the database and the source feeds remain re-downloadable.
+        $maxBytes = (int) config('wnba.agents.raw_payload_max_bytes', 8388608);
+        if ($bytes > $maxBytes) {
+            $encoded = json_encode([
+                'truncated' => true,
+                'bytes' => $bytes,
+                'reason' => "payload larger than raw_payload_max_bytes ({$maxBytes}); content_hash covers the full payload",
+            ]);
+        }
+
         $row = WnbaRawPayload::create([
             'source_id' => $sourceId,
             'entity_type' => $entityType,
             'endpoint' => $endpoint,
             'season' => $season,
             'content_hash' => $hash,
-            'payload' => json_encode($payload),
+            'payload' => $encoded,
             'record_count' => array_is_list($payload) ? count($payload) : null,
             'fetched_at' => now(),
         ]);
@@ -55,13 +69,5 @@ class RawPayloadStore
         return WnbaRawPayload::query()
             ->where('fetched_at', '<', now()->subDays($days))
             ->delete();
-    }
-
-    /**
-     * @param  array<int|string, mixed>  $payload
-     */
-    private function hash(array $payload): string
-    {
-        return hash('sha256', json_encode($payload));
     }
 }

@@ -7,7 +7,7 @@ return [
 
     'import' => [
         'game_batch_size' => (int) env('WNBA_IMPORT_GAME_BATCH_SIZE', 10),
-        'memory_limit' => env('WNBA_IMPORT_MEMORY_LIMIT', '512M'),
+        'memory_limit' => env('WNBA_IMPORT_MEMORY_LIMIT', '1024M'),
         'sync_identities' => env('WNBA_IMPORT_SYNC_IDENTITIES', true),
     ],
 
@@ -56,6 +56,8 @@ return [
         'persist_odds' => env('WNBA_PERSIST_ODDS', true),
         // Raw payloads older than this are prunable (roughly one season + buffer).
         'raw_payload_retention_days' => (int) env('WNBA_RAW_PAYLOAD_RETENTION_DAYS', 400),
+        // Payloads above this size store only their hash + metadata (8MB default).
+        'raw_payload_max_bytes' => (int) env('WNBA_RAW_PAYLOAD_MAX_BYTES', 8388608),
         'queue' => env('WNBA_AGENT_QUEUE', 'default'),
     ],
 
