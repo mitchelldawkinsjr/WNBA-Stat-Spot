@@ -56,6 +56,8 @@
             const backdrop = document.createElement('div');
             backdrop.classList.add('offcanvas-backdrop', 'fade', 'show');
             backdrop.setAttribute(BACKDROP_ATTR, 'true');
+            // Sit above page content but below fixed topbar so the close control stays clickable
+            backdrop.style.zIndex = '1010';
             backdrop.addEventListener('click', closeSidebar);
             document.body.appendChild(backdrop);
             document.body.style.overflow = 'hidden';

@@ -26,13 +26,14 @@
         max-width: 640px;
     }
 
-    .ds-search__icon {
+    .ds-search :global(.ds-search__icon) {
         position: absolute;
         left: 14px;
         top: 50%;
         transform: translateY(-50%);
         color: var(--ds-outline);
         pointer-events: none;
+        z-index: 1;
     }
 
     .ds-search__input {
@@ -45,6 +46,7 @@
         font-size: 14px;
         line-height: 21px;
         transition: border-color 0.15s ease;
+        box-sizing: border-box;
     }
 
     .ds-search__input:focus {

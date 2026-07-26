@@ -34,6 +34,15 @@
 
 html.sidebar-enable .wrapper.ds-shell .main-nav {
     transform: translateX(0);
+    z-index: 1012;
+    box-shadow: 8px 0 24px rgba(0, 0, 0, 0.18);
+}
+
+// Mobile drawer backdrop must not cover the fixed topbar controls
+html.sidebar-enable [data-ds-sidebar-backdrop] {
+    z-index: 1010 !important;
+    top: var(--ds-topbar-height);
+    height: calc(100% - var(--ds-topbar-height));
 }
 
 // Kill legacy template shadows / light surfaces in dark shell
@@ -78,6 +87,42 @@ html.sidebar-enable .wrapper.ds-shell .main-nav {
 .wrapper.ds-shell {
     max-width: 100%;
     overflow-x: clip;
+
+    .page-title-box {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: var(--ds-spacing-sm);
+        float: none;
+
+        .page-title-right {
+            float: none;
+            margin: 0;
+            order: -1;
+            width: 100%;
+
+            @media (min-width: 576px) {
+                order: 0;
+                width: auto;
+            }
+        }
+
+        .page-title {
+            width: 100%;
+            margin-bottom: 0;
+            word-break: break-word;
+        }
+    }
+
+    .input-group {
+        max-width: 100%;
+        flex-wrap: nowrap;
+
+        .form-control {
+            min-width: 0;
+        }
+    }
 }
 
 // Stitch segmented toggles (prediction-engine / league-standings pattern)

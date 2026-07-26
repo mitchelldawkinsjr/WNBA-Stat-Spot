@@ -37,19 +37,26 @@
         z-index: 1010;
         display: flex;
         justify-content: space-around;
-        align-items: stretch;
+        align-items: center;
         min-height: var(--ds-bottom-nav-height, 64px);
         height: calc(var(--ds-bottom-nav-height, 64px) + env(safe-area-inset-bottom, 0px));
-        padding: 0 4px env(safe-area-inset-bottom, 0px);
+        padding: 6px 4px calc(6px + env(safe-area-inset-bottom, 0px));
         background: var(--ds-surface-container);
         border-top: 1px solid var(--ds-border-subtle);
         box-sizing: border-box;
+        overflow: hidden;
+    }
+
+    :global(html.sidebar-enable) .ds-bottom-nav {
+        visibility: hidden;
+        pointer-events: none;
     }
 
     .ds-bottom-nav__item {
         display: flex;
         flex: 1 1 0;
         min-width: 0;
+        max-width: 96px;
         flex-direction: column;
         align-items: center;
         justify-content: center;
@@ -60,9 +67,10 @@
         font-weight: 700;
         letter-spacing: 0.06em;
         text-transform: uppercase;
-        padding: 6px 4px;
+        padding: 4px 6px;
+        margin: 0 2px;
         border-radius: var(--ds-radius-pill);
-        transition: color 0.15s ease, background 0.15s ease, transform 0.15s ease;
+        transition: color 0.15s ease, background 0.15s ease;
     }
 
     .ds-bottom-nav__item span {
@@ -75,6 +83,5 @@
     .ds-bottom-nav__item.active {
         color: var(--ds-on-primary);
         background: var(--ds-secondary);
-        transform: translateY(-2px);
     }
 </style>

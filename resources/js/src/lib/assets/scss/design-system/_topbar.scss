@@ -32,7 +32,8 @@
 
     .navbar-header {
         height: 100%;
-        gap: var(--ds-spacing-md);
+        gap: var(--ds-spacing-sm);
+        align-items: center;
     }
 
     .ds-topbar__brand {
@@ -108,15 +109,50 @@
         align-items: center;
         gap: 4px;
         margin-left: auto;
+        height: 100%;
+        flex-shrink: 0;
+    }
+
+    .topbar-item {
+        height: auto !important;
+        align-self: center;
+    }
+
+    .topbar-item .nav-link,
+    .topbar-item .dropdown-toggle {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        height: auto;
     }
 
     .topbar-button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 40px;
+        height: 40px;
+        padding: 0;
+        border: none;
+        border-radius: var(--ds-radius);
+        background: transparent;
         color: var(--ds-on-surface-variant);
+        line-height: 1;
+        appearance: none;
+        -webkit-appearance: none;
 
-        &:hover {
+        &:hover,
+        &:focus-visible {
             color: var(--ds-on-surface);
             background: var(--ds-surface-container-high);
         }
+    }
+
+    .navbar-header > .d-flex {
+        min-width: 0;
+        align-items: center;
+        height: 100%;
     }
 }
 
@@ -138,10 +174,32 @@
         max-width: min(var(--ds-drawer-width, 260px), 86vw);
         background: var(--ds-surface-container-low);
         border-right-color: var(--ds-border-subtle);
-        overflow-x: hidden;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        padding-bottom: 0;
 
         .logo-box {
             display: none;
+        }
+
+        // Logo is hidden in Stitch shell — use full drawer height for the menu
+        .scrollbar {
+            flex: 1 1 auto;
+            min-height: 0;
+            height: 100% !important;
+            max-height: none !important;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+            padding-bottom: calc(var(--ds-spacing-lg) + env(safe-area-inset-bottom, 0px));
+        }
+
+        .simplebar-wrapper,
+        .simplebar-mask,
+        .simplebar-offset,
+        .simplebar-content-wrapper {
+            height: 100% !important;
+            max-height: 100% !important;
         }
     }
 }

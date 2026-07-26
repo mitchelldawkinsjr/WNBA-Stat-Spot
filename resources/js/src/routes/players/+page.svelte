@@ -140,8 +140,22 @@
     }
     .ds-chip-row {
         display: flex;
-        flex-wrap: wrap;
+        flex-wrap: nowrap;
         gap: var(--ds-spacing-sm);
+        overflow-x: auto;
+        max-width: 100%;
+        padding-bottom: 2px;
+        padding-right: 4px;
+        scrollbar-width: none;
+        -webkit-overflow-scrolling: touch;
+        mask-image: linear-gradient(to right, #000 85%, transparent 100%);
+    }
+    .ds-chip-row::-webkit-scrollbar {
+        display: none;
+    }
+    .ds-chip-row :global(.ds-chip),
+    .ds-chip-row :global(button) {
+        flex: 0 0 auto;
     }
     .ds-player-grid {
         display: grid;
