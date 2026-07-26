@@ -5,6 +5,7 @@ namespace Tests\Unit\Services\WNBA\Analytics;
 use App\Models\WnbaGame;
 use App\Models\WnbaGameTeam;
 use App\Models\WnbaTeam;
+use App\Services\WNBA\Agents\AggregateComputationService;
 use App\Services\WNBA\Analytics\GamePreviewService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use ReflectionMethod;
@@ -34,6 +35,10 @@ class GamePreviewSeasonScopeTest extends TestCase
         $this->seedMeeting($home->team_id, $away->team_id, 2025, '401900001', '2025-07-01', 90, 80);
         $this->seedMeeting($home->team_id, $away->team_id, 2026, '401900002', '2026-07-01', 95, 88);
         $this->seedMeeting($home->team_id, $away->team_id, 2026, '401900003', '2026-07-15', 100, 92);
+
+        // Preview reads season-scoped precomputed matchup rows, not raw game_teams.
+        app(AggregateComputationService::class)->computeMatchupSummaries(2025);
+        app(AggregateComputationService::class)->computeMatchupSummaries(2026);
 
         $service = app(GamePreviewService::class);
         $method = new ReflectionMethod(GamePreviewService::class, 'buildHeadToHead');

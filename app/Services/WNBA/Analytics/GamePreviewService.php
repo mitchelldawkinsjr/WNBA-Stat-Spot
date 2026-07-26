@@ -547,10 +547,10 @@ class GamePreviewService
             'avg_total_points' => $summary->avg_total_points ?? 0,
             'avg_margin' => $summary->avg_margin ?? 0,
             'avg_pace' => $summary->avg_pace,
-            'recent_meetings' => collect($summary->recent_meetings ?? [])->map(function (array $meeting) {
+            'recent_meetings' => collect($summary->recent_meetings ?? [])->map(function (array $meeting) use ($season) {
                 return [
                     'date' => $this->formatGameDate($meeting['date'] ?? null, 'M j, Y'),
-                    'season' => null,
+                    'season' => $season,
                     'home_score' => (int) ($meeting['home_score'] ?? 0),
                     'away_score' => (int) ($meeting['away_score'] ?? 0),
                     'home_away' => 'home',
