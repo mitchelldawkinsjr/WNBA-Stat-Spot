@@ -34,6 +34,7 @@ class EntityIntegrityService
             'orphan_game_teams' => $this->auditOrphanGameTeams(),
             'duplicate_players' => $this->auditDuplicatePlayers(),
             'duplicate_games' => $this->auditDuplicateGames($season),
+            'identical_opponents' => $this->auditIdenticalOpponents($season),
             'mapping_gaps' => $this->auditMappingGaps($season),
             'metadata_gaps' => $this->auditMetadataGaps($season),
             'unknown_abbreviations' => $this->auditUnknownAbbreviations(),
@@ -96,6 +97,60 @@ class EntityIntegrityService
         }
 
         return $orphans->count();
+    }
+
+    /**
+     * Home and away must be different franchises. Same team_id on both sides
+     * (or team_id === opponent_team_id) is always a mapping bug — never a real game.
+     */
+    private function auditIdenticalOpponents(?int $season): int
+    {
+        $query = DB::table('wnba_game_teams as gt')
+            ->join('wnba_games as g', 'g.id', '=', 'gt.game_id')
+            ->whereColumn('gt.team_id', 'gt.opponent_team_id')
+            ->select('gt.id', 'gt.game_id', 'gt.team_id', 'g.game_id as external_game_id');
+
+        if ($season !== null) {
+            $query->where('g.season', $season);
+        }
+
+        $rows = $query->limit(200)->get();
+
+        foreach ($rows as $row) {
+            $this->flag(
+                'game_team',
+                (string) $row->id,
+                'identical_opponents',
+                "game {$row->external_game_id} has team_id === opponent_team_id ({$row->team_id})"
+            );
+        }
+
+        // Also flag games where both home and away rows resolve to the same franchise.
+        $dupSides = DB::table('wnba_game_teams as home')
+            ->join('wnba_game_teams as away', function ($join) {
+                $join->on('away.game_id', '=', 'home.game_id')
+                    ->where('home.home_away', '=', 'home')
+                    ->where('away.home_away', '=', 'away');
+            })
+            ->join('wnba_games as g', 'g.id', '=', 'home.game_id')
+            ->whereColumn('home.team_id', 'away.team_id')
+            ->select('home.id', 'home.team_id', 'g.game_id as external_game_id');
+
+        if ($season !== null) {
+            $dupSides->where('g.season', $season);
+        }
+
+        $dupRows = $dupSides->limit(200)->get();
+        foreach ($dupRows as $row) {
+            $this->flag(
+                'game',
+                (string) $row->external_game_id,
+                'identical_opponents',
+                "game {$row->external_game_id} lists the same team ({$row->team_id}) as both home and away"
+            );
+        }
+
+        return $rows->count() + $dupRows->count();
     }
 
     /**

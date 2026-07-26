@@ -32,26 +32,26 @@ class WnbaTeam extends Model
 
     public function gameTeams(): HasMany
     {
-        return $this->hasMany(WnbaGameTeam::class, 'team_id');
+        return $this->hasMany(WnbaGameTeam::class, 'team_id', 'team_id');
     }
 
     public function opponentGameTeams(): HasMany
     {
-        return $this->hasMany(WnbaGameTeam::class, 'opponent_team_id');
+        return $this->hasMany(WnbaGameTeam::class, 'opponent_team_id', 'team_id');
     }
 
     public function playerGames(): HasMany
     {
-        return $this->hasMany(WnbaPlayerGame::class, 'team_id');
+        return $this->hasMany(WnbaPlayerGame::class, 'team_id', 'team_id');
     }
 
     public function plays(): HasMany
     {
-        return $this->hasMany(WnbaPlay::class, 'team_id');
+        return $this->hasMany(WnbaPlay::class, 'team_id', 'team_id');
     }
 
     public function scorePlays(): HasMany
     {
-        return $this->hasMany(WnbaPlay::class, 'score_team_id');
+        return $this->hasMany(WnbaPlay::class, 'score_team_id', 'team_id');
     }
 }

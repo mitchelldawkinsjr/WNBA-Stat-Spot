@@ -32,6 +32,22 @@ It is a deterministic in-app pipeline:
    an alias to config, never by editing rows ad hoc.
 7. **Multi-team players** — players with stats for 2+ teams in a season
    (legitimate trades vs mis-attribution; surfaced as a warning).
+8. **Identical opponents** — `team_id === opponent_team_id`, or home and away
+   rows sharing the same `team_id`. Always a mapping bug (never a real game);
+   often caused by numeric ESPN id / DB primary-key collisions or bad Tank01
+   identity merges.
+
+## Team identity rules (critical)
+
+- `wnba_game_teams.team_id` / `wnba_player_games.team_id` store **external**
+  provider ids (`wnba_teams.team_id`), never Eloquent primary keys.
+- Eloquent relations must use `belongsTo(..., 'team_id', 'team_id')` /
+  `hasMany(..., 'team_id', 'team_id')`.
+- `TeamForeignKeyResolver` resolves external ids first; primary key is
+  last-resort only. Never include PK in foreign-key candidate lists.
+- `EntityMergeService::syncTeamMappings` may match `tank01_team_id` but must
+  **never** match `team_id = $tank01Id` (Tank01 short ids collide with classic
+  ESPN franchise ids such as LV `17`).
 
 ## Rules
 

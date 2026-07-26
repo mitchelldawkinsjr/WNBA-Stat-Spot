@@ -253,7 +253,9 @@ class GamePreviewService
             return null;
         }
 
-        $team = $line->team ?? WnbaTeam::query()->league()->find($line->team_id);
+        $team = $line->team
+            ?? WnbaTeam::query()->league()->where('team_id', (string) $line->team_id)->first()
+            ?? TeamForeignKeyResolver::resolveTeam($line->team_id);
 
         if ($team === null) {
             $resolved = $this->resolveInternalTeamId([
@@ -262,7 +264,8 @@ class GamePreviewService
             ]);
 
             if ($resolved !== null) {
-                $team = WnbaTeam::find($resolved['id']);
+                $team = WnbaTeam::query()->find($resolved['id'])
+                    ?? TeamForeignKeyResolver::resolveTeam($resolved['team_id'] ?? $resolved['id']);
             }
         }
 

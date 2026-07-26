@@ -72,4 +72,46 @@ class EntityMergeServiceTest extends TestCase
         $this->assertNotNull(WnbaPlayer::findByExternalId('1004'));
         $this->assertNotNull(WnbaPlayer::findByExternalId('4433402'));
     }
+
+    public function test_sync_team_mappings_does_not_match_tank01_id_against_espn_team_id(): void
+    {
+        // Aces ESPN id "17". Tempo has tank01 id that must NOT steal Aces via team_id match.
+        WnbaTeam::create([
+            'team_id' => '17',
+            'espn_team_id' => '17',
+            'tank01_team_id' => null,
+            'team_name' => 'Aces',
+            'team_location' => 'Las Vegas',
+            'team_abbreviation' => 'LV',
+            'team_display_name' => 'Las Vegas Aces',
+        ]);
+
+        WnbaTeam::create([
+            'team_id' => '131935',
+            'espn_team_id' => '131935',
+            'tank01_team_id' => '17',
+            'team_name' => 'Tempo',
+            'team_location' => 'Toronto',
+            'team_abbreviation' => 'TOR',
+            'team_display_name' => 'Toronto Tempo',
+        ]);
+
+        // Simulate the dangerous lookup the old ungrouped orWhere performed.
+        $espnId = '131935';
+        $tank01Id = '17';
+        $existing = WnbaTeam::query()
+            ->where(function ($query) use ($espnId, $tank01Id) {
+                $query->where('espn_team_id', $espnId)
+                    ->orWhere('team_id', $espnId)
+                    ->orWhere('tank01_team_id', $tank01Id);
+            })
+            ->first();
+
+        $this->assertSame('131935', $existing?->team_id);
+        $this->assertSame('TOR', $existing?->team_abbreviation);
+
+        $aces = WnbaTeam::where('team_id', '17')->first();
+        $this->assertSame('LV', $aces?->team_abbreviation);
+        $this->assertSame('Las Vegas Aces', $aces?->team_display_name);
+    }
 }

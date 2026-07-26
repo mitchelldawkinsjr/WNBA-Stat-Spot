@@ -103,4 +103,54 @@ class EntityIntegrityServiceTest extends TestCase
         $this->assertSame(0, array_sum($findings));
         $this->assertSame(0, WnbaDataConflict::count());
     }
+
+    public function test_identical_home_and_away_team_is_flagged(): void
+    {
+        WnbaTeam::create([
+            'team_id' => '131935',
+            'team_name' => 'Tempo',
+            'team_location' => 'Toronto',
+            'team_abbreviation' => 'TOR',
+            'team_display_name' => 'Toronto Tempo',
+        ]);
+
+        $game = \App\Models\WnbaGame::create([
+            'game_id' => '401857083',
+            'season' => 2026,
+            'season_type' => 2,
+            'game_date' => '2026-07-21',
+            'game_date_time' => '2026-07-21 00:00:00',
+        ]);
+
+        \App\Models\WnbaGameTeam::create([
+            'game_id' => $game->id,
+            'team_id' => '131935',
+            'opponent_team_id' => '131935',
+            'home_away' => 'home',
+            'team_winner' => false,
+            'team_score' => 83,
+            'opponent_team_score' => 109,
+            'field_goals_made' => 0,
+            'field_goals_attempted' => 0,
+            'three_point_field_goals_made' => 0,
+            'three_point_field_goals_attempted' => 0,
+            'free_throws_made' => 0,
+            'free_throws_attempted' => 0,
+            'offensive_rebounds' => 0,
+            'defensive_rebounds' => 0,
+            'rebounds' => 0,
+            'assists' => 0,
+            'steals' => 0,
+            'blocks' => 0,
+            'turnovers' => 0,
+            'fouls' => 0,
+        ]);
+
+        $findings = $this->service->audit(2026);
+
+        $this->assertGreaterThan(0, $findings['identical_opponents']);
+        $this->assertTrue(
+            WnbaDataConflict::where('field', 'identical_opponents')->exists()
+        );
+    }
 }

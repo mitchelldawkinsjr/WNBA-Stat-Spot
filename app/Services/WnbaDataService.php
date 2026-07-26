@@ -494,7 +494,12 @@ class WnbaDataService
 
     public function saveTeamData(array $records): void
     {
+        $merge = app(EntityMergeService::class);
+        $provider = $this->getProviderName();
+
         foreach ($records as $record) {
+            $record = $merge->normalizeTeamBoxRecord($record, $provider);
+
             // Skip records with missing required fields
             if (empty($record['game_id']) || empty($record['team_id']) || empty($record['opponent_team_id'])) {
                 continue;

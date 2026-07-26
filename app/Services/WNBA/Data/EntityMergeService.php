@@ -138,9 +138,17 @@ class EntityMergeService
       $canonicalId = $espnId;
 
       $existing = WnbaTeam::query()
-        ->where('espn_team_id', $espnId)
-        ->orWhere('team_id', $espnId)
-        ->when($tank01Id, fn ($q) => $q->orWhere('tank01_team_id', $tank01Id)->orWhere('team_id', $tank01Id))
+        ->where(function ($query) use ($espnId, $tank01Id) {
+          $query->where('espn_team_id', $espnId)
+            ->orWhere('team_id', $espnId);
+
+          // Match Tank01 mapping column only — never team_id = tank01Id.
+          // Tank01 short ids (e.g. "16") collide with classic ESPN team_ids
+          // (e.g. Aces "17") and would overwrite the wrong franchise row.
+          if ($tank01Id !== null && $tank01Id !== '') {
+            $query->orWhere('tank01_team_id', $tank01Id);
+          }
+        })
         ->first();
 
       $payload = [
@@ -321,6 +329,30 @@ class EntityMergeService
    * @param  array<string, mixed>  $record
    * @return array<string, mixed>
    */
+  public function normalizeTeamBoxRecord(array $record, string $provider): array
+  {
+    $this->loadCaches();
+    $provider = strtolower($provider);
+
+    if (! empty($record['team_id'])) {
+      $record['team_id'] = $this->resolveTeamId((string) $record['team_id'], $provider);
+    }
+
+    if (! empty($record['opponent_team_id'])) {
+      $record['opponent_team_id'] = $this->resolveTeamId((string) $record['opponent_team_id'], $provider);
+    }
+
+    if (! empty($record['game_id'])) {
+      $record = $this->normalizeGameOnRecord($record, $provider);
+    }
+
+    return $record;
+  }
+
+  /**
+   * @param  array<string, mixed>  $record
+   * @return array<string, mixed>
+   */
   public function normalizeBoxScoreRecord(array $record, string $provider): array
   {
     $this->loadCaches();
@@ -410,12 +442,14 @@ class EntityMergeService
 
   public function looksLikeEspnTeamId(string $id): bool
   {
-    return ctype_digit($id) && strlen($id) >= 2 && strlen($id) <= 4;
+    // Classic ESPN WNBA ids are 1–4 digits; expansion franchises use longer
+    // numeric ids (e.g. Tempo 131935). Exclude single-digit Tank01 ids.
+    return ctype_digit($id) && strlen($id) >= 2 && strlen($id) <= 6;
   }
 
   public function looksLikeTank01TeamId(string $id): bool
   {
-    return ctype_digit($id) && strlen($id) === 1;
+    return ctype_digit($id) && strlen($id) >= 1 && strlen($id) <= 2;
   }
 
   public function looksLikeEspnGameId(string $id): bool
