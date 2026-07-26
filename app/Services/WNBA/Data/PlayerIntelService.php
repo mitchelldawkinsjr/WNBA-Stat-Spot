@@ -4,7 +4,9 @@ namespace App\Services\WNBA\Data;
 
 use App\Models\WnbaPlayer;
 use App\Services\WNBA\Data\Providers\EspnWnbaProvider;
+use App\Services\WNBA\Data\Providers\ExternalNewsProvider;
 use App\Services\WNBA\Data\Providers\Tank01WnbaProvider;
+use App\Services\WNBA\Data\Support\NewsItemAggregator;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
@@ -13,6 +15,8 @@ class PlayerIntelService
     public function __construct(
         private EspnWnbaProvider $espn,
         private Tank01WnbaProvider $tank01,
+        private ExternalNewsProvider $externalNews,
+        private NewsItemAggregator $newsAggregator,
     ) {}
 
     /**
@@ -176,21 +180,41 @@ class PlayerIntelService
     /**
      * @return array{
      *     provider: string,
+     *     sources: array<int, string>,
      *     items: array<int, array<string, mixed>>
      * }
      */
     public function leagueNews(?int $limit = 25, ?string $filter = null): array
     {
+        $limit = $limit ?? 25;
+        $groups = [];
+        $sources = [];
+
         try {
-            $items = $this->espn->fetchLeagueNews($limit ?? 25);
+            $espnItems = $this->newsAggregator->stampSource(
+                $this->espn->fetchLeagueNews($limit),
+                'espn',
+                'ESPN'
+            );
+            if ($espnItems !== []) {
+                $groups[] = $espnItems;
+                $sources[] = 'espn';
+            }
         } catch (RuntimeException $e) {
             Log::warning('ESPN league news fetch failed', ['error' => $e->getMessage()]);
-            $items = [];
         }
 
-        if ($items === [] && config('tank01.api_key')) {
+        $external = $this->externalNews->fetchLeagueNews(null);
+        if ($external['items'] !== []) {
+            $groups[] = $external['items'];
+            foreach ($external['sources'] as $source) {
+                $sources[] = $source;
+            }
+        }
+
+        if ($groups === [] && config('tank01.api_key')) {
             try {
-                $options = ['max_items' => $limit ?? 25];
+                $options = ['max_items' => $limit];
                 if ($filter === 'recent') {
                     $options['recent_news'] = true;
                 } elseif ($filter === 'fantasy') {
@@ -199,15 +223,29 @@ class PlayerIntelService
                     $options['top_news'] = true;
                 }
 
-                $items = $this->tank01->fetchLeagueNews($options);
+                $tankItems = $this->newsAggregator->stampSource(
+                    $this->tank01->fetchLeagueNews($options),
+                    'tank01',
+                    'Tank01'
+                );
 
-                return ['provider' => 'tank01', 'items' => $items];
+                return [
+                    'provider' => 'tank01',
+                    'sources' => ['tank01'],
+                    'items' => array_slice($tankItems, 0, $limit),
+                ];
             } catch (RuntimeException $e) {
                 Log::warning('Tank01 league news fetch failed', ['error' => $e->getMessage()]);
             }
         }
 
-        return ['provider' => 'espn', 'items' => $items];
+        $items = $this->newsAggregator->merge(...$groups);
+
+        return [
+            'provider' => $sources === [] ? 'none' : 'aggregated',
+            'sources' => array_values(array_unique($sources)),
+            'items' => array_slice($items, 0, $limit),
+        ];
     }
 
     /**
