@@ -48,8 +48,12 @@ class PredictionEngine
                     throw new \InvalidArgumentException('Invalid player or game ID');
                 }
 
-                // Get historical data
-                $historicalData = $this->dataAggregator->aggregatePropData($playerId, $statType);
+                // Get historical data for the game's season only
+                $historicalData = $this->dataAggregator->aggregatePropData(
+                    $playerId,
+                    $statType,
+                    (int) ($game->season ?? config('wnba.seasons.current_season'))
+                );
 
                 // Get game context
                 $gameContext = $this->playerAnalytics->getGameContext($gameId, $playerId);

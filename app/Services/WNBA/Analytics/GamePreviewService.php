@@ -10,7 +10,6 @@ use App\Services\WNBA\Data\GameScheduleService;
 use App\Services\WNBA\Data\Support\TeamCatalog;
 use App\Services\WNBA\Data\Support\TeamForeignKeyResolver;
 use App\Services\WNBA\Predictions\PredictionAccuracyService;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -18,7 +17,9 @@ use Illuminate\Support\Facades\Log;
 class GamePreviewService
 {
     private const CACHE_TTL = 1800;
+
     private const HOME_COURT_RATING_BOOST = 2.5;
+
     private const KEY_PLAYER_COUNT = 5;
 
     public function __construct(
@@ -32,7 +33,7 @@ class GamePreviewService
      */
     public function buildPreview(string $externalGameId, int $season): array
     {
-        $cacheKey = "game_preview_v2_{$externalGameId}_{$season}";
+        $cacheKey = "game_preview_v3_{$externalGameId}_{$season}";
 
         $preview = Cache::remember($cacheKey, self::CACHE_TTL, function () use ($externalGameId, $season) {
             return $this->generatePreview($externalGameId, $season);
@@ -521,10 +522,12 @@ class GamePreviewService
         $homeKeys = TeamForeignKeyResolver::foreignKeysForReference($homeTeamId);
         $awayKeys = TeamForeignKeyResolver::foreignKeysForReference($awayTeamId);
 
+        // Match predictions and H2H edges must use the current season only —
+        // prior-year meetings skew form/record and projected scores.
         $games = WnbaGame::query()
             ->whereHas('gameTeams', fn ($q) => $q->whereIn('team_id', $homeKeys))
             ->whereHas('gameTeams', fn ($q) => $q->whereIn('team_id', $awayKeys))
-            ->where('season', '>=', $season - 1)
+            ->where('season', $season)
             ->with(['gameTeams.team'])
             ->orderByDesc('game_date')
             ->limit(10)
@@ -555,7 +558,7 @@ class GamePreviewService
                 fn (WnbaGameTeam $row) => in_array((string) $row->team_id, $awayKeys, true)
             );
 
-            if (!$homeLine || !$awayLine) {
+            if (! $homeLine || ! $awayLine) {
                 continue;
             }
 
@@ -707,13 +710,13 @@ class GamePreviewService
 
         if (abs($homeNet - $awayNet) >= 3) {
             $better = $homeNet > $awayNet ? $homeAbbr : $awayAbbr;
-            $bullets[] = "{$better} holds a meaningful efficiency edge (net rating " . round(abs($homeNet - $awayNet), 1) . ').';
+            $bullets[] = "{$better} holds a meaningful efficiency edge (net rating ".round(abs($homeNet - $awayNet), 1).').';
         }
 
         $homeCtx = $homeTeam['context_split'] ?? [];
         $awayCtx = $awayTeam['context_split'] ?? [];
         if (($homeCtx['win_pct'] ?? 0) >= 0.6) {
-            $bullets[] = "{$homeAbbr} has been strong at home ({$homeCtx['wins']}-{$homeCtx['losses']}, " . round(($homeCtx['win_pct'] ?? 0) * 100) . '% win rate).';
+            $bullets[] = "{$homeAbbr} has been strong at home ({$homeCtx['wins']}-{$homeCtx['losses']}, ".round(($homeCtx['win_pct'] ?? 0) * 100).'% win rate).';
         }
         if (($awayCtx['win_pct'] ?? 0) <= 0.4 && ($awayCtx['games'] ?? 0) >= 3) {
             $bullets[] = "{$awayAbbr} has struggled on the road ({$awayCtx['wins']}-{$awayCtx['losses']}).";
@@ -789,7 +792,7 @@ class GamePreviewService
                 ],
             ],
             'table' => [
-                ['stat' => 'Record', 'home' => ($homeBasic['wins'] ?? 0) . '-' . ($homeBasic['losses'] ?? 0), 'away' => ($awayBasic['wins'] ?? 0) . '-' . ($awayBasic['losses'] ?? 0)],
+                ['stat' => 'Record', 'home' => ($homeBasic['wins'] ?? 0).'-'.($homeBasic['losses'] ?? 0), 'away' => ($awayBasic['wins'] ?? 0).'-'.($awayBasic['losses'] ?? 0)],
                 ['stat' => 'PPG', 'home' => $homeBasic['points_per_game'] ?? 0, 'away' => $awayBasic['points_per_game'] ?? 0],
                 ['stat' => 'Opp PPG', 'home' => $homeBasic['points_allowed_per_game'] ?? 0, 'away' => $awayBasic['points_allowed_per_game'] ?? 0],
                 ['stat' => 'FG%', 'home' => $homeBasic['field_goal_percentage'] ?? 0, 'away' => $awayBasic['field_goal_percentage'] ?? 0],

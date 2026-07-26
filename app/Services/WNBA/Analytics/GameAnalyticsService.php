@@ -4,16 +4,15 @@ namespace App\Services\WNBA\Analytics;
 
 use App\Models\WnbaGame;
 use App\Models\WnbaGameTeam;
-use App\Models\WnbaPlayerGame;
 use App\Models\WnbaPlay;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
-use Carbon\Carbon;
 
 class GameAnalyticsService
 {
     private const CACHE_TTL = 1800; // 30 minutes
+
     private const WNBA_GAME_MINUTES = 40;
 
     /**
@@ -27,7 +26,7 @@ class GameAnalyticsService
             try {
                 $game = WnbaGame::with(['homeTeamStats', 'awayTeamStats'])->find($gameId);
 
-                if (!$game) {
+                if (! $game) {
                     return $this->getEmptyAnalysis();
                 }
 
@@ -44,8 +43,9 @@ class GameAnalyticsService
             } catch (\Exception $e) {
                 Log::error('Error analyzing game', [
                     'game_id' => $gameId,
-                    'error' => $e->getMessage()
+                    'error' => $e->getMessage(),
                 ]);
+
                 return $this->getEmptyAnalysis();
             }
         });
@@ -106,7 +106,7 @@ class GameAnalyticsService
     {
         $game = WnbaGame::find($gameId);
 
-        if (!$game) {
+        if (! $game) {
             return [];
         }
 
@@ -137,7 +137,7 @@ class GameAnalyticsService
             $homeTeam = $gameTeams->where('home_away', 'home')->first();
             $awayTeam = $gameTeams->where('home_away', 'away')->first();
 
-            if (!$homeTeam || !$awayTeam) {
+            if (! $homeTeam || ! $awayTeam) {
                 return [];
             }
 
@@ -173,18 +173,18 @@ class GameAnalyticsService
                 'clutch_analysis' => $this->getClutchAnalysis($gameId),
                 'momentum_shifts' => $this->getMomentumShifts($gameId),
                 'referee_impact' => $this->getRefereeImpact($gameId),
-                'venue_factors' => $this->getVenueFactors($gameId)
+                'venue_factors' => $this->getVenueFactors($gameId),
             ];
         } catch (\Exception $e) {
             Log::error('Failed to get game analytics', [
                 'game_id' => $gameId,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
                 'game_id' => $gameId,
                 'error' => 'Failed to retrieve analytics',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ];
         }
     }
@@ -280,14 +280,14 @@ class GameAnalyticsService
     private function getHistoricalMatchups(WnbaGame $game): array
     {
         $historicalGames = WnbaGame::where(function ($query) use ($game) {
-                $query->where('home_team_id', $game->home_team_id)
-                      ->where('away_team_id', $game->away_team_id);
-            })
+            $query->where('home_team_id', $game->home_team_id)
+                ->where('away_team_id', $game->away_team_id);
+        })
             ->orWhere(function ($query) use ($game) {
                 $query->where('home_team_id', $game->away_team_id)
-                      ->where('away_team_id', $game->home_team_id);
+                    ->where('away_team_id', $game->home_team_id);
             })
-            ->where('season', '>=', $game->season - 2) // Last 2 seasons
+            ->where('season', $game->season)
             ->where('id', '!=', $game->id)
             ->with(['homeTeamStats', 'awayTeamStats'])
             ->orderBy('game_date', 'desc')
@@ -568,35 +568,63 @@ class GameAnalyticsService
 
     private function getPaceRating(float $pace): string
     {
-        if ($pace >= 85) return 'Very Fast';
-        if ($pace >= 80) return 'Fast';
-        if ($pace >= 75) return 'Average';
-        if ($pace >= 70) return 'Slow';
+        if ($pace >= 85) {
+            return 'Very Fast';
+        }
+        if ($pace >= 80) {
+            return 'Fast';
+        }
+        if ($pace >= 75) {
+            return 'Average';
+        }
+        if ($pace >= 70) {
+            return 'Slow';
+        }
+
         return 'Very Slow';
     }
 
     private function getScoringEnvironmentRating(float $total): string
     {
-        if ($total >= 170) return 'High Scoring';
-        if ($total >= 160) return 'Above Average';
-        if ($total >= 150) return 'Average';
-        if ($total >= 140) return 'Below Average';
+        if ($total >= 170) {
+            return 'High Scoring';
+        }
+        if ($total >= 160) {
+            return 'Above Average';
+        }
+        if ($total >= 150) {
+            return 'Average';
+        }
+        if ($total >= 140) {
+            return 'Below Average';
+        }
+
         return 'Low Scoring';
     }
 
     private function getOffensiveAdvantage(float $homeOffense, float $awayOffense): string
     {
         $diff = $homeOffense - $awayOffense;
-        if ($diff >= 5) return 'Home';
-        if ($diff <= -5) return 'Away';
+        if ($diff >= 5) {
+            return 'Home';
+        }
+        if ($diff <= -5) {
+            return 'Away';
+        }
+
         return 'Even';
     }
 
     private function getDefensiveAdvantage(float $homeDefense, float $awayDefense): string
     {
         $diff = $awayDefense - $homeDefense; // Lower is better for defense
-        if ($diff >= 5) return 'Home';
-        if ($diff <= -5) return 'Away';
+        if ($diff >= 5) {
+            return 'Home';
+        }
+        if ($diff <= -5) {
+            return 'Away';
+        }
+
         return 'Even';
     }
 
@@ -615,49 +643,228 @@ class GameAnalyticsService
     }
 
     // Placeholder methods for additional functionality
-    private function identifyTeamAdvantages($homeStats, $awayStats): array { return []; }
-    private function identifyKeyMatchups($homeStats, $awayStats): array { return []; }
-    private function calculateRestDifferential($game): int { return 0; }
-    private function calculateTravelFactor($game): string { return 'None'; }
-    private function calculateHomeCourtAdvantage($game): float { return 3.0; }
-    private function getInjuryReport($game): array { return []; }
-    private function assessMotivationLevel($game): string { return 'Normal'; }
-    private function getWeatherConditions($game): array { return []; }
-    private function formatRecentResults($games, $game): array { return []; }
-    private function calculateAverageTotal($games): float { return 0; }
-    private function calculateAverageMargin($games, $game): float { return 0; }
-    private function identifyMatchupTrends($games): array { return []; }
-    private function isBackToBack($game): bool { return false; }
-    private function getDaysRest($game): int { return 1; }
-    private function getTimeOfSeason($game): string { return 'Regular'; }
-    private function getPlayoffImplications($game): string { return 'None'; }
-    private function getRivalryFactor($game): string { return 'None'; }
-    private function isRevengeGame($game): bool { return false; }
-    private function identifyValuePlays($game): array { return []; }
-    private function getSharpMoneyIndicators($game): array { return []; }
-    private function getPublicBettingTrends($game): array { return []; }
-    private function getLineMovement($game): array { return []; }
-    private function getWeatherBettingImpact($game): array { return []; }
-    private function estimateQuarterPace($plays): float { return 0; }
-    private function calculatePaceConfidence($homePace, $awayPace): string { return 'Medium'; }
-    private function getPaceFactors($homeTeamId, $awayTeamId): array { return []; }
-    private function calculateTotalConfidence($homeO, $homeD, $awayO, $awayD): string { return 'Medium'; }
-    private function getOverUnderLean($total): string { return 'Even'; }
-    private function calculateSpreadConfidence($homeRating, $awayRating): string { return 'Medium'; }
-    private function comparePaceStyles($homeTeamId, $awayTeamId, $season): array { return []; }
-    private function compareOffensiveStyles($homeTeamId, $awayTeamId, $season): array { return []; }
-    private function compareDefensiveStyles($homeTeamId, $awayTeamId, $season): array { return []; }
-    private function compareRebounding($homeTeamId, $awayTeamId, $season): array { return []; }
-    private function getVenueFactors($game): array { return []; }
-    private function getScheduleFactors($game): array { return []; }
-    private function getWeatherImpact($game): array { return []; }
-    private function getCrowdFactor($game): array { return []; }
-    private function getTravelFatigue($game): array { return []; }
-    private function getMotivationFactors($game): array { return []; }
-    private function calculateGamePace($homeTeam, $awayTeam): array { return []; }
-    private function calculateGameEfficiency($homeTeam, $awayTeam): array { return []; }
-    private function calculateFourFactors($homeTeam, $awayTeam): array { return []; }
-    private function calculateGameFlow($gameId): array { return []; }
-    private function calculateCompetitiveBalance($homeTeam, $awayTeam): array { return []; }
-    private function calculateClutchPerformance($gameId): array { return []; }
+    private function identifyTeamAdvantages($homeStats, $awayStats): array
+    {
+        return [];
+    }
+
+    private function identifyKeyMatchups($homeStats, $awayStats): array
+    {
+        return [];
+    }
+
+    private function calculateRestDifferential($game): int
+    {
+        return 0;
+    }
+
+    private function calculateTravelFactor($game): string
+    {
+        return 'None';
+    }
+
+    private function calculateHomeCourtAdvantage($game): float
+    {
+        return 3.0;
+    }
+
+    private function getInjuryReport($game): array
+    {
+        return [];
+    }
+
+    private function assessMotivationLevel($game): string
+    {
+        return 'Normal';
+    }
+
+    private function getWeatherConditions($game): array
+    {
+        return [];
+    }
+
+    private function formatRecentResults($games, $game): array
+    {
+        return [];
+    }
+
+    private function calculateAverageTotal($games): float
+    {
+        return 0;
+    }
+
+    private function calculateAverageMargin($games, $game): float
+    {
+        return 0;
+    }
+
+    private function identifyMatchupTrends($games): array
+    {
+        return [];
+    }
+
+    private function isBackToBack($game): bool
+    {
+        return false;
+    }
+
+    private function getDaysRest($game): int
+    {
+        return 1;
+    }
+
+    private function getTimeOfSeason($game): string
+    {
+        return 'Regular';
+    }
+
+    private function getPlayoffImplications($game): string
+    {
+        return 'None';
+    }
+
+    private function getRivalryFactor($game): string
+    {
+        return 'None';
+    }
+
+    private function isRevengeGame($game): bool
+    {
+        return false;
+    }
+
+    private function identifyValuePlays($game): array
+    {
+        return [];
+    }
+
+    private function getSharpMoneyIndicators($game): array
+    {
+        return [];
+    }
+
+    private function getPublicBettingTrends($game): array
+    {
+        return [];
+    }
+
+    private function getLineMovement($game): array
+    {
+        return [];
+    }
+
+    private function getWeatherBettingImpact($game): array
+    {
+        return [];
+    }
+
+    private function estimateQuarterPace($plays): float
+    {
+        return 0;
+    }
+
+    private function calculatePaceConfidence($homePace, $awayPace): string
+    {
+        return 'Medium';
+    }
+
+    private function getPaceFactors($homeTeamId, $awayTeamId): array
+    {
+        return [];
+    }
+
+    private function calculateTotalConfidence($homeO, $homeD, $awayO, $awayD): string
+    {
+        return 'Medium';
+    }
+
+    private function getOverUnderLean($total): string
+    {
+        return 'Even';
+    }
+
+    private function calculateSpreadConfidence($homeRating, $awayRating): string
+    {
+        return 'Medium';
+    }
+
+    private function comparePaceStyles($homeTeamId, $awayTeamId, $season): array
+    {
+        return [];
+    }
+
+    private function compareOffensiveStyles($homeTeamId, $awayTeamId, $season): array
+    {
+        return [];
+    }
+
+    private function compareDefensiveStyles($homeTeamId, $awayTeamId, $season): array
+    {
+        return [];
+    }
+
+    private function compareRebounding($homeTeamId, $awayTeamId, $season): array
+    {
+        return [];
+    }
+
+    private function getVenueFactors($game): array
+    {
+        return [];
+    }
+
+    private function getScheduleFactors($game): array
+    {
+        return [];
+    }
+
+    private function getWeatherImpact($game): array
+    {
+        return [];
+    }
+
+    private function getCrowdFactor($game): array
+    {
+        return [];
+    }
+
+    private function getTravelFatigue($game): array
+    {
+        return [];
+    }
+
+    private function getMotivationFactors($game): array
+    {
+        return [];
+    }
+
+    private function calculateGamePace($homeTeam, $awayTeam): array
+    {
+        return [];
+    }
+
+    private function calculateGameEfficiency($homeTeam, $awayTeam): array
+    {
+        return [];
+    }
+
+    private function calculateFourFactors($homeTeam, $awayTeam): array
+    {
+        return [];
+    }
+
+    private function calculateGameFlow($gameId): array
+    {
+        return [];
+    }
+
+    private function calculateCompetitiveBalance($homeTeam, $awayTeam): array
+    {
+        return [];
+    }
+
+    private function calculateClutchPerformance($gameId): array
+    {
+        return [];
+    }
 }

@@ -3,17 +3,15 @@
 namespace App\Services\WNBA\Analytics;
 
 use App\Models\WnbaGameTeam;
-use App\Models\WnbaGame;
-use App\Models\WnbaPlayerGame;
 use App\Services\WNBA\Data\Support\TeamForeignKeyResolver;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
-use Carbon\Carbon;
 
 class TeamAnalyticsService
 {
     private const CACHE_TTL = 3600; // 1 hour
+
     private const WNBA_GAME_MINUTES = 40;
 
     /**
@@ -21,7 +19,7 @@ class TeamAnalyticsService
      */
     public function getTeamPerformanceMetrics(int|string $teamId, int $season, ?int $lastNGames = null): array
     {
-        $cacheKey = "team_performance_{$teamId}_{$season}_" . ($lastNGames ?? 'all');
+        $cacheKey = "team_performance_{$teamId}_{$season}_".($lastNGames ?? 'all');
 
         return Cache::remember($cacheKey, self::CACHE_TTL, function () use ($teamId, $season, $lastNGames) {
             try {
@@ -45,8 +43,9 @@ class TeamAnalyticsService
                 Log::error('Error calculating team performance metrics', [
                     'team_id' => $teamId,
                     'season' => $season,
-                    'error' => $e->getMessage()
+                    'error' => $e->getMessage(),
                 ]);
+
                 return $this->getEmptyMetrics();
             }
         });
@@ -81,7 +80,7 @@ class TeamAnalyticsService
             'pace' => round($pace, 2),
             'possessions_per_game' => round($possessionsPerGame, 2),
             'tempo_rating' => $this->getTempoRating($pace),
-            'games_analyzed' => $gameCount
+            'games_analyzed' => $gameCount,
         ];
     }
 
@@ -111,7 +110,7 @@ class TeamAnalyticsService
                 'offensive_rating' => 0,
                 'defensive_rating' => 0,
                 'net_rating' => 0,
-                'efficiency_grade' => 'N/A'
+                'efficiency_grade' => 'N/A',
             ];
         }
 
@@ -123,7 +122,7 @@ class TeamAnalyticsService
             'offensive_rating' => round($avgOffensiveRating, 2),
             'defensive_rating' => round($avgDefensiveRating, 2),
             'net_rating' => round($netRating, 2),
-            'efficiency_grade' => $this->getEfficiencyGrade($netRating)
+            'efficiency_grade' => $this->getEfficiencyGrade($netRating),
         ];
     }
 
@@ -157,7 +156,7 @@ class TeamAnalyticsService
                         : 0,
                     'points' => $game->team_score,
                     'opponent_points' => $game->opponent_team_score,
-                    'point_differential' => $game->team_score - $game->opponent_team_score
+                    'point_differential' => $game->team_score - $game->opponent_team_score,
                 ];
             }
 
@@ -215,7 +214,7 @@ class TeamAnalyticsService
                 'turnovers_forced_per_game' => round($totalTurnoversForced / $totalGames, 2),
                 'points_allowed_per_game' => round($totalPointsAllowed / $totalGames, 2),
                 'defensive_stops' => $this->calculateDefensiveStops($games),
-                'defensive_efficiency' => $this->calculateDefensiveEfficiency($games)
+                'defensive_efficiency' => $this->calculateDefensiveEfficiency($games),
             ];
         });
     }
@@ -255,7 +254,7 @@ class TeamAnalyticsService
             return [
                 'sos_rating' => round($avgOpponentWinPct, 3),
                 'difficulty' => $this->getScheduleDifficulty($avgOpponentWinPct),
-                'games_analyzed' => $gameCount
+                'games_analyzed' => $gameCount,
             ];
         });
     }
@@ -281,18 +280,18 @@ class TeamAnalyticsService
                 'injury_impact' => $this->getInjuryImpact($teamId),
                 'roster_analysis' => $this->getRosterAnalysis($teamId),
                 'recent_form' => $this->getRecentForm($teamId),
-                'head_to_head' => $this->getHeadToHeadRecords($teamId)
+                'head_to_head' => $this->getHeadToHeadRecords($teamId),
             ];
         } catch (\Exception $e) {
             Log::error('Failed to get team analytics', [
                 'team_id' => $teamId,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
                 'team_id' => $teamId,
                 'error' => 'Failed to retrieve analytics',
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
             ];
         }
     }
@@ -316,7 +315,9 @@ class TeamAnalyticsService
                 $q->where('season', $season);
             })
             ->with('game')
-            ->orderBy('created_at', 'desc');
+            ->join('wnba_games', 'wnba_games.id', '=', 'wnba_game_teams.game_id')
+            ->select('wnba_game_teams.*')
+            ->orderByDesc('wnba_games.game_date');
 
         if ($lastNGames) {
             $query->limit($lastNGames);
@@ -385,7 +386,7 @@ class TeamAnalyticsService
                 'win_pct' => $awayGames->count() > 0 ? round($awayGames->where('team_winner', true)->count() / $awayGames->count(), 3) : 0,
                 'ppg' => round($awayGames->avg('team_score'), 2),
                 'opp_ppg' => round($awayGames->avg('opponent_team_score'), 2),
-            ]
+            ],
         ];
     }
 
@@ -406,7 +407,7 @@ class TeamAnalyticsService
                 'losses' => $last10Games->where('team_winner', false)->count(),
                 'ppg' => round($last10Games->avg('team_score'), 2),
                 'opp_ppg' => round($last10Games->avg('opponent_team_score'), 2),
-            ]
+            ],
         ];
     }
 
@@ -417,7 +418,7 @@ class TeamAnalyticsService
             'avg_opponent_record' => 0.500,
             'strength_of_schedule' => 'Average',
             'quality_wins' => 0,
-            'bad_losses' => 0
+            'bad_losses' => 0,
         ];
     }
 
@@ -428,7 +429,7 @@ class TeamAnalyticsService
             'close_game_record' => '0-0',
             'clutch_fg_percentage' => 0,
             'clutch_scoring_avg' => 0,
-            'games_decided_by_5_or_less' => 0
+            'games_decided_by_5_or_less' => 0,
         ];
     }
 
@@ -524,7 +525,9 @@ class TeamAnalyticsService
     {
         // Simplified defensive stops calculation
         $totalGames = $games->count();
-        if ($totalGames === 0) return 0;
+        if ($totalGames === 0) {
+            return 0;
+        }
 
         $avgSteals = $games->avg('steals');
         $avgBlocks = $games->avg('blocks');
@@ -536,7 +539,9 @@ class TeamAnalyticsService
     private function calculateDefensiveEfficiency(Collection $games): float
     {
         $totalGames = $games->count();
-        if ($totalGames === 0) return 0;
+        if ($totalGames === 0) {
+            return 0;
+        }
 
         return round($games->avg('opponent_team_score'), 2);
     }
@@ -556,33 +561,61 @@ class TeamAnalyticsService
         }
 
         $wins = $opponentGames->where('team_winner', true)->count();
+
         return $wins / $opponentGames->count();
     }
 
     private function getTempoRating(float $pace): string
     {
-        if ($pace >= 85) return 'Very Fast';
-        if ($pace >= 80) return 'Fast';
-        if ($pace >= 75) return 'Average';
-        if ($pace >= 70) return 'Slow';
+        if ($pace >= 85) {
+            return 'Very Fast';
+        }
+        if ($pace >= 80) {
+            return 'Fast';
+        }
+        if ($pace >= 75) {
+            return 'Average';
+        }
+        if ($pace >= 70) {
+            return 'Slow';
+        }
+
         return 'Very Slow';
     }
 
     private function getEfficiencyGrade(float $netRating): string
     {
-        if ($netRating >= 10) return 'Elite';
-        if ($netRating >= 5) return 'Very Good';
-        if ($netRating >= 0) return 'Good';
-        if ($netRating >= -5) return 'Below Average';
+        if ($netRating >= 10) {
+            return 'Elite';
+        }
+        if ($netRating >= 5) {
+            return 'Very Good';
+        }
+        if ($netRating >= 0) {
+            return 'Good';
+        }
+        if ($netRating >= -5) {
+            return 'Below Average';
+        }
+
         return 'Poor';
     }
 
     private function getScheduleDifficulty(float $sosRating): string
     {
-        if ($sosRating >= 0.600) return 'Very Difficult';
-        if ($sosRating >= 0.550) return 'Difficult';
-        if ($sosRating >= 0.450) return 'Average';
-        if ($sosRating >= 0.400) return 'Easy';
+        if ($sosRating >= 0.600) {
+            return 'Very Difficult';
+        }
+        if ($sosRating >= 0.550) {
+            return 'Difficult';
+        }
+        if ($sosRating >= 0.450) {
+            return 'Average';
+        }
+        if ($sosRating >= 0.400) {
+            return 'Easy';
+        }
+
         return 'Very Easy';
     }
 

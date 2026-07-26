@@ -2,20 +2,17 @@
 
 namespace App\Services\WNBA\Data;
 
-use App\Models\WnbaPlayer;
-use App\Models\WnbaPlayerGame;
 use App\Models\WnbaGame;
 use App\Models\WnbaGameTeam;
-use App\Models\WnbaTeam;
-use App\Models\WnbaPlay;
-use Illuminate\Support\Facades\DB;
+use App\Models\WnbaPlayerGame;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
-use Carbon\Carbon;
 
 class DataAggregatorService
 {
     private const CACHE_TTL = 3600; // 1 hour
+
     private const BATCH_SIZE = 1000;
 
     /**
@@ -23,7 +20,8 @@ class DataAggregatorService
      */
     public function aggregatePlayerData(int $playerId, ?int $season = null, ?int $lastNGames = null): array
     {
-        $cacheKey = "player_data_v2_{$playerId}_{$season}_{$lastNGames}";
+        $season = $season ?? (int) config('wnba.seasons.current_season');
+        $cacheKey = "player_data_v3_{$playerId}_{$season}_{$lastNGames}";
 
         return Cache::remember($cacheKey, self::CACHE_TTL, function () use ($playerId, $season, $lastNGames) {
             try {
@@ -31,11 +29,8 @@ class DataAggregatorService
                     ->with(['game', 'team', 'player'])
                     ->select('wnba_player_games.*')
                     ->where('wnba_player_games.player_id', $playerId)
-                    ->join('wnba_games', 'wnba_games.id', '=', 'wnba_player_games.game_id');
-
-                if ($season) {
-                    $query->where('wnba_games.season', $season);
-                }
+                    ->join('wnba_games', 'wnba_games.id', '=', 'wnba_player_games.game_id')
+                    ->where('wnba_games.season', $season);
 
                 $query->orderBy('wnba_games.game_date', 'desc');
 
@@ -76,22 +71,19 @@ class DataAggregatorService
      */
     public function aggregateTeamData(int $teamId, ?int $season = null, ?int $lastNGames = null): array
     {
-        $cacheKey = "team_data_{$teamId}_{$season}_{$lastNGames}";
+        $season = $season ?? (int) config('wnba.seasons.current_season');
+        $cacheKey = "team_data_v2_{$teamId}_{$season}_{$lastNGames}";
 
-        return Cache::remember($cacheKey, self::CACHE_TTL, function() use ($teamId, $season, $lastNGames) {
+        return Cache::remember($cacheKey, self::CACHE_TTL, function () use ($teamId, $season, $lastNGames) {
             try {
                 $query = WnbaGameTeam::with(['game', 'team', 'opponentTeam'])
-                    ->where('team_id', $teamId);
-
-                if ($season) {
-                    $query->whereHas('game', function($q) use ($season) {
+                    ->where('team_id', $teamId)
+                    ->whereHas('game', function ($q) use ($season) {
                         $q->where('season', $season);
-                    });
-                }
-
-                $query->whereHas('game', function($q) {
-                    $q->orderBy('game_date', 'desc');
-                });
+                    })
+                    ->join('wnba_games', 'wnba_games.id', '=', 'wnba_game_teams.game_id')
+                    ->select('wnba_game_teams.*')
+                    ->orderByDesc('wnba_games.game_date');
 
                 if ($lastNGames) {
                     $query->limit($lastNGames);
@@ -112,14 +104,15 @@ class DataAggregatorService
                     'pace_metrics' => $this->calculatePaceMetrics($games),
                     'situational_performance' => $this->calculateTeamSituationalStats($games),
                     'strength_of_schedule' => $this->calculateStrengthOfSchedule($games),
-                    'recent_form' => $this->calculateRecentForm($games)
+                    'recent_form' => $this->calculateRecentForm($games),
                 ];
 
             } catch (\Exception $e) {
                 Log::error('Team data aggregation failed', [
                     'team_id' => $teamId,
-                    'error' => $e->getMessage()
+                    'error' => $e->getMessage(),
                 ]);
+
                 return $this->getEmptyTeamData();
             }
         });
@@ -132,12 +125,12 @@ class DataAggregatorService
     {
         $cacheKey = "game_data_{$gameId}";
 
-        return Cache::remember($cacheKey, self::CACHE_TTL, function() use ($gameId) {
+        return Cache::remember($cacheKey, self::CACHE_TTL, function () use ($gameId) {
             try {
                 $game = WnbaGame::with(['gameTeams.team', 'playerGames.player', 'plays'])
                     ->find($gameId);
 
-                if (!$game) {
+                if (! $game) {
                     return $this->getEmptyGameData();
                 }
 
@@ -150,14 +143,15 @@ class DataAggregatorService
                     'key_moments' => $this->identifyKeyMoments($game),
                     'pace_analysis' => $this->analyzeGamePace($game),
                     'efficiency_metrics' => $this->calculateGameEfficiency($game),
-                    'competitive_balance' => $this->analyzeCompetitiveBalance($game)
+                    'competitive_balance' => $this->analyzeCompetitiveBalance($game),
                 ];
 
             } catch (\Exception $e) {
                 Log::error('Game data aggregation failed', [
                     'game_id' => $gameId,
-                    'error' => $e->getMessage()
+                    'error' => $e->getMessage(),
                 ]);
+
                 return $this->getEmptyGameData();
             }
         });
@@ -168,22 +162,19 @@ class DataAggregatorService
      */
     public function aggregateMatchupData(int $team1Id, int $team2Id, ?int $season = null): array
     {
-        $cacheKey = "matchup_data_{$team1Id}_{$team2Id}_{$season}";
+        $season = $season ?? (int) config('wnba.seasons.current_season');
+        $cacheKey = "matchup_data_v2_{$team1Id}_{$team2Id}_{$season}";
 
-        return Cache::remember($cacheKey, self::CACHE_TTL, function() use ($team1Id, $team2Id, $season) {
+        return Cache::remember($cacheKey, self::CACHE_TTL, function () use ($team1Id, $team2Id, $season) {
             try {
-                // Get head-to-head games
-                $query = WnbaGame::whereHas('gameTeams', function($q) use ($team1Id) {
+                // Get head-to-head games for the requested season only.
+                $games = WnbaGame::whereHas('gameTeams', function ($q) use ($team1Id) {
                     $q->where('team_id', $team1Id);
-                })->whereHas('gameTeams', function($q) use ($team2Id) {
+                })->whereHas('gameTeams', function ($q) use ($team2Id) {
                     $q->where('team_id', $team2Id);
-                });
-
-                if ($season) {
-                    $query->where('season', $season);
-                }
-
-                $games = $query->with(['gameTeams.team', 'playerGames.player'])
+                })
+                    ->where('season', $season)
+                    ->with(['gameTeams.team', 'playerGames.player'])
                     ->orderBy('game_date', 'desc')
                     ->get();
 
@@ -194,15 +185,16 @@ class DataAggregatorService
                     'style_comparison' => $this->compareTeamStyles($team1Id, $team2Id, $season),
                     'key_player_matchups' => $this->identifyKeyPlayerMatchups($team1Id, $team2Id, $season),
                     'trends' => $this->analyzeMatchupTrends($games, $team1Id, $team2Id),
-                    'prediction_factors' => $this->extractPredictionFactors($team1Id, $team2Id, $season)
+                    'prediction_factors' => $this->extractPredictionFactors($team1Id, $team2Id, $season),
                 ];
 
             } catch (\Exception $e) {
                 Log::error('Matchup data aggregation failed', [
                     'team1_id' => $team1Id,
                     'team2_id' => $team2Id,
-                    'error' => $e->getMessage()
+                    'error' => $e->getMessage(),
                 ]);
+
                 return $this->getEmptyMatchupData();
             }
         });
@@ -215,7 +207,7 @@ class DataAggregatorService
     {
         $cacheKey = "league_data_{$season}";
 
-        return Cache::remember($cacheKey, self::CACHE_TTL * 2, function() use ($season) {
+        return Cache::remember($cacheKey, self::CACHE_TTL * 2, function () use ($season) {
             try {
                 return [
                     'league_averages' => $this->calculateLeagueAverages($season),
@@ -225,14 +217,15 @@ class DataAggregatorService
                     'scoring_trends' => $this->analyzeScoringTrends($season),
                     'efficiency_trends' => $this->analyzeEfficiencyTrends($season),
                     'defensive_trends' => $this->analyzeDefensiveTrends($season),
-                    'league_context' => $this->getLeagueContext($season)
+                    'league_context' => $this->getLeagueContext($season),
                 ];
 
             } catch (\Exception $e) {
                 Log::error('League data aggregation failed', [
                     'season' => $season,
-                    'error' => $e->getMessage()
+                    'error' => $e->getMessage(),
                 ]);
+
                 return $this->getEmptyLeagueData();
             }
         });
@@ -243,22 +236,19 @@ class DataAggregatorService
      */
     public function aggregatePropData(int $playerId, string $statType, ?int $season = null): array
     {
-        $cacheKey = "prop_data_{$playerId}_{$statType}_{$season}";
+        $season = $season ?? (int) config('wnba.seasons.current_season');
+        $cacheKey = "prop_data_v2_{$playerId}_{$statType}_{$season}";
 
-        return Cache::remember($cacheKey, self::CACHE_TTL, function() use ($playerId, $statType, $season) {
+        return Cache::remember($cacheKey, self::CACHE_TTL, function () use ($playerId, $statType, $season) {
             try {
-                $query = WnbaPlayerGame::where('player_id', $playerId);
-
-                if ($season) {
-                    $query->whereHas('game', function($q) use ($season) {
+                $games = WnbaPlayerGame::where('player_id', $playerId)
+                    ->whereHas('game', function ($q) use ($season) {
                         $q->where('season', $season);
-                    });
-                }
-
-                $games = $query->with(['game.gameTeams', 'team'])
-                    ->whereHas('game', function($q) {
-                        $q->orderBy('game_date', 'desc');
                     })
+                    ->with(['game.gameTeams', 'team'])
+                    ->join('wnba_games', 'wnba_games.id', '=', 'wnba_player_games.game_id')
+                    ->select('wnba_player_games.*')
+                    ->orderByDesc('wnba_games.game_date')
                     ->get();
 
                 if ($games->isEmpty()) {
@@ -276,15 +266,16 @@ class DataAggregatorService
                     'consistency_metrics' => $this->calculateConsistencyMetricsForProp($statValues),
                     'outlier_analysis' => $this->analyzeOutliers($statValues),
                     'prediction_inputs' => $this->preparePredictionInputs($games, $statType),
-                    'games_played' => $games->count()
+                    'games_played' => $games->count(),
                 ];
 
             } catch (\Exception $e) {
                 Log::error('Prop data aggregation failed', [
                     'player_id' => $playerId,
                     'stat_type' => $statType,
-                    'error' => $e->getMessage()
+                    'error' => $e->getMessage(),
                 ]);
+
                 return $this->getEmptyPropData();
             }
         });
@@ -300,7 +291,7 @@ class DataAggregatorService
             'name' => $playerGame->player->athlete_display_name,
             'position' => $playerGame->player->athlete_position_abbreviation,
             'team_id' => $playerGame->team_id,
-            'team_name' => $playerGame->team->team_display_name ?? 'Unknown'
+            'team_name' => $playerGame->team->team_display_name ?? 'Unknown',
         ];
     }
 
@@ -334,13 +325,13 @@ class DataAggregatorService
                 'steals' => $games->sum('steals'),
                 'blocks' => $games->sum('blocks'),
                 'turnovers' => $games->sum('turnovers'),
-                'minutes' => $games->sum('minutes')
+                'minutes' => $games->sum('minutes'),
             ],
             'percentages' => [
                 'field_goal_pct' => $this->calculatePercentage($games->sum('field_goals_made'), $games->sum('field_goals_attempted')),
                 'three_point_pct' => $this->calculatePercentage($games->sum('three_point_field_goals_made'), $games->sum('three_point_field_goals_attempted')),
-                'free_throw_pct' => $this->calculatePercentage($games->sum('free_throws_made'), $games->sum('free_throws_attempted'))
-            ]
+                'free_throw_pct' => $this->calculatePercentage($games->sum('free_throws_made'), $games->sum('free_throws_attempted')),
+            ],
         ];
     }
 
@@ -361,11 +352,11 @@ class DataAggregatorService
                 'steals' => $game->steals,
                 'blocks' => $game->blocks,
                 'turnovers' => $game->turnovers,
-                'fg_made_attempted' => $game->field_goals_made . '/' . $game->field_goals_attempted,
-                'three_pt_made_attempted' => $game->three_point_field_goals_made . '/' . $game->three_point_field_goals_attempted,
-                'ft_made_attempted' => $game->free_throws_made . '/' . $game->free_throws_attempted,
+                'fg_made_attempted' => $game->field_goals_made.'/'.$game->field_goals_attempted,
+                'three_pt_made_attempted' => $game->three_point_field_goals_made.'/'.$game->three_point_field_goals_attempted,
+                'ft_made_attempted' => $game->free_throws_made.'/'.$game->free_throws_attempted,
                 'plus_minus' => $game->plus_minus,
-                'starter' => $game->starter
+                'starter' => $game->starter,
             ];
         })->toArray();
     }
@@ -379,17 +370,17 @@ class DataAggregatorService
             'rebounds_trend' => $this->calculateTrend($gameArray->pluck('rebounds')->toArray()),
             'assists_trend' => $this->calculateTrend($gameArray->pluck('assists')->toArray()),
             'minutes_trend' => $this->calculateTrend($gameArray->pluck('minutes')->toArray()),
-            'efficiency_trend' => $this->calculateEfficiencyTrend($gameArray)
+            'efficiency_trend' => $this->calculateEfficiencyTrend($gameArray),
         ];
     }
 
     private function calculateSituationalStats($games): array
     {
-        $homeGames = $games->filter(function($game) {
+        $homeGames = $games->filter(function ($game) {
             return $this->getHomeAway($game) === 'home';
         });
 
-        $awayGames = $games->filter(function($game) {
+        $awayGames = $games->filter(function ($game) {
             return $this->getHomeAway($game) === 'away';
         });
 
@@ -399,7 +390,7 @@ class DataAggregatorService
             'vs_strong_defense' => $this->calculateVsStrongDefense($games),
             'vs_weak_defense' => $this->calculateVsWeakDefense($games),
             'back_to_back' => $this->calculateBackToBackStats($games),
-            'rest_days' => $this->calculateRestDayStats($games)
+            'rest_days' => $this->calculateRestDayStats($games),
         ];
     }
 
@@ -411,7 +402,7 @@ class DataAggregatorService
             'effective_fg_pct' => $this->calculateEffectiveFGPct($games),
             'assist_turnover_ratio' => $this->calculateAssistTurnoverRatio($games),
             'per_36_stats' => $this->calculatePer36Stats($games),
-            'player_efficiency_rating' => $this->calculatePER($games)
+            'player_efficiency_rating' => $this->calculatePER($games),
         ];
     }
 
@@ -425,7 +416,7 @@ class DataAggregatorService
             'points_consistency' => $this->calculateConsistency($points),
             'rebounds_consistency' => $this->calculateConsistency($rebounds),
             'assists_consistency' => $this->calculateConsistency($assists),
-            'overall_consistency' => $this->calculateOverallConsistency($games)
+            'overall_consistency' => $this->calculateOverallConsistency($games),
         ];
     }
 
@@ -439,7 +430,7 @@ class DataAggregatorService
             'sample_size' => $totalGames,
             'data_completeness' => $totalGames > 0 ? $gamesWithMinutes / $totalGames : 0,
             'recency_score' => $totalGames > 0 ? $recentGames / min(10, $totalGames) : 0,
-            'quality_score' => $this->calculateQualityScore($totalGames, $gamesWithMinutes, $recentGames)
+            'quality_score' => $this->calculateQualityScore($totalGames, $gamesWithMinutes, $recentGames),
         ];
     }
 
@@ -463,7 +454,9 @@ class DataAggregatorService
             $sumX2 += $x[$i] * $x[$i];
         }
 
-        if ($n * $sumX2 - $sumX * $sumX == 0) return 0;
+        if ($n * $sumX2 - $sumX * $sumX == 0) {
+            return 0;
+        }
 
         return ($n * $sumXY - $sumX * $sumY) / ($n * $sumX2 - $sumX * $sumX);
     }
@@ -472,14 +465,17 @@ class DataAggregatorService
     {
         $values = array_map(fn ($value) => $this->toNumericStatValue($value), $values);
 
-        if (empty($values)) return 0;
+        if (empty($values)) {
+            return 0;
+        }
 
         $mean = array_sum($values) / count($values);
-        $variance = array_sum(array_map(function($x) use ($mean) {
+        $variance = array_sum(array_map(function ($x) use ($mean) {
             return pow($x - $mean, 2);
         }, $values)) / count($values);
 
         $coefficientOfVariation = $mean > 0 ? sqrt($variance) / $mean : 0;
+
         return round((1 - min(1, $coefficientOfVariation)) * 100, 1);
     }
 
@@ -527,16 +523,16 @@ class DataAggregatorService
             'points' => round($games->avg('points'), 1),
             'rebounds' => round($games->avg('rebounds'), 1),
             'assists' => round($games->avg('assists'), 1),
-            'minutes' => round($games->avg('minutes'), 1)
+            'minutes' => round($games->avg('minutes'), 1),
         ];
     }
 
     private function getOpponentName($game): string
     {
         // Get the game team data for this player's team using external game_id
-        $gameTeam = WnbaGameTeam::whereHas('game', function($query) use ($game) {
-                $query->where('game_id', $game->game->game_id);
-            })
+        $gameTeam = WnbaGameTeam::whereHas('game', function ($query) use ($game) {
+            $query->where('game_id', $game->game->game_id);
+        })
             ->where('team_id', $game->team_id)
             ->with('opponentTeam')
             ->first();
@@ -551,9 +547,9 @@ class DataAggregatorService
     private function getHomeAway($game): string
     {
         // Get the game team data for this player's team to determine home/away status using external game_id
-        $gameTeam = WnbaGameTeam::whereHas('game', function($query) use ($game) {
-                $query->where('game_id', $game->game->game_id);
-            })
+        $gameTeam = WnbaGameTeam::whereHas('game', function ($query) use ($game) {
+            $query->where('game_id', $game->game->game_id);
+        })
             ->where('team_id', $game->team_id)
             ->first();
 
@@ -565,11 +561,31 @@ class DataAggregatorService
     }
 
     // Placeholder methods for complex calculations
-    private function calculateEfficiencyTrend($games): float { return 0; }
-    private function calculateVsStrongDefense($games): array { return []; }
-    private function calculateVsWeakDefense($games): array { return []; }
-    private function calculateBackToBackStats($games): array { return []; }
-    private function calculateRestDayStats($games): array { return []; }
+    private function calculateEfficiencyTrend($games): float
+    {
+        return 0;
+    }
+
+    private function calculateVsStrongDefense($games): array
+    {
+        return [];
+    }
+
+    private function calculateVsWeakDefense($games): array
+    {
+        return [];
+    }
+
+    private function calculateBackToBackStats($games): array
+    {
+        return [];
+    }
+
+    private function calculateRestDayStats($games): array
+    {
+        return [];
+    }
+
     private function calculateUsageRate($games): float
     {
         if ($games->isEmpty()) {
@@ -601,54 +617,210 @@ class DataAggregatorService
 
         return round($usageRate, 1);
     }
-    private function calculateTrueShootingPct($games): float { return 0; }
-    private function calculateEffectiveFGPct($games): float { return 0; }
-    private function calculateAssistTurnoverRatio($games): float { return 0; }
-    private function calculatePer36Stats($games): array { return []; }
-    private function calculatePER($games): float { return 0; }
-    private function calculateOverallConsistency($games): float { return 0; }
-    private function calculateQualityScore($total, $withMinutes, $recent): float { return 0.8; }
+
+    private function calculateTrueShootingPct($games): float
+    {
+        return 0;
+    }
+
+    private function calculateEffectiveFGPct($games): float
+    {
+        return 0;
+    }
+
+    private function calculateAssistTurnoverRatio($games): float
+    {
+        return 0;
+    }
+
+    private function calculatePer36Stats($games): array
+    {
+        return [];
+    }
+
+    private function calculatePER($games): float
+    {
+        return 0;
+    }
+
+    private function calculateOverallConsistency($games): float
+    {
+        return 0;
+    }
+
+    private function calculateQualityScore($total, $withMinutes, $recent): float
+    {
+        return 0.8;
+    }
 
     // Team-related methods
-    private function extractTeamInfo($gameTeam): array { return []; }
-    private function calculateTeamSeasonStats($games): array { return []; }
-    private function formatTeamGameLog($games): array { return []; }
-    private function calculateOffensiveMetrics($games): array { return []; }
-    private function calculateDefensiveMetrics($games): array { return []; }
-    private function calculatePaceMetrics($games): array { return []; }
-    private function calculateTeamSituationalStats($games): array { return []; }
-    private function calculateStrengthOfSchedule($games): array { return []; }
-    private function calculateRecentForm($games): array { return []; }
+    private function extractTeamInfo($gameTeam): array
+    {
+        return [];
+    }
+
+    private function calculateTeamSeasonStats($games): array
+    {
+        return [];
+    }
+
+    private function formatTeamGameLog($games): array
+    {
+        return [];
+    }
+
+    private function calculateOffensiveMetrics($games): array
+    {
+        return [];
+    }
+
+    private function calculateDefensiveMetrics($games): array
+    {
+        return [];
+    }
+
+    private function calculatePaceMetrics($games): array
+    {
+        return [];
+    }
+
+    private function calculateTeamSituationalStats($games): array
+    {
+        return [];
+    }
+
+    private function calculateStrengthOfSchedule($games): array
+    {
+        return [];
+    }
+
+    private function calculateRecentForm($games): array
+    {
+        return [];
+    }
 
     // Game-related methods
-    private function extractGameInfo($game): array { return []; }
-    private function extractTeamGameStats($game): array { return []; }
-    private function extractPlayerGameStats($game): array { return []; }
-    private function processPlayByPlay($game): array { return []; }
-    private function analyzeGameFlow($game): array { return []; }
-    private function identifyKeyMoments($game): array { return []; }
-    private function analyzeGamePace($game): array { return []; }
-    private function calculateGameEfficiency($game): array { return []; }
-    private function analyzeCompetitiveBalance($game): array { return []; }
+    private function extractGameInfo($game): array
+    {
+        return [];
+    }
+
+    private function extractTeamGameStats($game): array
+    {
+        return [];
+    }
+
+    private function extractPlayerGameStats($game): array
+    {
+        return [];
+    }
+
+    private function processPlayByPlay($game): array
+    {
+        return [];
+    }
+
+    private function analyzeGameFlow($game): array
+    {
+        return [];
+    }
+
+    private function identifyKeyMoments($game): array
+    {
+        return [];
+    }
+
+    private function analyzeGamePace($game): array
+    {
+        return [];
+    }
+
+    private function calculateGameEfficiency($game): array
+    {
+        return [];
+    }
+
+    private function analyzeCompetitiveBalance($game): array
+    {
+        return [];
+    }
 
     // Matchup-related methods
-    private function analyzeMatchupHistory($games, $team1Id, $team2Id): array { return []; }
-    private function calculateHeadToHeadStats($games, $team1Id, $team2Id): array { return []; }
-    private function formatRecentMeetings($games, $team1Id, $team2Id): array { return []; }
-    private function compareTeamStyles($team1Id, $team2Id, $season): array { return []; }
-    private function identifyKeyPlayerMatchups($team1Id, $team2Id, $season): array { return []; }
-    private function analyzeMatchupTrends($games, $team1Id, $team2Id): array { return []; }
-    private function extractPredictionFactors($team1Id, $team2Id, $season): array { return []; }
+    private function analyzeMatchupHistory($games, $team1Id, $team2Id): array
+    {
+        return [];
+    }
+
+    private function calculateHeadToHeadStats($games, $team1Id, $team2Id): array
+    {
+        return [];
+    }
+
+    private function formatRecentMeetings($games, $team1Id, $team2Id): array
+    {
+        return [];
+    }
+
+    private function compareTeamStyles($team1Id, $team2Id, $season): array
+    {
+        return [];
+    }
+
+    private function identifyKeyPlayerMatchups($team1Id, $team2Id, $season): array
+    {
+        return [];
+    }
+
+    private function analyzeMatchupTrends($games, $team1Id, $team2Id): array
+    {
+        return [];
+    }
+
+    private function extractPredictionFactors($team1Id, $team2Id, $season): array
+    {
+        return [];
+    }
 
     // League-related methods
-    private function calculateLeagueAverages($season): array { return []; }
-    private function calculateTeamRankings($season): array { return []; }
-    private function calculatePlayerLeaders($season): array { return []; }
-    private function analyzePaceTrends($season): array { return []; }
-    private function analyzeScoringTrends($season): array { return []; }
-    private function analyzeEfficiencyTrends($season): array { return []; }
-    private function analyzeDefensiveTrends($season): array { return []; }
-    private function getLeagueContext($season): array { return []; }
+    private function calculateLeagueAverages($season): array
+    {
+        return [];
+    }
+
+    private function calculateTeamRankings($season): array
+    {
+        return [];
+    }
+
+    private function calculatePlayerLeaders($season): array
+    {
+        return [];
+    }
+
+    private function analyzePaceTrends($season): array
+    {
+        return [];
+    }
+
+    private function analyzeScoringTrends($season): array
+    {
+        return [];
+    }
+
+    private function analyzeEfficiencyTrends($season): array
+    {
+        return [];
+    }
+
+    private function analyzeDefensiveTrends($season): array
+    {
+        return [];
+    }
+
+    private function getLeagueContext($season): array
+    {
+        return [];
+    }
 
     // Prop-related methods
     private function analyzeStatDistribution($values): array
@@ -663,7 +835,7 @@ class DataAggregatorService
                 'max' => 0,
                 'count' => 0,
                 'values' => [],
-                'percentiles' => []
+                'percentiles' => [],
             ];
         }
 
@@ -681,8 +853,8 @@ class DataAggregatorService
         // Sort for percentiles and median
         sort($values);
         $median = $count % 2 === 0
-            ? ($values[$count/2 - 1] + $values[$count/2]) / 2
-            : $values[floor($count/2)];
+            ? ($values[$count / 2 - 1] + $values[$count / 2]) / 2
+            : $values[floor($count / 2)];
 
         return [
             'mean' => round($mean, 2),
@@ -693,7 +865,7 @@ class DataAggregatorService
             'max' => max($values),
             'count' => $count,
             'values' => $values,
-            'percentiles' => $this->calculatePercentiles($values)
+            'percentiles' => $this->calculatePercentiles($values),
         ];
     }
 
@@ -704,21 +876,21 @@ class DataAggregatorService
                 'season_average' => 0,
                 'recent_average' => 0,
                 'games_played' => 0,
-                'consistency_score' => 0
+                'consistency_score' => 0,
             ];
         }
 
         $statValues = $games->pluck($statType)->filter()->toArray();
-        $seasonAverage = !empty($statValues) ? array_sum($statValues) / count($statValues) : 0;
+        $seasonAverage = ! empty($statValues) ? array_sum($statValues) / count($statValues) : 0;
 
         // Get recent 5 games average
         $recentGames = $games->take(5);
         $recentValues = $recentGames->pluck($statType)->filter()->toArray();
-        $recentAverage = !empty($recentValues) ? array_sum($recentValues) / count($recentValues) : 0;
+        $recentAverage = ! empty($recentValues) ? array_sum($recentValues) / count($recentValues) : 0;
 
         // Calculate consistency (inverse of coefficient of variation)
         $consistency = 0;
-        if (!empty($statValues) && $seasonAverage > 0) {
+        if (! empty($statValues) && $seasonAverage > 0) {
             $variance = 0;
             foreach ($statValues as $value) {
                 $variance += pow($value - $seasonAverage, 2);
@@ -733,7 +905,7 @@ class DataAggregatorService
             'recent_average' => round($recentAverage, 2),
             'games_played' => $games->count(),
             'consistency_score' => round($consistency, 3),
-            'trend' => $this->calculateTrend($statValues)
+            'trend' => $this->calculateTrend($statValues),
         ];
     }
 
@@ -744,35 +916,35 @@ class DataAggregatorService
                 'home' => ['average' => 0, 'games' => 0],
                 'away' => ['average' => 0, 'games' => 0],
                 'vs_top_teams' => ['average' => 0, 'games' => 0],
-                'back_to_back' => ['average' => 0, 'games' => 0]
+                'back_to_back' => ['average' => 0, 'games' => 0],
             ];
         }
 
-        $homeGames = $games->filter(function($game) {
+        $homeGames = $games->filter(function ($game) {
             return $this->getHomeAway($game) === 'home';
         });
 
-        $awayGames = $games->filter(function($game) {
+        $awayGames = $games->filter(function ($game) {
             return $this->getHomeAway($game) === 'away';
         });
 
         return [
             'home' => [
                 'average' => $homeGames->isEmpty() ? 0 : round($homeGames->avg($statType), 2),
-                'games' => $homeGames->count()
+                'games' => $homeGames->count(),
             ],
             'away' => [
                 'average' => $awayGames->isEmpty() ? 0 : round($awayGames->avg($statType), 2),
-                'games' => $awayGames->count()
+                'games' => $awayGames->count(),
             ],
             'vs_top_teams' => [
                 'average' => 0, // Would need opponent strength data
-                'games' => 0
+                'games' => 0,
             ],
             'back_to_back' => [
                 'average' => 0, // Would need game scheduling data
-                'games' => 0
-            ]
+                'games' => 0,
+            ],
         ];
     }
 
@@ -782,7 +954,7 @@ class DataAggregatorService
             return [
                 'vs_strong_defense' => ['average' => 0, 'games' => 0],
                 'vs_weak_defense' => ['average' => 0, 'games' => 0],
-                'opponent_adjustment' => 1.0
+                'opponent_adjustment' => 1.0,
             ];
         }
 
@@ -790,13 +962,13 @@ class DataAggregatorService
         return [
             'vs_strong_defense' => [
                 'average' => round($games->avg($statType), 2),
-                'games' => $games->count()
+                'games' => $games->count(),
             ],
             'vs_weak_defense' => [
                 'average' => round($games->avg($statType), 2),
-                'games' => $games->count()
+                'games' => $games->count(),
             ],
-            'opponent_adjustment' => 1.0 // Neutral adjustment for now
+            'opponent_adjustment' => 1.0, // Neutral adjustment for now
         ];
     }
 
@@ -807,7 +979,7 @@ class DataAggregatorService
                 'direction' => 'stable',
                 'slope' => 0,
                 'strength' => 0,
-                'recent_form' => 'average'
+                'recent_form' => 'average',
             ];
         }
 
@@ -846,7 +1018,7 @@ class DataAggregatorService
             'direction' => $direction,
             'slope' => round($slope, 3),
             'strength' => round($strength, 3),
-            'recent_form' => $recentForm
+            'recent_form' => $recentForm,
         ];
     }
 
@@ -856,7 +1028,7 @@ class DataAggregatorService
             return [
                 'coefficient_of_variation' => 0,
                 'consistency_score' => 0,
-                'volatility' => 'unknown'
+                'volatility' => 'unknown',
             ];
         }
 
@@ -881,7 +1053,7 @@ class DataAggregatorService
         return [
             'coefficient_of_variation' => round($coefficientOfVariation, 3),
             'consistency_score' => round($consistencyScore, 3),
-            'volatility' => $volatility
+            'volatility' => $volatility,
         ];
     }
 
@@ -891,7 +1063,7 @@ class DataAggregatorService
             return [
                 'outliers' => [],
                 'outlier_count' => 0,
-                'outlier_percentage' => 0
+                'outlier_percentage' => 0,
             ];
         }
 
@@ -903,7 +1075,7 @@ class DataAggregatorService
         $lowerBound = $q1 - 1.5 * $iqr;
         $upperBound = $q3 + 1.5 * $iqr;
 
-        $outliers = array_filter($values, function($value) use ($lowerBound, $upperBound) {
+        $outliers = array_filter($values, function ($value) use ($lowerBound, $upperBound) {
             return $value < $lowerBound || $value > $upperBound;
         });
 
@@ -912,7 +1084,7 @@ class DataAggregatorService
             'outlier_count' => count($outliers),
             'outlier_percentage' => round((count($outliers) / count($values)) * 100, 1),
             'lower_bound' => round($lowerBound, 2),
-            'upper_bound' => round($upperBound, 2)
+            'upper_bound' => round($upperBound, 2),
         ];
     }
 
@@ -922,7 +1094,7 @@ class DataAggregatorService
             return [
                 'feature_vector' => [],
                 'target_values' => [],
-                'weights' => []
+                'weights' => [],
             ];
         }
 
@@ -937,7 +1109,7 @@ class DataAggregatorService
                 'home_away' => $this->getHomeAway($game) === 'home' ? 1 : 0,
                 'rest_days' => 1, // Would calculate from game dates
                 'game_number' => $index + 1,
-                'season_progress' => ($index + 1) / $games->count()
+                'season_progress' => ($index + 1) / $games->count(),
             ];
         }
 
@@ -952,14 +1124,16 @@ class DataAggregatorService
             'feature_vector' => $features,
             'target_values' => $statValues,
             'weights' => $weights,
-            'sample_size' => count($statValues)
+            'sample_size' => count($statValues),
         ];
     }
 
     // Helper method for percentile calculation
     private function calculatePercentile($values, $percentile): float
     {
-        if (empty($values)) return 0;
+        if (empty($values)) {
+            return 0;
+        }
 
         sort($values);
         $count = count($values);
@@ -974,10 +1148,10 @@ class DataAggregatorService
         }
 
         if (floor($index) == $index) {
-            return $values[(int)$index];
+            return $values[(int) $index];
         } else {
-            $lowerIndex = (int)floor($index);
-            $upperIndex = (int)ceil($index);
+            $lowerIndex = (int) floor($index);
+            $upperIndex = (int) ceil($index);
 
             // Ensure both indices are within bounds
             $lowerIndex = max(0, min($lowerIndex, $count - 1));
@@ -985,6 +1159,7 @@ class DataAggregatorService
 
             $lower = $values[$lowerIndex];
             $upper = $values[$upperIndex];
+
             return $lower + ($upper - $lower) * ($index - floor($index));
         }
     }
@@ -992,14 +1167,16 @@ class DataAggregatorService
     // Helper method for calculating percentiles array
     private function calculatePercentiles($values): array
     {
-        if (empty($values)) return [];
+        if (empty($values)) {
+            return [];
+        }
 
         return [
             '10th' => $this->calculatePercentile($values, 10),
             '25th' => $this->calculatePercentile($values, 25),
             '50th' => $this->calculatePercentile($values, 50),
             '75th' => $this->calculatePercentile($values, 75),
-            '90th' => $this->calculatePercentile($values, 90)
+            '90th' => $this->calculatePercentile($values, 90),
         ];
     }
 
@@ -1086,10 +1263,26 @@ class DataAggregatorService
         ];
     }
 
-    private function getEmptyTeamData(): array { return []; }
-    private function getEmptyGameData(): array { return []; }
-    private function getEmptyMatchupData(): array { return []; }
-    private function getEmptyLeagueData(): array { return []; }
+    private function getEmptyTeamData(): array
+    {
+        return [];
+    }
+
+    private function getEmptyGameData(): array
+    {
+        return [];
+    }
+
+    private function getEmptyMatchupData(): array
+    {
+        return [];
+    }
+
+    private function getEmptyLeagueData(): array
+    {
+        return [];
+    }
+
     private function getEmptyPropData(): array
     {
         return [
@@ -1102,40 +1295,40 @@ class DataAggregatorService
                 'max' => 0,
                 'count' => 0,
                 'values' => [],
-                'percentiles' => []
+                'percentiles' => [],
             ],
             'historical_performance' => [
                 'season_average' => 0,
                 'recent_average' => 0,
                 'games_played' => 0,
-                'consistency_score' => 0
+                'consistency_score' => 0,
             ],
             'situational_analysis' => [
                 'home' => ['average' => 0, 'games' => 0],
-                'away' => ['average' => 0, 'games' => 0]
+                'away' => ['average' => 0, 'games' => 0],
             ],
             'opponent_impact' => [
-                'opponent_adjustment' => 1.0
+                'opponent_adjustment' => 1.0,
             ],
             'trend_analysis' => [
                 'direction' => 'stable',
                 'slope' => 0,
-                'recent_form' => 'average'
+                'recent_form' => 'average',
             ],
             'consistency_metrics' => [
                 'coefficient_of_variation' => 0,
                 'consistency_score' => 0,
-                'volatility' => 'unknown'
+                'volatility' => 'unknown',
             ],
             'outlier_analysis' => [
                 'outliers' => [],
-                'outlier_count' => 0
+                'outlier_count' => 0,
             ],
             'prediction_inputs' => [
                 'feature_vector' => [],
                 'target_values' => [],
-                'sample_size' => 0
-            ]
+                'sample_size' => 0,
+            ],
         ];
     }
 }
