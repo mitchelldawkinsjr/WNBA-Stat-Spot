@@ -129,6 +129,21 @@
         return typeof url === 'string' && url.startsWith('http') ? url : null;
     }
 
+    function newsSource(item: Record<string, unknown>): string {
+        const label = item.source_label;
+        if (typeof label === 'string' && label.trim()) return label;
+        const source = item.source;
+        if (typeof source !== 'string' || !source) return 'News';
+        const labels: Record<string, string> = {
+            wnba_com: 'WNBA',
+            yahoo: 'Yahoo Sports',
+            fox_sports: 'FOX Sports',
+            espn: 'ESPN',
+            tank01: 'Tank01',
+        };
+        return labels[source] ?? source;
+    }
+
     function formatStat(value: number | null | undefined): string {
         return value != null ? value.toFixed(1) : '—';
     }
@@ -309,7 +324,7 @@
         <div class="ds-news-list">
             {#each newsItems.slice(0, 4) as item, i}
                 <article class="ds-news-item" class:ds-news-item--featured={i === 0}>
-                    <span class="ds-news-tag">News</span>
+                    <span class="ds-news-tag">{newsSource(item)}</span>
                     <h4 class="ds-news-title">
                         {#if newsUrl(item)}
                             <a href={newsUrl(item)} target="_blank" rel="noopener noreferrer" class="ds-news-link">{newsTitle(item)}</a>

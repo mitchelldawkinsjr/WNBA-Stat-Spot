@@ -98,6 +98,51 @@ return [
         'queue' => env('WNBA_AGENT_QUEUE', 'default'),
     ],
 
+    // External WNBA-only news feeds merged into /api/wnba/news (live, cached).
+    'news_feeds' => [
+        'enabled' => env('WNBA_NEWS_FEEDS_ENABLED', true),
+        'cache_ttl' => (int) env('WNBA_NEWS_FEEDS_CACHE_TTL', 600),
+        'timeout' => (int) env('WNBA_NEWS_FEEDS_TIMEOUT', 15),
+        'user_agent' => env(
+            'WNBA_NEWS_FEEDS_USER_AGENT',
+            'Mozilla/5.0 (compatible; WnbaStatSpot/1.0; +https://wnbastatspot.com)'
+        ),
+        'sources' => [
+            'wnba_com' => [
+                'enabled' => env('WNBA_NEWS_WNBA_COM_ENABLED', true),
+                'label' => 'WNBA',
+                'url' => env(
+                    'WNBA_NEWS_WNBA_COM_URL',
+                    'https://content-api-prod.nba.com/public/1/leagues/wnba/content'
+                ),
+                'query' => [
+                    'types' => 'article',
+                    'count' => 25,
+                ],
+            ],
+            'yahoo' => [
+                'enabled' => env('WNBA_NEWS_YAHOO_ENABLED', true),
+                'label' => 'Yahoo Sports',
+                'url' => env('WNBA_NEWS_YAHOO_URL', 'https://sports.yahoo.com/wnba/rss/'),
+            ],
+            'fox_sports' => [
+                'enabled' => env('WNBA_NEWS_FOX_ENABLED', true),
+                'label' => 'FOX Sports',
+                'url' => env(
+                    'WNBA_NEWS_FOX_URL',
+                    'https://api.foxsports.com/v2/content/optimized-rss'
+                ),
+                'query' => [
+                    'partnerKey' => env('WNBA_NEWS_FOX_PARTNER_KEY', 'MB0Wehpmuj2lUhuRhQaafhBjAJqaPU244mlTDK1i'),
+                    'size' => 30,
+                    'tags' => 'fs/wnba',
+                ],
+                // Keep only articles under the WNBA story path (feed also returns cross-sport tags).
+                'url_must_contain' => '/stories/wnba/',
+            ],
+        ],
+    ],
+
     'teams' => [
         // Provider abbreviations mapped to ESPN canonical values used in wnba_teams.
         'abbreviation_aliases' => [

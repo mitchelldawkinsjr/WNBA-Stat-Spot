@@ -14,14 +14,16 @@ class WnbaIntelApiTest extends TestCase
                 ->once()
                 ->with(10, null)
                 ->andReturn([
-                    'provider' => 'espn',
-                    'items' => [['headline' => 'League headline']],
+                    'provider' => 'aggregated',
+                    'sources' => ['espn', 'wnba_com', 'yahoo', 'fox_sports'],
+                    'items' => [['headline' => 'League headline', 'source' => 'wnba_com']],
                 ]);
         });
 
         $this->getJson('/api/wnba/news?limit=10')
             ->assertOk()
-            ->assertJsonPath('data.items.0.headline', 'League headline');
+            ->assertJsonPath('data.items.0.headline', 'League headline')
+            ->assertJsonPath('data.sources.1', 'wnba_com');
     }
 
     public function test_league_injuries_endpoint(): void
