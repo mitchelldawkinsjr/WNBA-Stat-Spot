@@ -349,48 +349,71 @@ class TeamAnalyticsService
     }
 
     /**
-     * Get comprehensive analytics for a team
+     * Get comprehensive analytics for a team (shape expected by the team profile UI).
      */
-    public function getAnalytics(int $teamId): array
+    public function getAnalytics(int|string $teamId, ?int $season = null): array
     {
+        $season = $season ?? (int) config('wnba.seasons.current_season');
+
         try {
+            $games = $this->getTeamGames($teamId, $season);
+            $seasonStat = $this->aggregates->teamSeasonStat($teamId, $season);
+            $efficiency = $this->aggregates->efficiencySnapshot($teamId, $season);
+
+            if ($games->isEmpty() && $seasonStat === null) {
+                return $this->emptyAnalyticsResponse($teamId, $season);
+            }
+
+            $basic = $games->isNotEmpty()
+                ? $this->calculateBasicTeamStats($games)
+                : $this->basicStatsFromSeasonStat($seasonStat);
+
+            $streak = $this->calculateWinLossStreak($games);
+            $homeAway = $this->normalizeHomeAwaySplits(
+                $games->isNotEmpty()
+                    ? $this->calculateHomeAwaySplits($games)
+                    : ($seasonStat?->splits ?? [])
+            );
+
             return [
                 'team_id' => $teamId,
-                'basic_stats' => $this->getBasicStats($teamId),
-                'advanced_stats' => $this->getAdvancedStats($teamId),
-                'offensive_stats' => $this->getOffensiveStats($teamId),
-                'defensive_stats' => $this->getDefensiveStats($teamId),
-                'efficiency_metrics' => $this->getEfficiencyMetrics($teamId),
-                'pace_and_tempo' => $this->getPaceAndTempo($teamId),
-                'clutch_performance' => $this->getClutchPerformance($teamId),
-                'home_away_splits' => $this->getHomeAwaySplits($teamId),
-                'monthly_performance' => $this->getMonthlyPerformance($teamId),
-                'strength_of_schedule' => $this->getStrengthOfSchedule($teamId),
-                'injury_impact' => $this->getInjuryImpact($teamId),
-                'roster_analysis' => $this->getRosterAnalysis($teamId),
-                'recent_form' => $this->getRecentForm($teamId),
-                'head_to_head' => $this->getHeadToHeadRecords($teamId),
+                'season' => $season,
+                'game_results' => $this->formatGameResults($games),
+                'season_stats' => [
+                    'wins' => (int) ($basic['wins'] ?? $seasonStat?->wins ?? 0),
+                    'losses' => (int) ($basic['losses'] ?? $seasonStat?->losses ?? 0),
+                    'win_percentage' => (float) ($basic['win_percentage'] ?? 0),
+                    'points_per_game' => $basic['points_per_game'] ?? $seasonStat?->points_for_avg,
+                    'points_allowed_per_game' => $basic['points_allowed_per_game'] ?? $seasonStat?->points_against_avg,
+                    'streak' => $streak['streak'],
+                    'streak_type' => $streak['streak_type'],
+                ],
+                'advanced_metrics' => [
+                    'offensive_rating' => $efficiency['offensive_rating'],
+                    'defensive_rating' => $efficiency['defensive_rating'],
+                    'net_rating' => $efficiency['net_rating'],
+                    'pace' => $efficiency['pace'],
+                    'true_shooting_percentage' => $seasonStat?->ts_pct !== null
+                        ? round((float) $seasonStat->ts_pct * 100, 1)
+                        : ($games->isNotEmpty() ? $this->calculateTrueShootingPercentage($games) : null),
+                ],
+                'home_away_splits' => $homeAway,
+                'generated_at' => now()->toIso8601String(),
             ];
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Failed to get team analytics', [
                 'team_id' => $teamId,
+                'season' => $season,
                 'error' => $e->getMessage(),
             ]);
 
             return [
                 'team_id' => $teamId,
+                'season' => $season,
                 'error' => 'Failed to retrieve analytics',
                 'message' => $e->getMessage(),
             ];
         }
-    }
-
-    /**
-     * Get basic team statistics
-     */
-    public function getBasicStats(int $teamId): array
-    {
-        // Implementation of getBasicStats method
     }
 
     // Private helper methods
@@ -403,7 +426,9 @@ class TeamAnalyticsService
             ->whereHas('game', function ($q) use ($season) {
                 $q->where('season', $season);
             })
-            ->with('game')
+            // Schedule import seeds 0-0 placeholder rows for future games.
+            ->whereRaw('(wnba_game_teams.team_score + wnba_game_teams.opponent_team_score) > 0')
+            ->with(['game', 'opponentTeam'])
             ->join('wnba_games', 'wnba_games.id', '=', 'wnba_game_teams.game_id')
             ->select('wnba_game_teams.*')
             ->orderByDesc('wnba_games.game_date');
@@ -413,6 +438,105 @@ class TeamAnalyticsService
         }
 
         return $query->get();
+    }
+
+    /**
+     * @return list<array{date: ?string, opponent: string, points_scored: int, points_allowed: int, result: 'W'|'L', home_away: string}>
+     */
+    private function formatGameResults(Collection $games): array
+    {
+        return $games->map(function (WnbaGameTeam $game) {
+            $opponent = $game->opponentTeam;
+
+            return [
+                'date' => $game->game?->game_date?->format('Y-m-d'),
+                'opponent' => $opponent?->team_abbreviation
+                    ?? $opponent?->team_display_name
+                    ?? (string) $game->opponent_team_id,
+                'points_scored' => (int) $game->team_score,
+                'points_allowed' => (int) $game->opponent_team_score,
+                'result' => $game->team_winner ? 'W' : 'L',
+                'home_away' => (string) ($game->home_away ?? 'home'),
+            ];
+        })->values()->all();
+    }
+
+    /**
+     * @return array{streak: int, streak_type: 'W'|'L'}
+     */
+    private function calculateWinLossStreak(Collection $games): array
+    {
+        if ($games->isEmpty()) {
+            return ['streak' => 0, 'streak_type' => 'W'];
+        }
+
+        $first = $games->first();
+        $streakType = $first->team_winner ? 'W' : 'L';
+        $streak = 0;
+
+        foreach ($games as $game) {
+            $result = $game->team_winner ? 'W' : 'L';
+            if ($result !== $streakType) {
+                break;
+            }
+            $streak++;
+        }
+
+        return ['streak' => $streak, 'streak_type' => $streakType];
+    }
+
+    /**
+     * Normalize home/away splits to the UI field names.
+     *
+     * @param  array<string, mixed>  $splits
+     * @return array{home: array{wins: int, losses: int, points_per_game: float, points_allowed_per_game: float}, away: array{wins: int, losses: int, points_per_game: float, points_allowed_per_game: float}}|null
+     */
+    private function normalizeHomeAwaySplits(array $splits): ?array
+    {
+        if ($splits === [] || (! isset($splits['home']) && ! isset($splits['away']))) {
+            return null;
+        }
+
+        return [
+            'home' => $this->normalizeSplitSide($splits['home'] ?? []),
+            'away' => $this->normalizeSplitSide($splits['away'] ?? []),
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $side
+     * @return array{wins: int, losses: int, points_per_game: float, points_allowed_per_game: float}
+     */
+    private function normalizeSplitSide(array $side): array
+    {
+        $wins = (int) ($side['wins'] ?? 0);
+        $games = (int) ($side['games'] ?? 0);
+        $losses = isset($side['losses'])
+            ? (int) $side['losses']
+            : max(0, $games - $wins);
+
+        return [
+            'wins' => $wins,
+            'losses' => $losses,
+            'points_per_game' => (float) ($side['points_per_game'] ?? $side['ppg'] ?? $side['points_for_avg'] ?? 0),
+            'points_allowed_per_game' => (float) ($side['points_allowed_per_game'] ?? $side['opp_ppg'] ?? $side['points_against_avg'] ?? 0),
+        ];
+    }
+
+    /**
+     * @return array{team_id: int|string, season: int, game_results: list<empty>, season_stats: null, advanced_metrics: null, home_away_splits: null, generated_at: string}
+     */
+    private function emptyAnalyticsResponse(int|string $teamId, int $season): array
+    {
+        return [
+            'team_id' => $teamId,
+            'season' => $season,
+            'game_results' => [],
+            'season_stats' => null,
+            'advanced_metrics' => null,
+            'home_away_splits' => null,
+            'generated_at' => now()->toIso8601String(),
+        ];
     }
 
     private function calculateBasicTeamStats(Collection $games): array

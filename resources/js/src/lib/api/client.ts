@@ -693,15 +693,49 @@ export interface PlayerAnalytics {
 }
 
 export interface TeamAnalytics {
-    team_id: number;
-    analytics: {
-        performance_metrics?: any;
-        shooting_trends?: any;
-        opponent_analysis?: any;
-        defensive_metrics?: any;
-        strength_of_schedule?: any;
-    };
-    generated_at: string;
+    team_id: number | string;
+    season?: number;
+    game_results?: Array<{
+        date: string | null;
+        opponent: string;
+        points_scored: number;
+        points_allowed: number;
+        result: 'W' | 'L';
+        home_away: string;
+    }>;
+    season_stats?: {
+        wins: number;
+        losses: number;
+        win_percentage: number;
+        points_per_game: number | null;
+        points_allowed_per_game: number | null;
+        streak: number;
+        streak_type: 'W' | 'L';
+    } | null;
+    advanced_metrics?: {
+        offensive_rating: number | null;
+        defensive_rating: number | null;
+        net_rating: number | null;
+        pace: number | null;
+        true_shooting_percentage: number | null;
+    } | null;
+    home_away_splits?: {
+        home: {
+            wins: number;
+            losses: number;
+            points_per_game: number;
+            points_allowed_per_game: number;
+        };
+        away: {
+            wins: number;
+            losses: number;
+            points_per_game: number;
+            points_allowed_per_game: number;
+        };
+    } | null;
+    generated_at?: string;
+    error?: string;
+    message?: string;
 }
 
 export interface GameAnalytics {

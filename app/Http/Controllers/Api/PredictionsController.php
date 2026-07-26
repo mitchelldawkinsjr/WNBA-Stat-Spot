@@ -187,18 +187,26 @@ class PredictionsController extends Controller
     /**
      * Get team analytics
      */
-    public function getTeamAnalytics(int $teamId)
+    public function getTeamAnalytics(Request $request, int $teamId)
     {
         try {
-            $cacheKey = "team_analytics:{$teamId}";
+            $season = (int) ($request->input('season') ?? config('wnba.seasons.current_season'));
+            $cacheKey = "team_analytics:v2:{$teamId}:{$season}";
+
+            $data = Cache::get($cacheKey);
+            if (! is_array($data)) {
+                $data = $this->teamAnalytics->getAnalytics($teamId, $season);
+
+                if (! isset($data['error'])) {
+                    Cache::put($cacheKey, $data, now()->addHours(6));
+                }
+            }
 
             return response()->json([
                 'status' => 'success',
-                'data' => Cache::remember($cacheKey, now()->addHours(24), function () use ($teamId) {
-                    return $this->teamAnalytics->getAnalytics($teamId);
-                }),
+                'data' => $data,
             ]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Failed to get team analytics', [
                 'team_id' => $teamId,
                 'error' => $e->getMessage(),
