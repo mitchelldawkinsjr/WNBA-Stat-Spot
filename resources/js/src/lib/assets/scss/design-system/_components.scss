@@ -13,9 +13,16 @@ body {
     max-width: var(--ds-container-max);
     margin: 0 auto;
     padding: 0 var(--ds-margin-mobile);
+    width: 100%;
+    box-sizing: border-box;
+    overflow-x: clip;
 
     @media (min-width: 768px) {
         padding: 0 var(--ds-margin-desktop);
+    }
+
+    .table-responsive {
+        max-width: 100%;
     }
 }
 
@@ -227,13 +234,16 @@ html[data-bs-theme='light'] {
 }
 
 .ds-score-card {
-    min-width: 280px;
+    min-width: 0;
+    width: 100%;
+    max-width: 100%;
     background: var(--ds-surface-container);
     border: 1px solid var(--ds-border-subtle);
     border-radius: var(--ds-radius-lg);
     padding: var(--ds-spacing-md);
     color: var(--ds-card-on-surface, var(--ds-on-surface));
     transition: transform 0.2s ease;
+    box-sizing: border-box;
 
     html[data-bs-theme='light'] & {
         background: var(--ds-surface-dark);
@@ -316,9 +326,17 @@ html[data-bs-theme='light'] {
     overflow-x: auto;
     padding-bottom: var(--ds-spacing-xs);
     scrollbar-width: none;
+    max-width: 100%;
+    -webkit-overflow-scrolling: touch;
 
     &::-webkit-scrollbar {
         display: none;
+    }
+
+    > .ds-score-card {
+        flex: 0 0 min(280px, calc(100vw - 48px));
+        width: min(280px, calc(100vw - 48px));
+        max-width: min(280px, calc(100vw - 48px));
     }
 }
 
@@ -356,10 +374,19 @@ html[data-bs-theme='light'] {
     background: var(--ds-surface-container-high) !important;
     border: 1px solid var(--ds-border-subtle) !important;
     border-radius: var(--ds-radius-lg) !important;
+    position: absolute !important;
+    right: 0 !important;
+    left: auto !important;
+    width: min(calc(100vw - 32px), 280px) !important;
+    max-width: calc(100vw - 32px);
+    max-height: min(70vh, 420px);
+    overflow-y: auto;
+    z-index: 1060;
 
     .dropdown-item {
         color: var(--ds-on-surface);
         font-size: 14px;
+        white-space: normal;
 
         &:hover {
             background: var(--ds-surface-dark-elevated);
@@ -373,6 +400,16 @@ html[data-bs-theme='light'] {
         font-weight: 700;
         letter-spacing: 0.08em;
         text-transform: uppercase;
+    }
+}
+
+.topbar.ds-topbar {
+    .dropdown {
+        position: relative;
+    }
+
+    .topbar-item {
+        position: relative;
     }
 }
 

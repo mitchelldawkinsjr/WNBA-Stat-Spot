@@ -129,7 +129,8 @@ html[data-menu-size='hidden'] {
 }
 
 @media (max-width: 600px) {
-    .topbar {
+    // Legacy admin topbar only — Stitch shell keeps anchored menus
+    .topbar:not(.ds-topbar) {
         .dropdown {
             position: static;
 

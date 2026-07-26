@@ -434,8 +434,14 @@
     }
     .ds-hero__stats {
         display: flex;
-        gap: var(--ds-spacing-xl);
+        flex-wrap: wrap;
+        gap: var(--ds-spacing-md);
         margin-top: var(--ds-spacing-md);
+    }
+    @media (min-width: 480px) {
+        .ds-hero__stats {
+            gap: var(--ds-spacing-xl);
+        }
     }
     .ds-hero__stats > div { display: flex; flex-direction: column; gap: 4px; }
     .ds-hero__stat {
@@ -490,7 +496,7 @@
     .ds-leader-avatar--placeholder { display: inline-block; }
     .ds-accuracy-grid {
         display: grid;
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
         gap: var(--ds-spacing-sm);
     }
     .ds-accuracy-grid .ds-score-card {

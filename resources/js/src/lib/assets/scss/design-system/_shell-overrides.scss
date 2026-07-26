@@ -18,20 +18,17 @@
         transition: transform 0.25s ease;
         box-shadow: none;
         z-index: 1020;
-
-        @media (min-width: 1141px) {
+        // Match Bootstrap lg / hamburger (d-lg-none): drawer only below 992px
+        @media (min-width: 992px) {
             display: none !important;
         }
-    }
-
-    &.sidebar-open .main-nav {
-        transform: translateX(0);
     }
 
     .footer {
         margin-top: var(--ds-spacing-lg);
         padding: var(--ds-spacing-md) 0;
         font-size: 12px;
+        position: relative;
     }
 }
 
@@ -73,15 +70,23 @@ html.sidebar-enable .wrapper.ds-shell .main-nav {
 // Mobile bottom nav spacing
 @media (max-width: 767.98px) {
     .wrapper.ds-shell .page-content {
-        padding-bottom: calc(72px + var(--ds-spacing-md));
+        padding-bottom: calc(var(--ds-bottom-nav-height, 64px) + env(safe-area-inset-bottom, 0px) + var(--ds-spacing-md));
     }
+}
+
+// Keep shell content from forcing horizontal scroll on phones
+.wrapper.ds-shell {
+    max-width: 100%;
+    overflow-x: clip;
 }
 
 // Stitch segmented toggles (prediction-engine / league-standings pattern)
 .wrapper.ds-shell {
     .btn-group {
         display: flex;
+        flex-wrap: wrap;
         width: 100%;
+        max-width: 100%;
         padding: 4px;
         gap: 4px;
         background: var(--ds-surface-container);
@@ -94,6 +99,7 @@ html.sidebar-enable .wrapper.ds-shell .main-nav {
         > .btn:last-child,
         > .btn:not(:last-child):not(.dropdown-toggle) {
             flex: 1 1 0;
+            min-width: 0;
             margin: 0;
             border: none !important;
             border-radius: var(--ds-radius) !important;
@@ -102,9 +108,16 @@ html.sidebar-enable .wrapper.ds-shell .main-nav {
             letter-spacing: 0.06em;
             text-transform: uppercase;
             line-height: 1.2;
-            padding: 8px 16px;
+            padding: 8px 12px;
             box-shadow: none !important;
-            white-space: nowrap;
+            white-space: normal;
+            text-align: center;
+
+            @media (max-width: 479.98px) {
+                font-size: 11px;
+                padding: 8px;
+                letter-spacing: 0.04em;
+            }
         }
 
         > .btn-primary,

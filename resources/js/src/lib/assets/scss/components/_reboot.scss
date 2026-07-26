@@ -2,8 +2,13 @@
 // _reboot.scss
 //
 
+html {
+    overflow-x: clip;
+}
+
 body {
-    overflow-x: hidden;
+    overflow-x: clip;
+    max-width: 100%;
 }
 
 .row > * {

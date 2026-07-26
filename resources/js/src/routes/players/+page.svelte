@@ -145,7 +145,7 @@
     }
     .ds-player-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+        grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr));
         gap: var(--ds-spacing-md);
     }
     .ds-player-card {

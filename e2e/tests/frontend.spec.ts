@@ -68,16 +68,53 @@ test.describe('Navigation flow', () => {
     await expect(page).toHaveURL(/\/players/);
   });
 
-  test('mobile menu toggle opens sidebar', async ({ page }) => {
+  test('mobile menu toggle opens and closes sidebar', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await waitForShell(page);
-    await page.getByRole('button', { name: 'Open menu' }).click();
+
+    const openButton = page.getByRole('button', { name: 'Open menu' });
+    await openButton.click();
+    await expect(page.locator('html')).toHaveClass(/sidebar-enable/);
     await expect(page.locator('.main-nav')).toBeVisible();
+    await expect(page.locator('[data-ds-sidebar-backdrop]')).toBeVisible();
+
+    await page.getByRole('button', { name: 'Close menu' }).click();
+    await expect(page.locator('html')).not.toHaveClass(/sidebar-enable/);
+    await expect(page.locator('[data-ds-sidebar-backdrop]')).toHaveCount(0);
   });
 
   test('mobile bottom nav is visible', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await waitForShell(page);
     await expect(page.locator('.ds-bottom-nav')).toBeVisible();
+  });
+
+  test('mobile viewport has no horizontal page overflow', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await waitForShell(page);
+
+    const metrics = await page.evaluate(() => ({
+      scrollWidth: document.documentElement.scrollWidth,
+      clientWidth: document.documentElement.clientWidth,
+      bodyScrollWidth: document.body.scrollWidth,
+    }));
+
+    expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth + 1);
+    expect(metrics.bodyScrollWidth).toBeLessThanOrEqual(metrics.clientWidth + 1);
+  });
+
+  test('more menu stays anchored on small screens', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await waitForShell(page);
+    await page.getByRole('button', { name: 'More navigation' }).click();
+
+    const menu = page.locator('.ds-more-menu');
+    await expect(menu).toBeVisible();
+
+    const box = await menu.boundingBox();
+    expect(box).not.toBeNull();
+    if (!box) return;
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(390 + 1);
   });
 });
