@@ -10,6 +10,10 @@ pipeline: `app/Services/WNBA/Agents/AggregateComputationService.php`, queued
 via `app/Jobs/RunAnalyticsAgent.php`, triggered by the nightly data-agent chain,
 `app:wnba-agent analytics`, or `POST /api/wnba/data/agent-run`.
 
+Consumers read via `app/Services/WNBA/Analytics/AggregateStatsReader.php` (or
+models directly). Missing aggregate rows must surface as `null` / empty — never
+fake league-average placeholders (e.g. DRtg `100`).
+
 ## Output tables (written ONLY by this agent)
 
 - `wnba_player_season_stats` — totals, per-game averages, shooting
@@ -20,10 +24,17 @@ via `app/Jobs/RunAnalyticsAgent.php`, triggered by the nightly data-agent chain,
   points per shot, decimal minutes
 - `wnba_matchup_summaries` — head-to-head per season: wins, avg total, avg
   margin, avg pace, recent meetings
+- `wnba_player_vs_defense` — player splits by opponent team DRtg bucket
+  (`elite` &lt; 95, `good` 95–105, `average` 105–110, `poor` ≥ 110)
+- `wnba_player_performance_trends` — windows `l5` / `l10` / `season`: avgs +
+  linear slopes for PTS/REB/AST
+- `wnba_team_performance_trends` — windows `l5` / `l10` / `season`: W-L,
+  PPG for/against, pace, ORtg/DRtg over the window
 
-API controllers read these tables (see `PlayerController::leaders`); they fall
-back to on-the-fly queries only when the aggregate table is empty. New derived
-stats belong in these tables (or a new agent-owned table), not in controllers.
+API controllers read these tables (see `PlayerController::leaders`, player
+analytics `vs_defense` / `performance_trends`, matchup + game preview). New
+derived stats belong in these tables (or a new agent-owned table), not in
+controllers.
 
 ## Formula conventions (formula_version `v1-box-estimate`)
 
@@ -35,6 +46,9 @@ stats belong in these tables (or a new agent-owned table), not in controllers.
 - Usage% (box estimate): `(FGA + 0.44·FTA + TOV)·(TeamMin/5) / (MP·(TmFGA + 0.44·TmFTA + TmTOV))`.
 - Game Score: Hollinger formula.
 - Ratings: points (allowed) × 100 / possessions; net = off − def.
+  Team season DRtg uses **opponent** possessions.
+- Matchup difficulty (read-time lookup only): compare opponent team DRtg to
+  league median (±3 band) → `favorable` | `neutral` | `difficult`.
 - Every aggregate row records `formula_version`, `computed_at`, and
   `agent_run_id`. If you change a formula, bump the version string and
   recompute — never mix versions within a table silently.
@@ -47,13 +61,22 @@ stats belong in these tables (or a new agent-owned table), not in controllers.
 - Players/teams with open identity conflicts in `wnba_data_conflicts`
   (`requires_review = true`, unresolved) are skipped so a mis-mapped entity
   cannot poison aggregates; the skip is counted in the run summary.
-- Adjusted plus-minus / RAPM-style metrics are out of scope for v1 (needs
-  stint data from PBP); raw plus-minus comes straight from box scores.
+- `computePlayerVsDefense` runs after `computeTeamSeasonStats` so opponent
+  DRtg buckets are available; games vs teams without a season row are skipped.
+- Adjusted plus-minus / RAPM-style metrics and defense-vs-position are out of
+  scope for v1 (needs PBP stints / richer roles); raw plus-minus comes straight
+  from box scores.
 
 ## Run contract
 
-Runs record counters (`player_season_stats_computed`, etc.) to
-`wnba_agent_runs` via `AgentRunReporter`. Recomputation is idempotent
-(`updateOrCreate` on natural keys) — recomputing a season with unchanged
-inputs yields identical rows. After a successful run the response cache is
-cleared so the API serves fresh aggregates.
+Runs record counters (`player_season_stats_computed`,
+`player_vs_defense_computed`, `player_performance_trends_computed`,
+`team_performance_trends_computed`, etc.) to `wnba_agent_runs` via
+`AgentRunReporter`. Recomputation is idempotent (`updateOrCreate` on natural
+keys) — recomputing a season with unchanged inputs yields identical rows.
+After a successful run the response cache is cleared so the API serves fresh
+aggregates.
+
+**After deploy:** run `php artisan app:wnba-agent analytics` (or
+`POST /api/wnba/data/agent-run`) for the current season so the three new
+tables are populated before traffic depends on them.

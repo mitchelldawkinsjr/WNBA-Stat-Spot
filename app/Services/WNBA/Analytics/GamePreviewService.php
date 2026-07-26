@@ -26,6 +26,7 @@ class GamePreviewService
         private TeamAnalyticsService $teamAnalytics,
         private GameScheduleService $schedule,
         private PredictionAccuracyService $predictionAccuracy,
+        private AggregateStatsReader $aggregates,
     ) {}
 
     /**
@@ -33,7 +34,7 @@ class GamePreviewService
      */
     public function buildPreview(string $externalGameId, int $season): array
     {
-        $cacheKey = "game_preview_v3_{$externalGameId}_{$season}";
+        $cacheKey = "game_preview_v4_{$externalGameId}_{$season}";
 
         $preview = Cache::remember($cacheKey, self::CACHE_TTL, function () use ($externalGameId, $season) {
             return $this->generatePreview($externalGameId, $season);
@@ -519,78 +520,40 @@ class GamePreviewService
      */
     private function buildHeadToHead(int $homeTeamId, int $awayTeamId, int $season): array
     {
-        $homeKeys = TeamForeignKeyResolver::foreignKeysForReference($homeTeamId);
-        $awayKeys = TeamForeignKeyResolver::foreignKeysForReference($awayTeamId);
+        $summary = $this->aggregates->matchupSummary($homeTeamId, $awayTeamId, $season);
 
-        // Match predictions and H2H edges must use the current season only —
-        // prior-year meetings skew form/record and projected scores.
-        $games = WnbaGame::query()
-            ->whereHas('gameTeams', fn ($q) => $q->whereIn('team_id', $homeKeys))
-            ->whereHas('gameTeams', fn ($q) => $q->whereIn('team_id', $awayKeys))
-            ->where('season', $season)
-            ->with(['gameTeams.team'])
-            ->orderByDesc('game_date')
-            ->limit(10)
-            ->get();
-
-        if ($games->isEmpty()) {
+        if ($summary === null) {
             return [
                 'total_games' => 0,
                 'home_team_wins' => 0,
                 'away_team_wins' => 0,
                 'avg_total_points' => 0,
                 'avg_margin' => 0,
+                'avg_pace' => null,
                 'recent_meetings' => [],
             ];
         }
 
-        $homeWins = 0;
-        $awayWins = 0;
-        $totalPoints = 0;
-        $margins = [];
-        $meetings = [];
-
-        foreach ($games as $game) {
-            $homeLine = $game->gameTeams->first(
-                fn (WnbaGameTeam $row) => in_array((string) $row->team_id, $homeKeys, true)
-            );
-            $awayLine = $game->gameTeams->first(
-                fn (WnbaGameTeam $row) => in_array((string) $row->team_id, $awayKeys, true)
-            );
-
-            if (! $homeLine || ! $awayLine) {
-                continue;
-            }
-
-            if ($homeLine->team_winner) {
-                $homeWins++;
-            } else {
-                $awayWins++;
-            }
-
-            $gameTotal = (int) $homeLine->team_score + (int) $awayLine->team_score;
-            $totalPoints += $gameTotal;
-            $margins[] = (int) $homeLine->team_score - (int) $awayLine->team_score;
-
-            $meetings[] = [
-                'date' => $this->formatGameDate($game->game_date, 'M j, Y'),
-                'season' => $game->season,
-                'home_score' => (int) $homeLine->team_score,
-                'away_score' => (int) $awayLine->team_score,
-                'home_away' => $homeLine->home_away === 'home' ? 'home' : 'away',
-                'winner' => $homeLine->team_winner ? 'home' : 'away',
-            ];
-        }
-
-        $gameCount = count($meetings);
+        $homeKeys = TeamForeignKeyResolver::foreignKeysForReference($homeTeamId);
+        $homeIsA = in_array((string) $summary->team_a_id, $homeKeys, true);
 
         return [
-            'total_games' => $gameCount,
-            'home_team_wins' => $homeWins,
-            'away_team_wins' => $awayWins,
-            'avg_total_points' => $gameCount > 0 ? round($totalPoints / $gameCount, 1) : 0,
-            'avg_margin' => $gameCount > 0 ? round(array_sum($margins) / $gameCount, 1) : 0,
-            'recent_meetings' => $meetings,
+            'total_games' => $summary->games_played,
+            'home_team_wins' => $homeIsA ? $summary->team_a_wins : $summary->team_b_wins,
+            'away_team_wins' => $homeIsA ? $summary->team_b_wins : $summary->team_a_wins,
+            'avg_total_points' => $summary->avg_total_points ?? 0,
+            'avg_margin' => $summary->avg_margin ?? 0,
+            'avg_pace' => $summary->avg_pace,
+            'recent_meetings' => collect($summary->recent_meetings ?? [])->map(function (array $meeting) {
+                return [
+                    'date' => $this->formatGameDate($meeting['date'] ?? null, 'M j, Y'),
+                    'season' => null,
+                    'home_score' => (int) ($meeting['home_score'] ?? 0),
+                    'away_score' => (int) ($meeting['away_score'] ?? 0),
+                    'home_away' => 'home',
+                    'winner' => ((int) ($meeting['home_score'] ?? 0) > (int) ($meeting['away_score'] ?? 0)) ? 'home' : 'away',
+                ];
+            })->all(),
         ];
     }
 
@@ -625,17 +588,46 @@ class GamePreviewService
         $ratingEdge = ($homeNet - $awayNet) + self::HOME_COURT_RATING_BOOST + $contextBoost + $formBoost + $h2hBoost;
         $projectedSpread = round($ratingEdge * 0.35, 1);
 
-        $homePace = (float) ($homeTeam['pace']['pace'] ?? 75);
-        $awayPace = (float) ($awayTeam['pace']['pace'] ?? 75);
-        $avgPace = ($homePace + $awayPace) / 2;
+        $homePace = $homeTeam['pace']['pace'] ?? null;
+        $awayPace = $awayTeam['pace']['pace'] ?? null;
+        $avgPace = ($homePace !== null && $awayPace !== null)
+            ? ((float) $homePace + (float) $awayPace) / 2
+            : (($homePace ?? $awayPace) !== null ? (float) ($homePace ?? $awayPace) : null);
 
-        $homeOff = (float) ($homeEff['offensive_rating'] ?? 100);
-        $homeDef = (float) ($homeEff['defensive_rating'] ?? 100);
-        $awayOff = (float) ($awayEff['offensive_rating'] ?? 100);
-        $awayDef = (float) ($awayEff['defensive_rating'] ?? 100);
+        $homeOff = $homeEff['offensive_rating'] ?? null;
+        $homeDef = $homeEff['defensive_rating'] ?? null;
+        $awayOff = $awayEff['offensive_rating'] ?? null;
+        $awayDef = $awayEff['defensive_rating'] ?? null;
 
-        $projectedHomeScore = round((($homeOff + $awayDef) / 2) * ($avgPace / 100), 1);
-        $projectedAwayScore = round((($awayOff + $homeDef) / 2) * ($avgPace / 100), 1);
+        if ($homeOff === null || $homeDef === null || $awayOff === null || $awayDef === null || $avgPace === null) {
+            $winProbHome = round(100 / (1 + exp(-$projectedSpread / 5.5)), 1);
+
+            return [
+                'predicted_winner' => $ratingEdge >= 0 ? 'home' : 'away',
+                'predicted_winner_label' => $ratingEdge >= 0
+                    ? ($homeTeam['abbreviation'] ?? 'Home')
+                    : ($awayTeam['abbreviation'] ?? 'Away'),
+                'win_probability' => [
+                    'home' => $winProbHome,
+                    'away' => round(100 - $winProbHome, 1),
+                ],
+                'projected_score' => [
+                    'home' => null,
+                    'away' => null,
+                    'total' => null,
+                ],
+                'projected_spread' => $projectedSpread,
+                'projected_pace' => $avgPace !== null ? round($avgPace, 1) : null,
+                'confidence' => 'low',
+                'factors' => [
+                    ['factor' => 'Net rating edge', 'edge' => round($homeNet - $awayNet, 1), 'favors' => $this->favorsSide($homeNet - $awayNet)],
+                    ['factor' => 'Home court', 'edge' => self::HOME_COURT_RATING_BOOST, 'favors' => 'home'],
+                ],
+            ];
+        }
+
+        $projectedHomeScore = round((((float) $homeOff + (float) $awayDef) / 2) * ($avgPace / 100), 1);
+        $projectedAwayScore = round((((float) $awayOff + (float) $homeDef) / 2) * ($avgPace / 100), 1);
 
         // Adjust scores to align with spread while keeping total reasonable
         $midpoint = ($projectedHomeScore + $projectedAwayScore) / 2;

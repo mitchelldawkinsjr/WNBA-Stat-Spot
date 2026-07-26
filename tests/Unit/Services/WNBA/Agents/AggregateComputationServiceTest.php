@@ -8,8 +8,11 @@ use App\Models\WnbaMatchupSummary;
 use App\Models\WnbaPlayer;
 use App\Models\WnbaPlayerGame;
 use App\Models\WnbaPlayerGameAdvanced;
+use App\Models\WnbaPlayerPerformanceTrend;
 use App\Models\WnbaPlayerSeasonStat;
+use App\Models\WnbaPlayerVsDefense;
 use App\Models\WnbaTeam;
+use App\Models\WnbaTeamPerformanceTrend;
 use App\Models\WnbaTeamSeasonStat;
 use App\Services\WNBA\Agents\AggregateComputationService;
 use App\Services\WNBA\Agents\BoxScoreValidator;
@@ -238,5 +241,50 @@ class AggregateComputationServiceTest extends TestCase
         $this->assertSame($firstPoints, WnbaPlayerSeasonStat::first()->points_total);
         $this->assertSame(2, WnbaTeamSeasonStat::count());
         $this->assertSame(1, WnbaMatchupSummary::count());
+        $this->assertGreaterThan(0, WnbaPlayerVsDefense::count());
+        $this->assertGreaterThan(0, WnbaPlayerPerformanceTrend::count());
+        $this->assertGreaterThan(0, WnbaTeamPerformanceTrend::count());
+    }
+
+    public function test_player_vs_defense_buckets_by_opponent_drtg(): void
+    {
+        $this->service->computeTeamSeasonStats(self::SEASON);
+        $this->service->computePlayerGameAdvanced(self::SEASON);
+        $this->service->computePlayerVsDefense(self::SEASON);
+
+        // Opponent team 9 allows 170 pts on 147.6 poss → DRtg ≈ 115.18 → poor.
+        $row = WnbaPlayerVsDefense::where('defense_bucket', 'poor')->first();
+        $this->assertNotNull($row);
+        $this->assertSame(2, $row->games);
+        $this->assertSame(16.0, (float) $row->points_avg);
+        $this->assertSame(AggregateComputationService::FORMULA_VERSION, $row->formula_version);
+    }
+
+    public function test_player_performance_trends_windows_and_slope(): void
+    {
+        $this->service->computePlayerPerformanceTrends(self::SEASON);
+
+        $l5 = WnbaPlayerPerformanceTrend::where('window', 'l5')->first();
+        $season = WnbaPlayerPerformanceTrend::where('window', 'season')->first();
+
+        $this->assertNotNull($l5);
+        $this->assertNotNull($season);
+        $this->assertSame(2, $l5->games);
+        $this->assertSame(16.0, (float) $season->points_avg);
+        // Points series [22, 10] → slope -12.
+        $this->assertSame(-12.0, (float) $season->points_slope);
+    }
+
+    public function test_team_performance_trends(): void
+    {
+        $this->service->computeTeamPerformanceTrends(self::SEASON);
+
+        $trend = WnbaTeamPerformanceTrend::where('team_id', '5')->where('window', 'season')->first();
+        $this->assertNotNull($trend);
+        $this->assertSame(2, $trend->games);
+        $this->assertSame(2, $trend->wins);
+        $this->assertSame(85.0, (float) $trend->points_for_avg);
+        $this->assertNotNull($trend->offensive_rating);
+        $this->assertNotNull($trend->defensive_rating);
     }
 }

@@ -14,7 +14,8 @@ use Illuminate\Support\Facades\Log;
 class PlayerAnalyticsService
 {
     public function __construct(
-        private PlayerGamelogService $gamelogService
+        private PlayerGamelogService $gamelogService,
+        private AggregateStatsReader $aggregates,
     ) {}
     /**
      * Get player's recent performance trend (last N games)
@@ -157,6 +158,52 @@ class PlayerAnalyticsService
     }
 
     /**
+     * Analyze performance vs different defensive ratings (precomputed buckets).
+     */
+    public function analyzeVsDefensiveRatings(int $playerId, ?int $season = null): array
+    {
+        $season = $season ?? (int) config('wnba.seasons.current_season');
+        $buckets = $this->aggregates->playerVsDefense($playerId, $season);
+
+        $labels = [
+            'elite' => 'Elite Defense (< 95)',
+            'good' => 'Good Defense (95-105)',
+            'average' => 'Average Defense (105-110)',
+            'poor' => 'Poor Defense (>= 110)',
+        ];
+
+        $analysis = [];
+        foreach ($labels as $key => $label) {
+            if (! isset($buckets[$key])) {
+                continue;
+            }
+            $row = $buckets[$key];
+            $analysis[$key] = [
+                'label' => $label,
+                'games_count' => $row['games'],
+                'stats' => [
+                    'points' => $row['points_avg'],
+                    'rebounds' => $row['rebounds_avg'],
+                    'assists' => $row['assists_avg'],
+                    'minutes' => $row['minutes_avg'],
+                    'fg_pct' => $row['fg_pct'],
+                    'three_pct' => $row['three_pct'],
+                    'ts_pct' => $row['ts_pct'],
+                    'usage_pct' => $row['usage_pct_avg'],
+                ],
+                'performance_rating' => round(
+                    (float) ($row['points_avg'] ?? 0)
+                    + (float) ($row['rebounds_avg'] ?? 0)
+                    + (float) ($row['assists_avg'] ?? 0),
+                    1
+                ),
+            ];
+        }
+
+        return $analysis;
+    }
+
+    /**
      * Calculate usage rate and efficiency metrics
      */
     public function calculateAdvancedMetrics(int $playerId, ?int $gameId = null): array
@@ -195,48 +242,6 @@ class PlayerAnalyticsService
             'player_efficiency_rating' => round(collect($metrics)->avg('player_efficiency_rating'), 2),
             'games_analyzed' => $playerGames->count(),
         ];
-    }
-
-    /**
-     * Analyze performance vs different defensive ratings
-     */
-    public function analyzeVsDefensiveRatings(int $playerId): array
-    {
-        $games = WnbaPlayerGame::with(['game.gameTeams.team'])
-            ->where('player_id', $playerId)
-            ->get();
-
-        $ratingBuckets = [
-            'elite' => ['min' => 0, 'max' => 95, 'games' => [], 'label' => 'Elite Defense (< 95)'],
-            'good' => ['min' => 95, 'max' => 105, 'games' => [], 'label' => 'Good Defense (95-105)'],
-            'average' => ['min' => 105, 'max' => 115, 'games' => [], 'label' => 'Average Defense (105-115)'],
-            'poor' => ['min' => 115, 'max' => 999, 'games' => [], 'label' => 'Poor Defense (> 115)'],
-        ];
-
-        foreach ($games as $game) {
-            $opponentRating = $this->getOpponentDefensiveRating($game);
-
-            foreach ($ratingBuckets as $key => &$bucket) {
-                if ($opponentRating >= $bucket['min'] && $opponentRating < $bucket['max']) {
-                    $bucket['games'][] = $game;
-                    break;
-                }
-            }
-        }
-
-        $analysis = [];
-        foreach ($ratingBuckets as $key => $bucket) {
-            if (! empty($bucket['games'])) {
-                $analysis[$key] = [
-                    'label' => $bucket['label'],
-                    'games_count' => count($bucket['games']),
-                    'stats' => $this->calculateAverageStats(collect($bucket['games'])),
-                    'performance_rating' => $this->calculatePerformanceRating(collect($bucket['games'])),
-                ];
-            }
-        }
-
-        return $analysis;
     }
 
     /**
@@ -445,7 +450,7 @@ class PlayerAnalyticsService
                 'home_away' => 'home',
                 'rest_days' => 2,
                 'pace_factor' => 1.0,
-                'opponent_defense_rating' => 100.0,
+                'opponent_defense_rating' => null,
                 'projected_minutes' => 30.0,
             ];
         }
@@ -462,7 +467,10 @@ class PlayerAnalyticsService
             'home_away' => $this->getHomeAway($game, $playerTeam),
             'rest_days' => $this->calculateRestDays($playerId, $game->game_date),
             'pace_factor' => $this->calculatePaceFactor($playerTeam, $opponentTeam->team_id ?? null),
-            'opponent_defense_rating' => $this->getTeamDefensiveRating($opponentTeam->team_id ?? null),
+            'opponent_defense_rating' => $this->getTeamDefensiveRating(
+                $opponentTeam->team_id ?? null,
+                (int) ($game->season ?? config('wnba.seasons.current_season'))
+            ),
             'projected_minutes' => $this->projectMinutes($playerId, $gameId),
         ];
     }
@@ -748,10 +756,15 @@ class PlayerAnalyticsService
         return $differential;
     }
 
-    private function getTeamDefensiveRating($teamId): float
+    private function getTeamDefensiveRating($teamId, ?int $season = null): ?float
     {
-        // Implementation of getTeamDefensiveRating method
-        return 100.0; // Placeholder
+        if ($teamId === null || $teamId === '') {
+            return null;
+        }
+
+        $season = $season ?? (int) config('wnba.seasons.current_season');
+
+        return $this->aggregates->defensiveRating($teamId, $season);
     }
 
     private function getEmptyAdvancedMetrics(): array
@@ -804,10 +817,15 @@ class PlayerAnalyticsService
         return max(0, $positiveActions - $negativeActions);
     }
 
-    private function getOpponentDefensiveRating($game): float
+    private function getOpponentDefensiveRating($game): ?float
     {
-        // Get opponent team's defensive rating
-        return 100; // Placeholder
+        $playerTeamId = $game->team_id ?? null;
+        $opponent = $game->game?->gameTeams?->first(
+            fn ($row) => (string) $row->team_id !== (string) $playerTeamId
+        );
+        $season = (int) ($game->game?->season ?? config('wnba.seasons.current_season'));
+
+        return $this->getTeamDefensiveRating($opponent?->team_id, $season);
     }
 
     private function calculatePerformanceRating($games): float
@@ -1002,10 +1020,12 @@ class PlayerAnalyticsService
                 'games_analyzed' => $recent->count(),
                 'date_range' => $this->dateRangeFromDbGames($recent),
                 'averages' => $this->calculateAverageStats($recent),
-                'trends' => $this->calculateTrends($recent),
+                'trends' => $this->aggregates->playerTrends($dbId, $season),
                 'consistency' => $this->calculateConsistency($recent),
                 'game_log' => $this->formatGameLog($recent),
             ],
+            'vs_defense' => $this->analyzeVsDefensiveRatings($dbId, $season),
+            'performance_trends' => $this->aggregates->playerTrends($dbId, $season),
             'opponent_adjusted_stats' => $this->getOpponentAdjustedStats($dbId, 1),
             'home_away_performance' => $this->getHomeAwayPerformanceFromCollection($games),
             'clutch_performance' => $this->getClutchPerformance($dbId),
@@ -1039,6 +1059,8 @@ class PlayerAnalyticsService
                 'consistency' => $this->calculateConsistency($recent),
                 'game_log' => $this->formatLiveGameLog($recent->all()),
             ],
+            'vs_defense' => is_int($playerId) ? $this->aggregates->playerVsDefense((int) $playerId, $season) : [],
+            'performance_trends' => is_int($playerId) ? $this->aggregates->playerTrends((int) $playerId, $season) : [],
             'opponent_adjusted_stats' => $this->getEmptyOpponentAdjustedStats(),
             'home_away_performance' => $this->getHomeAwayPerformanceFromLiveRows($rows),
             'clutch_performance' => $this->getEmptyClutchPerformance(),
@@ -1059,6 +1081,8 @@ class PlayerAnalyticsService
             'season' => $season,
             'source' => 'none',
             'recent_form' => $this->getEmptyFormData(),
+            'vs_defense' => [],
+            'performance_trends' => [],
             'opponent_adjusted_stats' => $this->getEmptyOpponentAdjustedStats(),
             'home_away_performance' => $this->getEmptyHomeAwayPerformance(),
             'clutch_performance' => $this->getEmptyClutchPerformance(),
@@ -1259,7 +1283,7 @@ class PlayerAnalyticsService
             'vs_opponent' => ['games' => 0, 'stats' => []],
             'vs_others' => ['games' => 0, 'stats' => []],
             'differential' => [],
-            'opponent_defensive_rating' => 100.0,
+            'opponent_defensive_rating' => null,
         ];
     }
 
@@ -1283,7 +1307,7 @@ class PlayerAnalyticsService
             'home_away' => 'home',
             'rest_days' => 2,
             'pace_factor' => 1.0,
-            'opponent_defense_rating' => 100.0,
+            'opponent_defense_rating' => null,
             'projected_minutes' => 30.0,
         ];
     }

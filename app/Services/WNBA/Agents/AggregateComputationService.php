@@ -7,14 +7,18 @@ use App\Models\WnbaGameTeam;
 use App\Models\WnbaMatchupSummary;
 use App\Models\WnbaPlayerGame;
 use App\Models\WnbaPlayerGameAdvanced;
+use App\Models\WnbaPlayerPerformanceTrend;
 use App\Models\WnbaPlayerSeasonStat;
+use App\Models\WnbaPlayerVsDefense;
+use App\Models\WnbaTeamPerformanceTrend;
 use App\Models\WnbaTeamSeasonStat;
 use Illuminate\Support\Collection;
 
 /**
  * Analytics Agent core: precomputes season aggregates, per-game advanced
- * stats, and matchup summaries from validated canonical tables. Only this
- * service writes the aggregate tables; API controllers read them.
+ * stats, matchup summaries, vs-defense splits, and performance trends from
+ * validated canonical tables. Only this service writes the aggregate tables;
+ * API controllers read them.
  *
  * Conventions: percentages are decimals 0..1, safe division returns null,
  * possessions are box-score estimates (FGA + 0.44*FTA - ORB + TOV).
@@ -24,6 +28,21 @@ class AggregateComputationService
     public const FORMULA_VERSION = 'v1-box-estimate';
 
     private const TEAM_MINUTES_REGULATION = 200; // 5 players x 40 minutes
+
+    /** Opponent team DRtg buckets (lower DRtg = better defense). */
+    public const DEFENSE_BUCKET_ELITE = 'elite';
+
+    public const DEFENSE_BUCKET_GOOD = 'good';
+
+    public const DEFENSE_BUCKET_AVERAGE = 'average';
+
+    public const DEFENSE_BUCKET_POOR = 'poor';
+
+    private const TREND_WINDOWS = [
+        'l5' => 5,
+        'l10' => 10,
+        'season' => null,
+    ];
 
     private ?AgentRunReporter $reporter = null;
 
@@ -41,6 +60,10 @@ class AggregateComputationService
         $this->computePlayerGameAdvanced($season);
         $this->computePlayerSeasonStats($season);
         $this->computeTeamSeasonStats($season);
+        // Vs-defense needs team season DRtg rows from the step above.
+        $this->computePlayerVsDefense($season);
+        $this->computePlayerPerformanceTrends($season);
+        $this->computeTeamPerformanceTrends($season);
         $this->computeMatchupSummaries($season);
     }
 
@@ -358,6 +381,281 @@ class AggregateComputationService
         return $computed;
     }
 
+    /**
+     * Split each player's season games by opponent team DRtg bucket.
+     */
+    public function computePlayerVsDefense(int $season): int
+    {
+        $flaggedPlayers = $this->unresolvedEntityKeys('player');
+        $teamDrtg = WnbaTeamSeasonStat::query()
+            ->where('season', $season)
+            ->whereNotNull('defensive_rating')
+            ->pluck('defensive_rating', 'team_id')
+            ->map(fn ($v) => (float) $v)
+            ->all();
+
+        $usageByPlayerGame = WnbaPlayerGameAdvanced::query()
+            ->whereIn('player_game_id', function ($query) use ($season) {
+                $query->select('wnba_player_games.id')
+                    ->from('wnba_player_games')
+                    ->join('wnba_games as g', 'g.id', '=', 'wnba_player_games.game_id')
+                    ->where('g.season', $season);
+            })
+            ->pluck('usage_pct', 'player_game_id')
+            ->all();
+
+        $computed = 0;
+
+        $playerIds = WnbaPlayerGame::query()
+            ->join('wnba_games as g', 'g.id', '=', 'wnba_player_games.game_id')
+            ->where('g.season', $season)
+            ->distinct()
+            ->pluck('wnba_player_games.player_id');
+
+        foreach ($playerIds as $playerId) {
+            if (in_array((string) $playerId, $flaggedPlayers, true)) {
+                $this->reporter?->increment('entities_skipped_identity_conflict');
+
+                continue;
+            }
+
+            $games = WnbaPlayerGame::query()
+                ->join('wnba_games as g', 'g.id', '=', 'wnba_player_games.game_id')
+                ->join('wnba_game_teams as gt', function ($join) {
+                    $join->on('gt.game_id', '=', 'wnba_player_games.game_id')
+                        ->on('gt.team_id', '=', 'wnba_player_games.team_id');
+                })
+                ->where('wnba_player_games.player_id', $playerId)
+                ->where('g.season', $season)
+                ->where('wnba_player_games.did_not_play', false)
+                ->where(function ($query) {
+                    $query->whereNull('wnba_player_games.validation_status')
+                        ->orWhere('wnba_player_games.validation_status', '!=', BoxScoreValidator::STATUS_INVALID);
+                })
+                ->select('wnba_player_games.*', 'gt.opponent_team_id')
+                ->get();
+
+            $byBucket = [];
+            foreach ($games as $pg) {
+                $oppId = (string) $pg->opponent_team_id;
+                if (! isset($teamDrtg[$oppId])) {
+                    continue;
+                }
+                $bucket = self::defenseBucket($teamDrtg[$oppId]);
+                $byBucket[$bucket][] = $pg;
+            }
+
+            foreach ($byBucket as $bucket => $bucketGames) {
+                $collection = collect($bucketGames);
+                $gp = $collection->count();
+                $minutesTotal = $collection->sum(fn ($pg) => $this->validator->parseMinutes($pg->minutes) ?? 0.0);
+                $totals = $this->sumCountingStats($collection);
+                $shotAttempts = $totals['fga'] + 0.44 * $totals['fta'];
+                $usageValues = $collection
+                    ->map(fn ($pg) => $usageByPlayerGame[$pg->id] ?? null)
+                    ->filter(fn ($v) => $v !== null)
+                    ->values();
+
+                WnbaPlayerVsDefense::updateOrCreate(
+                    ['player_id' => $playerId, 'season' => $season, 'defense_bucket' => $bucket],
+                    [
+                        'games' => $gp,
+                        'minutes_avg' => $gp > 0 ? round($minutesTotal / $gp, 2) : null,
+                        'points_avg' => $gp > 0 ? round($totals['points'] / $gp, 2) : null,
+                        'rebounds_avg' => $gp > 0 ? round($totals['rebounds'] / $gp, 2) : null,
+                        'assists_avg' => $gp > 0 ? round($totals['assists'] / $gp, 2) : null,
+                        'fg_pct' => $this->safeDivide($totals['fgm'], $totals['fga']),
+                        'three_pct' => $this->safeDivide($totals['tpm'], $totals['tpa']),
+                        'ts_pct' => $this->safeDivide($totals['points'], 2 * $shotAttempts),
+                        'usage_pct_avg' => $usageValues->isNotEmpty() ? round($usageValues->avg(), 4) : null,
+                        'formula_version' => self::FORMULA_VERSION,
+                        'computed_at' => now(),
+                        'agent_run_id' => $this->reporter?->runId(),
+                    ]
+                );
+                $computed++;
+            }
+        }
+
+        $this->reporter?->increment('player_vs_defense_computed', $computed);
+
+        return $computed;
+    }
+
+    public function computePlayerPerformanceTrends(int $season): int
+    {
+        $flaggedPlayers = $this->unresolvedEntityKeys('player');
+        $computed = 0;
+
+        $playerIds = WnbaPlayerGame::query()
+            ->join('wnba_games as g', 'g.id', '=', 'wnba_player_games.game_id')
+            ->where('g.season', $season)
+            ->distinct()
+            ->pluck('wnba_player_games.player_id');
+
+        foreach ($playerIds as $playerId) {
+            if (in_array((string) $playerId, $flaggedPlayers, true)) {
+                $this->reporter?->increment('entities_skipped_identity_conflict');
+
+                continue;
+            }
+
+            $games = WnbaPlayerGame::query()
+                ->join('wnba_games as g', 'g.id', '=', 'wnba_player_games.game_id')
+                ->where('wnba_player_games.player_id', $playerId)
+                ->where('g.season', $season)
+                ->where('wnba_player_games.did_not_play', false)
+                ->where(function ($query) {
+                    $query->whereNull('wnba_player_games.validation_status')
+                        ->orWhere('wnba_player_games.validation_status', '!=', BoxScoreValidator::STATUS_INVALID);
+                })
+                ->select('wnba_player_games.*', 'g.game_date')
+                ->orderBy('g.game_date')
+                ->orderBy('wnba_player_games.id')
+                ->get();
+
+            if ($games->isEmpty()) {
+                continue;
+            }
+
+            foreach (self::TREND_WINDOWS as $window => $limit) {
+                $windowGames = $limit === null ? $games : $games->slice(-$limit)->values();
+                if ($windowGames->isEmpty()) {
+                    continue;
+                }
+
+                $gp = $windowGames->count();
+                $minutes = $windowGames->map(fn ($pg) => $this->validator->parseMinutes($pg->minutes) ?? 0.0);
+                $totals = $this->sumCountingStats($windowGames);
+                $shotAttempts = $totals['fga'] + 0.44 * $totals['fta'];
+
+                WnbaPlayerPerformanceTrend::updateOrCreate(
+                    ['player_id' => $playerId, 'season' => $season, 'window' => $window],
+                    [
+                        'games' => $gp,
+                        'minutes_avg' => round($minutes->avg(), 2),
+                        'points_avg' => round($windowGames->avg('points'), 2),
+                        'rebounds_avg' => round($windowGames->avg('rebounds'), 2),
+                        'assists_avg' => round($windowGames->avg('assists'), 2),
+                        'fg_pct' => $this->safeDivide($totals['fgm'], $totals['fga']),
+                        'ts_pct' => $this->safeDivide($totals['points'], 2 * $shotAttempts),
+                        'points_slope' => $this->linearSlope($windowGames->pluck('points')->all()),
+                        'rebounds_slope' => $this->linearSlope($windowGames->pluck('rebounds')->all()),
+                        'assists_slope' => $this->linearSlope($windowGames->pluck('assists')->all()),
+                        'formula_version' => self::FORMULA_VERSION,
+                        'computed_at' => now(),
+                        'agent_run_id' => $this->reporter?->runId(),
+                    ]
+                );
+                $computed++;
+            }
+        }
+
+        $this->reporter?->increment('player_performance_trends_computed', $computed);
+
+        return $computed;
+    }
+
+    public function computeTeamPerformanceTrends(int $season): int
+    {
+        $flaggedTeams = $this->unresolvedEntityKeys('team');
+        $computed = 0;
+
+        $teamIds = WnbaGameTeam::query()
+            ->join('wnba_games as g', 'g.id', '=', 'wnba_game_teams.game_id')
+            ->where('g.season', $season)
+            ->distinct()
+            ->pluck('wnba_game_teams.team_id');
+
+        foreach ($teamIds as $teamId) {
+            if (in_array((string) $teamId, $flaggedTeams, true)) {
+                $this->reporter?->increment('entities_skipped_identity_conflict');
+
+                continue;
+            }
+
+            $rows = WnbaGameTeam::query()
+                ->join('wnba_games as g', 'g.id', '=', 'wnba_game_teams.game_id')
+                ->where('wnba_game_teams.team_id', $teamId)
+                ->where('g.season', $season)
+                ->whereRaw('(wnba_game_teams.team_score + wnba_game_teams.opponent_team_score) > 0')
+                ->where(function ($query) {
+                    $query->whereNull('wnba_game_teams.validation_status')
+                        ->orWhere('wnba_game_teams.validation_status', '!=', BoxScoreValidator::STATUS_INVALID);
+                })
+                ->select('wnba_game_teams.*', 'g.game_date')
+                ->orderBy('g.game_date')
+                ->orderBy('wnba_game_teams.id')
+                ->get();
+
+            if ($rows->isEmpty()) {
+                continue;
+            }
+
+            foreach (self::TREND_WINDOWS as $window => $limit) {
+                $windowRows = $limit === null ? $rows : $rows->slice(-$limit)->values();
+                if ($windowRows->isEmpty()) {
+                    continue;
+                }
+
+                $gp = $windowRows->count();
+                $possessions = $windowRows->sum(fn ($row) => $this->estimatePossessionsFromRow($row));
+                $oppPossessions = 0.0;
+                $oppPoints = (float) $windowRows->sum('opponent_team_score');
+                $points = (float) $windowRows->sum('team_score');
+
+                // Opponent possessions approximated from the opposing box (same game).
+                $opponentIds = $windowRows->pluck('opponent_team_id', 'game_id');
+                $oppBoxes = WnbaGameTeam::query()
+                    ->whereIn('game_id', $windowRows->pluck('game_id')->all())
+                    ->get()
+                    ->filter(fn ($row) => isset($opponentIds[$row->game_id])
+                        && (string) $row->team_id === (string) $opponentIds[$row->game_id]);
+                $oppPossessions = $oppBoxes->sum(fn ($row) => $this->estimatePossessionsFromRow($row));
+
+                $offRating = $this->safeDivide($points * 100, $possessions);
+                $defRating = $this->safeDivide($oppPoints * 100, $oppPossessions > 0 ? $oppPossessions : $possessions);
+
+                WnbaTeamPerformanceTrend::updateOrCreate(
+                    ['team_id' => $teamId, 'season' => $season, 'window' => $window],
+                    [
+                        'games' => $gp,
+                        'wins' => $windowRows->where('team_winner', true)->count(),
+                        'losses' => $windowRows->where('team_winner', false)->count(),
+                        'points_for_avg' => round($points / $gp, 2),
+                        'points_against_avg' => round($oppPoints / $gp, 2),
+                        'pace_avg' => $gp > 0 ? round($possessions / $gp, 2) : null,
+                        'offensive_rating' => $offRating !== null ? round($offRating, 2) : null,
+                        'defensive_rating' => $defRating !== null ? round($defRating, 2) : null,
+                        'formula_version' => self::FORMULA_VERSION,
+                        'computed_at' => now(),
+                        'agent_run_id' => $this->reporter?->runId(),
+                    ]
+                );
+                $computed++;
+            }
+        }
+
+        $this->reporter?->increment('team_performance_trends_computed', $computed);
+
+        return $computed;
+    }
+
+    public static function defenseBucket(float $defensiveRating): string
+    {
+        if ($defensiveRating < 95) {
+            return self::DEFENSE_BUCKET_ELITE;
+        }
+        if ($defensiveRating < 105) {
+            return self::DEFENSE_BUCKET_GOOD;
+        }
+        if ($defensiveRating < 110) {
+            return self::DEFENSE_BUCKET_AVERAGE;
+        }
+
+        return self::DEFENSE_BUCKET_POOR;
+    }
+
     // ---------------------------------------------------------------- helpers
 
     private function safeDivide(float|int|null $numerator, float|int|null $denominator): ?float
@@ -367,6 +665,48 @@ class AggregateComputationService
         }
 
         return round($numerator / $denominator, 4);
+    }
+
+    /**
+     * Ordinary least-squares slope of values vs 0-based index.
+     *
+     * @param  array<int, float|int|null>  $values
+     */
+    private function linearSlope(array $values): ?float
+    {
+        $n = count($values);
+        if ($n < 2) {
+            return null;
+        }
+
+        $sumX = 0.0;
+        $sumY = 0.0;
+        $sumXY = 0.0;
+        $sumXX = 0.0;
+
+        foreach ($values as $i => $y) {
+            $x = (float) $i;
+            $yv = (float) $y;
+            $sumX += $x;
+            $sumY += $yv;
+            $sumXY += $x * $yv;
+            $sumXX += $x * $x;
+        }
+
+        $denom = ($n * $sumXX) - ($sumX * $sumX);
+        if ($denom == 0.0) {
+            return null;
+        }
+
+        return round((($n * $sumXY) - ($sumX * $sumY)) / $denom, 4);
+    }
+
+    private function estimatePossessionsFromRow(WnbaGameTeam $row): float
+    {
+        return (float) $row->field_goals_attempted
+            + 0.44 * (float) $row->free_throws_attempted
+            - (float) $row->offensive_rebounds
+            + (float) $row->turnovers;
     }
 
     /**

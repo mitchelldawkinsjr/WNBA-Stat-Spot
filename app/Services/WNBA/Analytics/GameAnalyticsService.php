@@ -15,6 +15,10 @@ class GameAnalyticsService
 
     private const WNBA_GAME_MINUTES = 40;
 
+    public function __construct(
+        private AggregateStatsReader $aggregates,
+    ) {}
+
     /**
      * Get comprehensive game analysis and predictions
      */
@@ -233,14 +237,16 @@ class GameAnalyticsService
         $homeTeamPace = $this->getTeamAveragePace($game->home_team_id, $game->season);
         $awayTeamPace = $this->getTeamAveragePace($game->away_team_id, $game->season);
 
-        $projectedPace = ($homeTeamPace + $awayTeamPace) / 2;
+        $projectedPace = ($homeTeamPace !== null && $awayTeamPace !== null)
+            ? ($homeTeamPace + $awayTeamPace) / 2
+            : null;
 
         return [
             'home_team_pace' => $homeTeamPace,
             'away_team_pace' => $awayTeamPace,
-            'projected_pace' => round($projectedPace, 1),
-            'pace_rating' => $this->getPaceRating($projectedPace),
-            'total_possessions_estimate' => round($projectedPace * 2, 0),
+            'projected_pace' => $projectedPace !== null ? round($projectedPace, 1) : null,
+            'pace_rating' => $projectedPace !== null ? $this->getPaceRating($projectedPace) : null,
+            'total_possessions_estimate' => $projectedPace !== null ? round($projectedPace * 2, 0) : null,
         ];
     }
 
@@ -251,17 +257,27 @@ class GameAnalyticsService
         $awayOffense = $this->getTeamOffensiveRating($game->away_team_id, $game->season);
         $awayDefense = $this->getTeamDefensiveRating($game->away_team_id, $game->season);
 
-        $projectedHomeScore = ($homeOffense + $awayDefense) / 2;
-        $projectedAwayScore = ($awayOffense + $homeDefense) / 2;
-        $projectedTotal = $projectedHomeScore + $projectedAwayScore;
+        $projectedHomeScore = ($homeOffense !== null && $awayDefense !== null)
+            ? ($homeOffense + $awayDefense) / 2
+            : null;
+        $projectedAwayScore = ($awayOffense !== null && $homeDefense !== null)
+            ? ($awayOffense + $homeDefense) / 2
+            : null;
+        $projectedTotal = ($projectedHomeScore !== null && $projectedAwayScore !== null)
+            ? $projectedHomeScore + $projectedAwayScore
+            : null;
 
         return [
-            'projected_home_score' => round($projectedHomeScore, 1),
-            'projected_away_score' => round($projectedAwayScore, 1),
-            'projected_total' => round($projectedTotal, 1),
-            'scoring_environment' => $this->getScoringEnvironmentRating($projectedTotal),
-            'offensive_advantage' => $this->getOffensiveAdvantage($homeOffense, $awayOffense),
-            'defensive_advantage' => $this->getDefensiveAdvantage($homeDefense, $awayDefense),
+            'projected_home_score' => $projectedHomeScore !== null ? round($projectedHomeScore, 1) : null,
+            'projected_away_score' => $projectedAwayScore !== null ? round($projectedAwayScore, 1) : null,
+            'projected_total' => $projectedTotal !== null ? round($projectedTotal, 1) : null,
+            'scoring_environment' => $projectedTotal !== null ? $this->getScoringEnvironmentRating($projectedTotal) : null,
+            'offensive_advantage' => $this->getOffensiveAdvantage($homeOffense ?? 0, $awayOffense ?? 0),
+            'defensive_advantage' => $this->getDefensiveAdvantage($homeDefense ?? 0, $awayDefense ?? 0),
+            'home_offensive_rating' => $homeOffense,
+            'home_defensive_rating' => $homeDefense,
+            'away_offensive_rating' => $awayOffense,
+            'away_defensive_rating' => $awayDefense,
         ];
     }
 
@@ -394,6 +410,14 @@ class GameAnalyticsService
         $homeTeamPace = $this->getTeamAveragePace($homeTeamId, $season);
         $awayTeamPace = $this->getTeamAveragePace($awayTeamId, $season);
 
+        if ($homeTeamPace === null || $awayTeamPace === null) {
+            return [
+                'predicted_pace' => null,
+                'confidence' => 0,
+                'factors' => $this->getPaceFactors($homeTeamId, $awayTeamId),
+            ];
+        }
+
         $predictedPace = ($homeTeamPace + $awayTeamPace) / 2;
 
         return [
@@ -410,6 +434,14 @@ class GameAnalyticsService
         $awayOffense = $this->getTeamOffensiveRating($awayTeamId, $season);
         $awayDefense = $this->getTeamDefensiveRating($awayTeamId, $season);
 
+        if ($homeOffense === null || $homeDefense === null || $awayOffense === null || $awayDefense === null) {
+            return [
+                'predicted_total' => null,
+                'confidence' => 0,
+                'over_under_lean' => null,
+            ];
+        }
+
         $projectedTotal = (($homeOffense + $awayDefense) / 2) + (($awayOffense + $homeDefense) / 2);
 
         return [
@@ -423,8 +455,15 @@ class GameAnalyticsService
     {
         $homeRating = $this->getTeamNetRating($homeTeamId, $season);
         $awayRating = $this->getTeamNetRating($awayTeamId, $season);
-        $homeCourtAdvantage = 3.0; // Typical WNBA home court advantage
+        if ($homeRating === null || $awayRating === null) {
+            return [
+                'projected_spread' => null,
+                'home_team_advantage' => null,
+                'confidence' => 0,
+            ];
+        }
 
+        $homeCourtAdvantage = 3.0; // Typical WNBA home court advantage
         $projectedSpread = ($homeRating - $awayRating) + $homeCourtAdvantage;
 
         return [
@@ -497,49 +536,40 @@ class GameAnalyticsService
         ];
     }
 
-    private function getTeamAveragePace(int $teamId, int $season): float
+    private function getTeamAveragePace(int|string|null $teamId, int $season): ?float
     {
-        // Calculate team's average pace
-        $games = WnbaGameTeam::where('team_id', $teamId)
-            ->whereHas('game', function ($q) use ($season) {
-                $q->where('season', $season);
-            })
-            ->get();
-
-        if ($games->isEmpty()) {
-            return 75.0; // Default WNBA pace
+        if ($teamId === null || $teamId === '') {
+            return null;
         }
 
-        $totalPace = 0;
-        $gameCount = 0;
+        return $this->aggregates->pace($teamId, (int) $season);
+    }
 
-        foreach ($games as $game) {
-            $possessions = $this->estimatePossessions($game);
-            if ($possessions > 0) {
-                $pace = ($possessions / self::WNBA_GAME_MINUTES) * self::WNBA_GAME_MINUTES;
-                $totalPace += $pace;
-                $gameCount++;
-            }
+    private function getTeamOffensiveRating(int|string|null $teamId, int $season): ?float
+    {
+        if ($teamId === null || $teamId === '') {
+            return null;
         }
 
-        return $gameCount > 0 ? $totalPace / $gameCount : 75.0;
+        return $this->aggregates->offensiveRating($teamId, (int) $season);
     }
 
-    private function getTeamOffensiveRating(int $teamId, int $season): float
+    private function getTeamDefensiveRating(int|string|null $teamId, int $season): ?float
     {
-        // Calculate offensive rating (points per 100 possessions)
-        return 100.0; // Placeholder
+        if ($teamId === null || $teamId === '') {
+            return null;
+        }
+
+        return $this->aggregates->defensiveRating($teamId, (int) $season);
     }
 
-    private function getTeamDefensiveRating(int $teamId, int $season): float
+    private function getTeamNetRating(int|string|null $teamId, int $season): ?float
     {
-        // Calculate defensive rating (opponent points per 100 possessions)
-        return 100.0; // Placeholder
-    }
+        if ($teamId === null || $teamId === '') {
+            return null;
+        }
 
-    private function getTeamNetRating(int $teamId, int $season): float
-    {
-        return $this->getTeamOffensiveRating($teamId, $season) - $this->getTeamDefensiveRating($teamId, $season);
+        return $this->aggregates->netRating($teamId, (int) $season);
     }
 
     private function estimatePossessions(WnbaGameTeam $game): float

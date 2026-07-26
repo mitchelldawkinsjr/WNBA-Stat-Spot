@@ -5,6 +5,7 @@ namespace App\Services\WNBA\Predictions;
 use App\Models\WnbaGame;
 use App\Models\WnbaPlayer;
 use App\Models\WnbaPlayerGame;
+use App\Services\WNBA\Analytics\AggregateStatsReader;
 use App\Services\WNBA\Analytics\PlayerAnalyticsService;
 use App\Services\WNBA\Data\DataAggregatorService;
 use Illuminate\Support\Facades\Cache;
@@ -22,18 +23,22 @@ class PropsPredictionService
 
     private PredictionModelParamStore $paramStore;
 
+    private AggregateStatsReader $aggregates;
+
     public function __construct(
         PredictionEngine $predictionEngine,
         PlayerAnalyticsService $playerAnalytics,
         DataAggregatorService $dataAggregator,
         \App\Services\WNBA\Predictions\StatisticalEngineService $statisticalEngine,
-        PredictionModelParamStore $paramStore
+        PredictionModelParamStore $paramStore,
+        AggregateStatsReader $aggregates,
     ) {
         $this->predictionEngine = $predictionEngine;
         $this->playerAnalytics = $playerAnalytics;
         $this->dataAggregator = $dataAggregator;
         $this->statisticalEngine = $statisticalEngine;
         $this->paramStore = $paramStore;
+        $this->aggregates = $aggregates;
     }
 
     /**
@@ -439,7 +444,10 @@ class PropsPredictionService
             'home_away' => $this->getHomeAway($game, $playerTeam),
             'rest_days' => $this->calculateRestDays($playerId, $game->game_date),
             'pace_factor' => $this->calculatePaceFactor($playerTeam, $opponentTeam->team_id ?? null),
-            'opponent_defense_rating' => $this->getTeamDefensiveRating($opponentTeam->team_id ?? null),
+            'opponent_defense_rating' => $this->getTeamDefensiveRating(
+                $opponentTeam->team_id ?? null,
+                (int) ($game->season ?? config('wnba.seasons.current_season'))
+            ),
             'projected_minutes' => $this->projectMinutes($playerId, $gameId),
         ];
     }
@@ -549,9 +557,14 @@ class PropsPredictionService
 
     private function applyContextualAdjustments(float $baseValue, array $gameContext, array $weights): float
     {
+        $defenseRating = $gameContext['opponent_defense_rating'] ?? null;
+        $defenseFactor = $defenseRating !== null
+            ? 1 - (((float) $defenseRating - 100) / 100 * 0.1)
+            : 1.0;
+
         $adjustments = [
             'pace' => $gameContext['pace_factor'] ?? 1.0,
-            'defense' => 1 - (($gameContext['opponent_defense_rating'] - 100) / 100 * 0.1),
+            'defense' => $defenseFactor,
             'rest' => $this->getRestAdjustment($gameContext['rest_days']),
             'home_court' => $this->getHomeCourtAdjustment($gameContext['home_away']),
         ];
@@ -751,9 +764,15 @@ class PropsPredictionService
         return 1.0;
     }
 
-    private function getTeamDefensiveRating($teamId): float
+    private function getTeamDefensiveRating($teamId, ?int $season = null): ?float
     {
-        return 100.0;
+        if ($teamId === null || $teamId === '') {
+            return null;
+        }
+
+        $season = $season ?? (int) config('wnba.seasons.current_season');
+
+        return $this->aggregates->defensiveRating($teamId, $season);
     }
 
     private function projectMinutes($playerId, $gameId): float

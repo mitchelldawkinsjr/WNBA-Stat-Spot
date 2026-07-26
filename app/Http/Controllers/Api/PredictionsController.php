@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Services\Odds\OddsService;
+use App\Services\WNBA\Analytics\AggregateStatsReader;
 use App\Services\WNBA\Analytics\GameAnalyticsService;
 use App\Services\WNBA\Analytics\GamePreviewService;
 use App\Services\WNBA\Analytics\PlayerAnalyticsService;
@@ -42,6 +43,8 @@ class PredictionsController extends Controller
 
     private PredictionModelParamStore $paramStore;
 
+    private AggregateStatsReader $aggregates;
+
     public function __construct(
         PropsPredictionService $propsPrediction,
         StatisticalEngineService $statisticalEngine,
@@ -53,6 +56,7 @@ class PredictionsController extends Controller
         PredictionAccuracyService $predictionAccuracy,
         GamePreviewService $gamePreview,
         PredictionModelParamStore $paramStore,
+        AggregateStatsReader $aggregates,
     ) {
         $this->propsPrediction = $propsPrediction;
         $this->statisticalEngine = $statisticalEngine;
@@ -64,6 +68,7 @@ class PredictionsController extends Controller
         $this->predictionAccuracy = $predictionAccuracy;
         $this->gamePreview = $gamePreview;
         $this->paramStore = $paramStore;
+        $this->aggregates = $aggregates;
     }
 
     /**
@@ -73,7 +78,7 @@ class PredictionsController extends Controller
     {
         try {
             $season = (int) ($request->input('season') ?? config('wnba.seasons.current_season'));
-            $cacheKey = "player_analytics:v4:{$playerId}:{$season}";
+            $cacheKey = "player_analytics:v5:{$playerId}:{$season}";
 
             $data = Cache::get($cacheKey);
             if (! is_array($data)) {
@@ -1309,12 +1314,24 @@ class PredictionsController extends Controller
     }
 
     /**
-     * Get matchup difficulty
+     * Matchup difficulty from opponent team DRtg vs league median (precomputed).
      */
     private function getMatchupDifficulty(array $player, array $game): string
     {
-        // Simplified - would analyze opponent's defensive stats
-        return ['favorable', 'neutral', 'difficult'][rand(0, 2)];
+        $season = (int) ($game['season'] ?? config('wnba.seasons.current_season'));
+        $playerTeamId = $player['team_id'] ?? null;
+        $homeTeamId = $game['home_team_id'] ?? $game['home_team']['id'] ?? $game['home_team']['team_id'] ?? null;
+        $awayTeamId = $game['away_team_id'] ?? $game['away_team']['id'] ?? $game['away_team']['team_id'] ?? null;
+
+        $opponentTeamId = null;
+        if ($playerTeamId !== null && $homeTeamId !== null && $awayTeamId !== null) {
+            $playerKeys = \App\Services\WNBA\Data\Support\TeamForeignKeyResolver::foreignKeysForReference($playerTeamId);
+            $homeIsPlayer = in_array((string) $homeTeamId, $playerKeys, true)
+                || (string) $homeTeamId === (string) $playerTeamId;
+            $opponentTeamId = $homeIsPlayer ? $awayTeamId : $homeTeamId;
+        }
+
+        return $this->aggregates->matchupDifficulty($opponentTeamId, $season) ?? 'neutral';
     }
 
     /**

@@ -5,6 +5,7 @@ namespace App\Services\WNBA\Data;
 use App\Models\WnbaGame;
 use App\Models\WnbaGameTeam;
 use App\Models\WnbaPlayerGame;
+use App\Services\WNBA\Analytics\AggregateStatsReader;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -15,13 +16,17 @@ class DataAggregatorService
 
     private const BATCH_SIZE = 1000;
 
+    public function __construct(
+        private AggregateStatsReader $aggregates,
+    ) {}
+
     /**
      * Aggregate player performance data for analytics
      */
     public function aggregatePlayerData(int $playerId, ?int $season = null, ?int $lastNGames = null): array
     {
         $season = $season ?? (int) config('wnba.seasons.current_season');
-        $cacheKey = "player_data_v3_{$playerId}_{$season}_{$lastNGames}";
+        $cacheKey = "player_data_v4_{$playerId}_{$season}_{$lastNGames}";
 
         return Cache::remember($cacheKey, self::CACHE_TTL, function () use ($playerId, $season, $lastNGames) {
             try {
@@ -44,15 +49,18 @@ class DataAggregatorService
                     return $this->getEmptyPlayerData();
                 }
 
+                $trends = $this->aggregates->playerTrends($playerId, $season);
+
                 return [
                     'player_info' => $this->extractPlayerInfo($games->first()),
                     'season_stats' => $this->calculateSeasonStats($games),
                     'game_log' => $this->formatGameLog($games),
-                    'performance_trends' => $this->calculatePerformanceTrends($games),
-                    'situational_stats' => $this->calculateSituationalStats($games),
+                    'performance_trends' => $trends !== [] ? $trends : $this->calculatePerformanceTrends($games),
+                    'situational_stats' => $this->calculateSituationalStats($games, $playerId, $season),
                     'advanced_metrics' => $this->calculateAdvancedPlayerMetrics($games),
                     'consistency_metrics' => $this->calculateConsistencyMetrics($games),
                     'data_quality' => $this->assessDataQuality($games),
+                    'vs_defense' => $this->aggregates->playerVsDefense($playerId, $season),
                 ];
 
             } catch (\Exception $e) {
@@ -163,29 +171,69 @@ class DataAggregatorService
     public function aggregateMatchupData(int $team1Id, int $team2Id, ?int $season = null): array
     {
         $season = $season ?? (int) config('wnba.seasons.current_season');
-        $cacheKey = "matchup_data_v2_{$team1Id}_{$team2Id}_{$season}";
+        $cacheKey = "matchup_data_v3_{$team1Id}_{$team2Id}_{$season}";
 
         return Cache::remember($cacheKey, self::CACHE_TTL, function () use ($team1Id, $team2Id, $season) {
             try {
-                // Get head-to-head games for the requested season only.
-                $games = WnbaGame::whereHas('gameTeams', function ($q) use ($team1Id) {
-                    $q->where('team_id', $team1Id);
-                })->whereHas('gameTeams', function ($q) use ($team2Id) {
-                    $q->where('team_id', $team2Id);
-                })
-                    ->where('season', $season)
-                    ->with(['gameTeams.team', 'playerGames.player'])
-                    ->orderBy('game_date', 'desc')
-                    ->get();
+                $summary = $this->aggregates->matchupSummary($team1Id, $team2Id, $season);
+                $team1Eff = $this->aggregates->efficiencySnapshot($team1Id, $season);
+                $team2Eff = $this->aggregates->efficiencySnapshot($team2Id, $season);
+                $team1Trends = $this->aggregates->teamTrends($team1Id, $season);
+                $team2Trends = $this->aggregates->teamTrends($team2Id, $season);
+
+                if ($summary === null) {
+                    return [
+                        'matchup_history' => [],
+                        'head_to_head_stats' => [],
+                        'recent_meetings' => [],
+                        'style_comparison' => [
+                            'team1' => $team1Eff,
+                            'team2' => $team2Eff,
+                        ],
+                        'key_player_matchups' => [],
+                        'trends' => [
+                            'team1' => $team1Trends,
+                            'team2' => $team2Trends,
+                        ],
+                        'prediction_factors' => [
+                            'team1_efficiency' => $team1Eff,
+                            'team2_efficiency' => $team2Eff,
+                        ],
+                    ];
+                }
+
+                $team1Keys = \App\Services\WNBA\Data\Support\TeamForeignKeyResolver::foreignKeysForReference($team1Id);
+                $team1IsA = in_array((string) $summary->team_a_id, $team1Keys, true)
+                    || (string) $summary->team_a_id === (string) $team1Id;
 
                 return [
-                    'matchup_history' => $this->analyzeMatchupHistory($games, $team1Id, $team2Id),
-                    'head_to_head_stats' => $this->calculateHeadToHeadStats($games, $team1Id, $team2Id),
-                    'recent_meetings' => $this->formatRecentMeetings($games, $team1Id, $team2Id),
-                    'style_comparison' => $this->compareTeamStyles($team1Id, $team2Id, $season),
-                    'key_player_matchups' => $this->identifyKeyPlayerMatchups($team1Id, $team2Id, $season),
-                    'trends' => $this->analyzeMatchupTrends($games, $team1Id, $team2Id),
-                    'prediction_factors' => $this->extractPredictionFactors($team1Id, $team2Id, $season),
+                    'matchup_history' => [
+                        'games_played' => $summary->games_played,
+                        'team1_wins' => $team1IsA ? $summary->team_a_wins : $summary->team_b_wins,
+                        'team2_wins' => $team1IsA ? $summary->team_b_wins : $summary->team_a_wins,
+                        'last_meeting_date' => $summary->last_meeting_date?->format('Y-m-d'),
+                    ],
+                    'head_to_head_stats' => [
+                        'avg_total_points' => $summary->avg_total_points,
+                        'avg_margin' => $summary->avg_margin,
+                        'avg_pace' => $summary->avg_pace,
+                    ],
+                    'recent_meetings' => $summary->recent_meetings ?? [],
+                    'style_comparison' => [
+                        'team1' => $team1Eff,
+                        'team2' => $team2Eff,
+                    ],
+                    'key_player_matchups' => [],
+                    'trends' => [
+                        'team1' => $team1Trends,
+                        'team2' => $team2Trends,
+                    ],
+                    'prediction_factors' => [
+                        'team1_efficiency' => $team1Eff,
+                        'team2_efficiency' => $team2Eff,
+                        'h2h_avg_total' => $summary->avg_total_points,
+                        'h2h_avg_pace' => $summary->avg_pace,
+                    ],
                 ];
 
             } catch (\Exception $e) {
@@ -237,7 +285,7 @@ class DataAggregatorService
     public function aggregatePropData(int $playerId, string $statType, ?int $season = null): array
     {
         $season = $season ?? (int) config('wnba.seasons.current_season');
-        $cacheKey = "prop_data_v2_{$playerId}_{$statType}_{$season}";
+        $cacheKey = "prop_data_v3_{$playerId}_{$statType}_{$season}";
 
         return Cache::remember($cacheKey, self::CACHE_TTL, function () use ($playerId, $statType, $season) {
             try {
@@ -261,12 +309,14 @@ class DataAggregatorService
                     'stat_distribution' => $this->analyzeStatDistribution($statValues),
                     'historical_performance' => $this->analyzeHistoricalPerformance($games, $statType),
                     'situational_analysis' => $this->analyzeSituationalPerformance($games, $statType),
-                    'opponent_impact' => $this->analyzeOpponentImpact($games, $statType),
+                    'opponent_impact' => $this->analyzeOpponentImpact($playerId, $season, $statType),
                     'trend_analysis' => $this->analyzeTrends($statValues),
                     'consistency_metrics' => $this->calculateConsistencyMetricsForProp($statValues),
                     'outlier_analysis' => $this->analyzeOutliers($statValues),
                     'prediction_inputs' => $this->preparePredictionInputs($games, $statType),
                     'games_played' => $games->count(),
+                    'performance_trends' => $this->aggregates->playerTrends($playerId, $season),
+                    'vs_defense' => $this->aggregates->playerVsDefense($playerId, $season),
                 ];
 
             } catch (\Exception $e) {
@@ -374,7 +424,7 @@ class DataAggregatorService
         ];
     }
 
-    private function calculateSituationalStats($games): array
+    private function calculateSituationalStats($games, ?int $playerId = null, ?int $season = null): array
     {
         $homeGames = $games->filter(function ($game) {
             return $this->getHomeAway($game) === 'home';
@@ -384,11 +434,18 @@ class DataAggregatorService
             return $this->getHomeAway($game) === 'away';
         });
 
+        $vsStrong = [];
+        $vsWeak = [];
+        if ($playerId !== null && $season !== null) {
+            $vsStrong = $this->aggregates->playerVsDefenseStrength($playerId, $season, 'strong');
+            $vsWeak = $this->aggregates->playerVsDefenseStrength($playerId, $season, 'weak');
+        }
+
         return [
             'home' => $this->calculateAverageStats($homeGames),
             'away' => $this->calculateAverageStats($awayGames),
-            'vs_strong_defense' => $this->calculateVsStrongDefense($games),
-            'vs_weak_defense' => $this->calculateVsWeakDefense($games),
+            'vs_strong_defense' => $vsStrong,
+            'vs_weak_defense' => $vsWeak,
             'back_to_back' => $this->calculateBackToBackStats($games),
             'rest_days' => $this->calculateRestDayStats($games),
         ];
@@ -948,27 +1005,33 @@ class DataAggregatorService
         ];
     }
 
-    private function analyzeOpponentImpact($games, $statType): array
+    private function analyzeOpponentImpact(int $playerId, int $season, string $statType): array
     {
-        if ($games->isEmpty()) {
-            return [
-                'vs_strong_defense' => ['average' => 0, 'games' => 0],
-                'vs_weak_defense' => ['average' => 0, 'games' => 0],
-                'opponent_adjustment' => 1.0,
-            ];
-        }
+        $field = match ($statType) {
+            'rebounds' => 'rebounds_avg',
+            'assists' => 'assists_avg',
+            default => 'points_avg',
+        };
 
-        // For now, return basic structure - would need opponent defensive ratings
+        $strong = $this->aggregates->playerVsDefenseStrength($playerId, $season, 'strong');
+        $weak = $this->aggregates->playerVsDefenseStrength($playerId, $season, 'weak');
+
+        $strongAvg = $strong[$field] ?? null;
+        $weakAvg = $weak[$field] ?? null;
+        $adjustment = ($strongAvg !== null && $weakAvg !== null && $weakAvg != 0)
+            ? round($strongAvg / $weakAvg, 3)
+            : null;
+
         return [
             'vs_strong_defense' => [
-                'average' => round($games->avg($statType), 2),
-                'games' => $games->count(),
+                'average' => $strongAvg,
+                'games' => $strong['games'],
             ],
             'vs_weak_defense' => [
-                'average' => round($games->avg($statType), 2),
-                'games' => $games->count(),
+                'average' => $weakAvg,
+                'games' => $weak['games'],
             ],
-            'opponent_adjustment' => 1.0, // Neutral adjustment for now
+            'opponent_adjustment' => $adjustment,
         ];
     }
 

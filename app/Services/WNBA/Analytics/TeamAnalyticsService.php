@@ -14,30 +14,54 @@ class TeamAnalyticsService
 
     private const WNBA_GAME_MINUTES = 40;
 
+    public function __construct(
+        private AggregateStatsReader $aggregates,
+    ) {}
+
     /**
      * Get comprehensive team performance metrics
      */
     public function getTeamPerformanceMetrics(int|string $teamId, int $season, ?int $lastNGames = null): array
     {
-        $cacheKey = "team_performance_{$teamId}_{$season}_".($lastNGames ?? 'all');
+        $cacheKey = "team_performance_v2_{$teamId}_{$season}_".($lastNGames ?? 'all');
 
         return Cache::remember($cacheKey, self::CACHE_TTL, function () use ($teamId, $season, $lastNGames) {
             try {
                 $games = $this->getTeamGames($teamId, $season, $lastNGames);
 
-                if ($games->isEmpty()) {
+                if ($games->isEmpty() && $this->aggregates->teamSeasonStat($teamId, $season) === null) {
                     return $this->getEmptyMetrics();
                 }
 
+                $window = match (true) {
+                    $lastNGames !== null && $lastNGames <= 5 => 'l5',
+                    $lastNGames !== null && $lastNGames <= 10 => 'l10',
+                    default => 'season',
+                };
+                $trend = $this->aggregates->teamTrendWindow($teamId, $season, $window);
+                $seasonStat = $this->aggregates->teamSeasonStat($teamId, $season);
+                $efficiency = $this->efficiencyFromAggregates($seasonStat, $trend);
+                $pace = $this->paceFromAggregates($seasonStat, $trend);
+
                 return [
-                    'basic_stats' => $this->calculateBasicTeamStats($games),
-                    'advanced_stats' => $this->calculateAdvancedTeamStats($games),
-                    'pace_metrics' => $this->calculatePaceMetrics($teamId, $games),
-                    'efficiency_ratings' => $this->calculateEfficiencyRatings($games),
-                    'home_away_splits' => $this->calculateHomeAwaySplits($games),
-                    'recent_form' => $this->calculateRecentForm($games),
-                    'opponent_strength' => $this->calculateOpponentStrength($games),
-                    'clutch_performance' => $this->calculateClutchPerformance($teamId, $games),
+                    'basic_stats' => $games->isNotEmpty()
+                        ? $this->calculateBasicTeamStats($games)
+                        : $this->basicStatsFromSeasonStat($seasonStat),
+                    'advanced_stats' => $games->isNotEmpty()
+                        ? $this->calculateAdvancedTeamStats($games)
+                        : [],
+                    'pace_metrics' => $pace,
+                    'efficiency_ratings' => $efficiency,
+                    'home_away_splits' => $games->isNotEmpty()
+                        ? $this->calculateHomeAwaySplits($games)
+                        : ($seasonStat?->splits ?? []),
+                    'recent_form' => $this->recentFormFromTrends($teamId, $season),
+                    'opponent_strength' => $games->isNotEmpty()
+                        ? $this->calculateOpponentStrength($games)
+                        : [],
+                    'clutch_performance' => $games->isNotEmpty()
+                        ? $this->calculateClutchPerformance($teamId, $games)
+                        : [],
                 ];
             } catch (\Exception $e) {
                 Log::error('Error calculating team performance metrics', [
@@ -49,6 +73,71 @@ class TeamAnalyticsService
                 return $this->getEmptyMetrics();
             }
         });
+    }
+
+    /**
+     * @return array{offensive_rating: ?float, defensive_rating: ?float, net_rating: ?float, efficiency_grade: string}
+     */
+    private function efficiencyFromAggregates(?\App\Models\WnbaTeamSeasonStat $seasonStat, ?array $trend): array
+    {
+        $off = $trend['offensive_rating'] ?? $seasonStat?->offensive_rating;
+        $def = $trend['defensive_rating'] ?? $seasonStat?->defensive_rating;
+        $net = ($off !== null && $def !== null) ? round((float) $off - (float) $def, 2) : ($seasonStat?->net_rating);
+
+        return [
+            'offensive_rating' => $off !== null ? (float) $off : null,
+            'defensive_rating' => $def !== null ? (float) $def : null,
+            'net_rating' => $net !== null ? (float) $net : null,
+            'efficiency_grade' => $net !== null ? $this->getEfficiencyGrade((float) $net) : 'N/A',
+        ];
+    }
+
+    /**
+     * @return array{pace: ?float, possessions_per_game: ?float, tempo_rating: string, games_analyzed: int|null}
+     */
+    private function paceFromAggregates(?\App\Models\WnbaTeamSeasonStat $seasonStat, ?array $trend): array
+    {
+        $pace = $trend['pace_avg'] ?? $seasonStat?->pace;
+        $poss = $seasonStat?->possessions_per_game ?? $pace;
+
+        return [
+            'pace' => $pace !== null ? (float) $pace : null,
+            'possessions_per_game' => $poss !== null ? (float) $poss : null,
+            'tempo_rating' => $pace !== null ? $this->getTempoRating((float) $pace) : 'Unknown',
+            'games_analyzed' => $trend['games'] ?? $seasonStat?->games_played,
+        ];
+    }
+
+    private function basicStatsFromSeasonStat(?\App\Models\WnbaTeamSeasonStat $stat): array
+    {
+        if ($stat === null) {
+            return [];
+        }
+
+        $gp = max(1, (int) $stat->games_played);
+
+        return [
+            'wins' => $stat->wins,
+            'losses' => $stat->losses,
+            'win_percentage' => round($stat->wins / $gp, 3),
+            'points_per_game' => $stat->points_for_avg,
+            'points_allowed_per_game' => $stat->points_against_avg,
+            'point_differential' => ($stat->points_for_avg !== null && $stat->points_against_avg !== null)
+                ? round((float) $stat->points_for_avg - (float) $stat->points_against_avg, 2)
+                : null,
+        ];
+    }
+
+    private function recentFormFromTrends(int|string $teamId, int $season): array
+    {
+        $l5 = $this->aggregates->teamTrendWindow($teamId, $season, 'l5');
+        $l10 = $this->aggregates->teamTrendWindow($teamId, $season, 'l10');
+
+        return [
+            'last_5' => $l5,
+            'last_10' => $l10,
+            'trends' => $this->aggregates->teamTrends($teamId, $season),
+        ];
     }
 
     /**
