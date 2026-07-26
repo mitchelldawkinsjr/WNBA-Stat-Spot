@@ -12,9 +12,14 @@
         DropdownMenu,
         DropdownToggle
     } from '@sveltestrap/sveltestrap';
-    import {toggleDocumentAttribute} from "$lib/helpers/layout";
+    import { onDestroy, onMount } from 'svelte';
 
     export let onOpenThemeSettings: (() => void) | undefined = undefined;
+
+    const SIDEBAR_CLASS = 'sidebar-enable';
+    const BACKDROP_ATTR = 'data-ds-sidebar-backdrop';
+
+    let sidebarOpen = false;
 
     const moreLinks = MENU_ITEMS.flatMap((item) => {
         if (item.isTitle) return [];
@@ -27,23 +32,76 @@
         return [];
     });
 
+    function getBackdrop(): HTMLElement | null {
+        return document.querySelector(`[${BACKDROP_ATTR}]`);
+    }
+
+    function removeBackdrop() {
+        const existing = getBackdrop();
+        if (existing?.parentNode) {
+            existing.parentNode.removeChild(existing);
+        }
+        document.body.style.overflow = '';
+    }
+
+    function closeSidebar() {
+        document.documentElement.classList.remove(SIDEBAR_CLASS);
+        removeBackdrop();
+        sidebarOpen = false;
+    }
+
+    function openSidebar() {
+        document.documentElement.classList.add(SIDEBAR_CLASS);
+        if (!getBackdrop()) {
+            const backdrop = document.createElement('div');
+            backdrop.classList.add('offcanvas-backdrop', 'fade', 'show');
+            backdrop.setAttribute(BACKDROP_ATTR, 'true');
+            // Sit above page content but below fixed topbar so the close control stays clickable
+            backdrop.style.zIndex = '1010';
+            backdrop.addEventListener('click', closeSidebar);
+            document.body.appendChild(backdrop);
+            document.body.style.overflow = 'hidden';
+        }
+        sidebarOpen = true;
+    }
+
     const toggleLeftSideBar = () => {
-        toggleDocumentAttribute('class', 'sidebar-enable')
-        showBackdrop()
+        if (document.documentElement.classList.contains(SIDEBAR_CLASS)) {
+            closeSidebar();
+        } else {
+            openSidebar();
+        }
+    };
+
+    function handleKeydown(event: KeyboardEvent) {
+        if (event.key === 'Escape' && sidebarOpen) {
+            closeSidebar();
+        }
     }
 
-    const showBackdrop = () => {
-        const backdrop = document.createElement('div') as HTMLDivElement;
-        backdrop.classList.add('offcanvas-backdrop', 'fade', 'show')
-        document.body.appendChild(backdrop);
-        document.body.style.overflow = 'hidden';
-
-        backdrop.addEventListener('click', () => {
-            toggleDocumentAttribute('class', '')
-            document.body.removeChild(backdrop);
-            document.body.style.overflow = '';
-        })
+    function handleNavClick(event: MouseEvent) {
+        const target = event.target as HTMLElement | null;
+        if (target?.closest?.('.main-nav a')) {
+            closeSidebar();
+        }
     }
+
+    onMount(() => {
+        sidebarOpen = document.documentElement.classList.contains(SIDEBAR_CLASS);
+        document.addEventListener('keydown', handleKeydown);
+        document.addEventListener('click', handleNavClick);
+        return () => {
+            document.removeEventListener('keydown', handleKeydown);
+            document.removeEventListener('click', handleNavClick);
+            closeSidebar();
+        };
+    });
+
+    onDestroy(() => {
+        if (typeof document !== 'undefined') {
+            closeSidebar();
+        }
+    });
 
     function isActive(url: string, pathname: string): boolean {
         if (url === '/') return pathname === '/';
@@ -59,9 +117,11 @@
                     type="button"
                     class="topbar-button d-lg-none"
                     on:click={toggleLeftSideBar}
-                    aria-label="Open menu"
+                    aria-label={sidebarOpen ? 'Close menu' : 'Open menu'}
+                    aria-expanded={sidebarOpen}
+                    aria-controls="ds-main-nav"
                 >
-                    <DsIcon name="menu" size={22} />
+                    <DsIcon name={sidebarOpen ? 'close' : 'menu'} size={22} />
                 </button>
                 <div class="ds-topbar__brand">
                     <LogoBox logoSmHeight={28} logoLgHeight={32} />

@@ -27,8 +27,9 @@ describe('ErrorMessage', () => {
         });
 
         const container = screen.getByTestId('error-container');
-        expect(container).toHaveClass('bg-red-50');
-        expect(container).toHaveClass('border-red-200');
+        expect(container).toHaveClass('alert');
+        expect(container).toHaveClass('alert-danger');
+        expect(container).toHaveClass('ds-error-message');
     });
 
     it('renders with long error message', () => {
