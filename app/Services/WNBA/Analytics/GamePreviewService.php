@@ -34,7 +34,7 @@ class GamePreviewService
      */
     public function buildPreview(string $externalGameId, int $season): array
     {
-        $cacheKey = "game_preview_v4_{$externalGameId}_{$season}";
+        $cacheKey = "game_preview_v5_{$externalGameId}_{$season}";
 
         $preview = Cache::remember($cacheKey, self::CACHE_TTL, function () use ($externalGameId, $season) {
             return $this->generatePreview($externalGameId, $season);
@@ -87,6 +87,7 @@ class GamePreviewService
             $headToHead = $this->buildHeadToHead($homeTeamId, $awayTeamId, $season);
             $prediction = $this->generatePrediction($homeTeam, $awayTeam, $headToHead, $game);
             $analysis = $this->generateAnalysis($homeTeam, $awayTeam, $headToHead, $prediction);
+            $matchupGrade = $this->aggregates->matchupGrade($homeTeamId, $awayTeamId, $season);
 
             return [
                 'game' => $this->formatGameMeta($game),
@@ -96,6 +97,7 @@ class GamePreviewService
                 'comparison' => $this->buildComparisonData($homeTeam, $awayTeam),
                 'prediction' => $prediction,
                 'analysis' => $analysis,
+                'matchup_grade' => $matchupGrade,
                 'generated_at' => now()->toIso8601String(),
             ];
         } catch (\Throwable $e) {

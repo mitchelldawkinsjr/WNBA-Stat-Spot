@@ -49,11 +49,13 @@ class AggregateComputationService
 
     public function __construct(
         private BoxScoreValidator $validator,
+        private RankingsInsightsComputationService $rankingsInsights,
     ) {}
 
     public function setReporter(?AgentRunReporter $reporter): void
     {
         $this->reporter = $reporter;
+        $this->rankingsInsights->setReporter($reporter);
     }
 
     public function computeSeason(int $season): void
@@ -66,6 +68,8 @@ class AggregateComputationService
         $this->computePlayerPerformanceTrends($season);
         $this->computeTeamPerformanceTrends($season);
         $this->computeMatchupSummaries($season);
+        // Rankings/insights consume the aggregate tables above.
+        $this->rankingsInsights->computeSeason($season);
     }
 
     public function computePlayerGameAdvanced(int $season): int

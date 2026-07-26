@@ -6,9 +6,11 @@ description: WNBA Analytics Agent — precomputed aggregates, advanced stat form
 
 The Analytics Agent precomputes every derived statistic into database tables so
 API responses never depend on request-time math. It is a deterministic in-app
-pipeline: `app/Services/WNBA/Agents/AggregateComputationService.php`, queued
-via `app/Jobs/RunAnalyticsAgent.php`, triggered by the nightly data-agent chain,
-`app:wnba-agent analytics`, or `POST /api/wnba/data/agent-run`.
+pipeline: `app/Services/WNBA/Agents/AggregateComputationService.php` (core
+aggregates) plus `RankingsInsightsComputationService` (percentiles, power
+rankings, daily insights), queued via `app/Jobs/RunAnalyticsAgent.php`,
+triggered by the nightly data-agent chain, `app:wnba-agent analytics`, or
+`POST /api/wnba/data/agent-run`.
 
 Consumers read via `app/Services/WNBA/Analytics/AggregateStatsReader.php` (or
 models directly). Missing aggregate rows must surface as `null` / empty — never
@@ -31,11 +33,22 @@ fake league-average placeholders (e.g. DRtg `100`).
   linear slopes for PTS/REB/AST
 - `wnba_team_performance_trends` — windows `l5` / `l10` / `season`: W-L,
   PPG for/against, pace, ORtg/DRtg over the window
+- `wnba_team_percentile_ranks` — season team ORtg/DRtg/net/pace/eFG%/TOV%
+  percentiles (DRtg & TOV% inverted so higher = better)
+- `wnba_player_percentile_ranks` — season player PTS/REB/AST/STL/BLK/MIN/
+  TS%/eFG% percentiles (min games gate)
+- `wnba_team_power_rankings` — dated snapshots: rank, score, WoW delta,
+  component weights (season net + L5/L10 form + win%), one-line reason
+- `wnba_daily_insights` — dated cards (player surge/fade, team hot/cold,
+  net-rating extremes); priority desc, capped per day
 
 API controllers read these tables (see `PlayerController::leaders`, player
-analytics `vs_defense` / `performance_trends`, matchup + game preview). New
-derived stats belong in these tables (or a new agent-owned table), not in
-controllers.
+analytics `vs_defense` / `performance_trends`, matchup + game preview,
+`RankingsInsightsController`). New derived stats belong in these tables
+(or a new agent-owned table), not in controllers.
+
+Matchup letter grade is a **read-time** lookup on team season nets
+(`home_net − away_net + 2.5` home boost → A–F); never invent nets.
 
 ## Formula conventions (formula_version `v1-box-estimate`)
 
@@ -50,6 +63,7 @@ controllers.
   Team season DRtg uses **opponent** possessions.
 - Matchup difficulty (read-time lookup only): compare opponent team DRtg to
   league median (±3 band) → `favorable` | `neutral` | `difficult`.
+- Rankings/insights rows use formula_version `v1-rankings-insights`.
 - Every aggregate row records `formula_version`, `computed_at`, and
   `agent_run_id`. If you change a formula, bump the version string and
   recompute — never mix versions within a table silently.
@@ -64,6 +78,8 @@ controllers.
   cannot poison aggregates; the skip is counted in the run summary.
 - `computePlayerVsDefense` runs after `computeTeamSeasonStats` so opponent
   DRtg buckets are available; games vs teams without a season row are skipped.
+- Rankings/insights run **after** core aggregate tables so percentiles and
+  power rankings consume fresh season/trend rows.
 - Adjusted plus-minus / RAPM-style metrics and defense-vs-position are out of
   scope for v1 (needs PBP stints / richer roles); raw plus-minus comes straight
   from box scores.
@@ -72,12 +88,16 @@ controllers.
 
 Runs record counters (`player_season_stats_computed`,
 `player_vs_defense_computed`, `player_performance_trends_computed`,
-`team_performance_trends_computed`, etc.) to `wnba_agent_runs` via
+`team_performance_trends_computed`, `team_percentile_ranks_computed`,
+`player_percentile_ranks_computed`, `team_power_rankings_computed`,
+`daily_insights_computed`, etc.) to `wnba_agent_runs` via
 `AgentRunReporter`. Recomputation is idempotent (`updateOrCreate` on natural
 keys) — recomputing a season with unchanged inputs yields identical rows.
 After a successful run the response cache is cleared so the API serves fresh
 aggregates.
 
 **After deploy:** run `php artisan app:wnba-agent analytics` (or
-`POST /api/wnba/data/agent-run`) for the current season so the three new
-tables are populated before traffic depends on them.
+`POST /api/wnba/data/agent-run`) for the current season so the rankings/
+insights tables (`wnba_team_percentile_ranks`, `wnba_player_percentile_ranks`,
+`wnba_team_power_rankings`, `wnba_daily_insights`) are populated before
+traffic depends on them.

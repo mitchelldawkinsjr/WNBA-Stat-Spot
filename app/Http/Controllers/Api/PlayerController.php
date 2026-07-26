@@ -191,6 +191,8 @@ class PlayerController extends Controller
                     ['column' => 'points', 'label' => 'Points Per Game', 'abbr' => 'PPG'],
                     ['column' => 'rebounds', 'label' => 'Rebounds Per Game', 'abbr' => 'RPG'],
                     ['column' => 'assists', 'label' => 'Assists Per Game', 'abbr' => 'APG'],
+                    ['column' => 'ts_pct', 'label' => 'True Shooting %', 'abbr' => 'TS%'],
+                    ['column' => 'efg_pct', 'label' => 'Effective FG %', 'abbr' => 'eFG%'],
                 ];
 
                 $leaders = [];
@@ -235,7 +237,7 @@ class PlayerController extends Controller
      */
     private function topSeasonLeader(int $season, string $statColumn, string $label, string $abbr, int $minGames): ?array
     {
-        $allowed = ['points', 'rebounds', 'assists', 'steals', 'blocks'];
+        $allowed = ['points', 'rebounds', 'assists', 'steals', 'blocks', 'ts_pct', 'efg_pct'];
         if (! in_array($statColumn, $allowed, true)) {
             return null;
         }
@@ -245,6 +247,11 @@ class PlayerController extends Controller
         $aggregate = $this->topSeasonLeaderFromAggregates($season, $statColumn, $label, $abbr, $minGames);
         if ($aggregate !== null) {
             return $aggregate;
+        }
+
+        // Efficiency % leaders only exist on aggregate tables (no box-score AVG).
+        if (in_array($statColumn, ['ts_pct', 'efg_pct'], true)) {
+            return null;
         }
 
         $row = DB::table('wnba_player_games as pg')
@@ -286,13 +293,14 @@ class PlayerController extends Controller
             return null;
         }
 
-        $avgColumn = $statColumn.'_avg';
+        $isEfficiency = in_array($statColumn, ['ts_pct', 'efg_pct'], true);
+        $column = $isEfficiency ? $statColumn : $statColumn.'_avg';
 
         $row = DB::table('wnba_player_season_stats as pss')
             ->join('wnba_players as p', 'p.id', '=', 'pss.player_id')
             ->where('pss.season', $season)
             ->where('pss.games_played', '>=', $minGames)
-            ->orderByDesc('pss.'.$avgColumn)
+            ->orderByDesc('pss.'.$column)
             ->select(
                 'p.id as db_id',
                 'p.athlete_id',
@@ -300,13 +308,18 @@ class PlayerController extends Controller
                 'p.athlete_short_name',
                 'p.athlete_headshot_href',
                 'p.athlete_position_abbreviation',
-                'pss.'.$avgColumn.' as avg_stat',
+                'pss.'.$column.' as avg_stat',
                 'pss.games_played'
             )
             ->first();
 
         if (! $row || $row->avg_stat === null) {
             return null;
+        }
+
+        $value = (float) $row->avg_stat;
+        if ($isEfficiency) {
+            $value = $value * 100;
         }
 
         return [
@@ -317,7 +330,7 @@ class PlayerController extends Controller
             'position' => $row->athlete_position_abbreviation,
             'category' => $label,
             'category_abbr' => $abbr,
-            'value' => round((float) $row->avg_stat, 1),
+            'value' => round($value, 1),
             'games_played' => (int) $row->games_played,
         ];
     }

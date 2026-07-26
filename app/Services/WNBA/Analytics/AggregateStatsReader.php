@@ -2,12 +2,16 @@
 
 namespace App\Services\WNBA\Analytics;
 
+use App\Models\WnbaDailyInsight;
 use App\Models\WnbaMatchupSummary;
 use App\Models\WnbaPlayerGameAdvanced;
+use App\Models\WnbaPlayerPercentileRank;
 use App\Models\WnbaPlayerPerformanceTrend;
 use App\Models\WnbaPlayerSeasonStat;
 use App\Models\WnbaPlayerVsDefense;
+use App\Models\WnbaTeamPercentileRank;
 use App\Models\WnbaTeamPerformanceTrend;
+use App\Models\WnbaTeamPowerRanking;
 use App\Models\WnbaTeamSeasonStat;
 use App\Services\WNBA\Agents\AggregateComputationService;
 use App\Services\WNBA\Data\Support\TeamForeignKeyResolver;
@@ -21,6 +25,9 @@ class AggregateStatsReader
 {
     /** DRtg above league median by this amount → difficult; below → favorable. */
     private const MATCHUP_DIFFICULTY_BAND = 3.0;
+
+    /** Home-court boost (net-rating points) for matchup letter grades. */
+    private const MATCHUP_HOME_COURT_BOOST = 2.5;
 
     public function teamSeasonStat(string|int $teamId, int $season): ?WnbaTeamSeasonStat
     {
@@ -324,6 +331,201 @@ class AggregateStatsReader
                 'defensive_rating' => $row->defensive_rating,
             ])
             ->all();
+    }
+
+    /**
+     * Latest (or dated) team power rankings for a season, ordered by rank.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function teamPowerRankings(int $season, ?string $asOfDate = null): array
+    {
+        $query = WnbaTeamPowerRanking::query()->where('season', $season);
+
+        if ($asOfDate !== null && $asOfDate !== '') {
+            $query->whereDate('as_of_date', $asOfDate);
+        } else {
+            $latest = WnbaTeamPowerRanking::query()
+                ->where('season', $season)
+                ->orderByDesc('as_of_date')
+                ->value('as_of_date');
+
+            if ($latest === null) {
+                return [];
+            }
+
+            $query->whereDate('as_of_date', $latest);
+        }
+
+        return $query
+            ->orderBy('rank')
+            ->get()
+            ->map(fn (WnbaTeamPowerRanking $row) => [
+                'season' => $row->season,
+                'as_of_date' => $row->as_of_date?->toDateString(),
+                'team_id' => (string) $row->team_id,
+                'rank' => $row->rank,
+                'previous_rank' => $row->previous_rank,
+                'rank_delta' => $row->rank_delta,
+                'score' => $row->score,
+                'components' => $row->components,
+                'reason' => $row->reason,
+                'formula_version' => $row->formula_version,
+                'computed_at' => $row->computed_at?->toIso8601String(),
+            ])
+            ->all();
+    }
+
+    /**
+     * Daily insight cards for a season/date, highest priority first.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function dailyInsights(int $season, ?string $insightDate = null, int $limit = 15): array
+    {
+        $query = WnbaDailyInsight::query()->where('season', $season);
+
+        if ($insightDate !== null && $insightDate !== '') {
+            $query->whereDate('insight_date', $insightDate);
+        } else {
+            $latest = WnbaDailyInsight::query()
+                ->where('season', $season)
+                ->orderByDesc('insight_date')
+                ->value('insight_date');
+
+            if ($latest === null) {
+                return [];
+            }
+
+            $query->whereDate('insight_date', $latest);
+        }
+
+        return $query
+            ->orderByDesc('priority')
+            ->orderBy('id')
+            ->limit(max(1, $limit))
+            ->get()
+            ->map(fn (WnbaDailyInsight $row) => [
+                'season' => $row->season,
+                'insight_date' => $row->insight_date?->toDateString(),
+                'insight_type' => $row->insight_type,
+                'entity_type' => $row->entity_type,
+                'entity_id' => (string) $row->entity_id,
+                'title' => $row->title,
+                'body' => $row->body,
+                'priority' => $row->priority,
+                'payload' => $row->payload,
+                'formula_version' => $row->formula_version,
+                'computed_at' => $row->computed_at?->toIso8601String(),
+            ])
+            ->all();
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public function playerPercentiles(int $playerId, int $season): ?array
+    {
+        $row = WnbaPlayerPercentileRank::query()
+            ->where('player_id', $playerId)
+            ->where('season', $season)
+            ->first();
+
+        if ($row === null) {
+            return null;
+        }
+
+        return [
+            'player_id' => $row->player_id,
+            'season' => $row->season,
+            'sample_size' => $row->sample_size,
+            'points_pctl' => $row->points_pctl,
+            'rebounds_pctl' => $row->rebounds_pctl,
+            'assists_pctl' => $row->assists_pctl,
+            'steals_pctl' => $row->steals_pctl,
+            'blocks_pctl' => $row->blocks_pctl,
+            'minutes_pctl' => $row->minutes_pctl,
+            'ts_pct_pctl' => $row->ts_pct_pctl,
+            'efg_pct_pctl' => $row->efg_pct_pctl,
+            'formula_version' => $row->formula_version,
+            'computed_at' => $row->computed_at?->toIso8601String(),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public function teamPercentiles(string|int $teamId, int $season): ?array
+    {
+        $keys = TeamForeignKeyResolver::foreignKeysForReference($teamId);
+        $row = WnbaTeamPercentileRank::query()
+            ->where('season', $season)
+            ->whereIn('team_id', $keys)
+            ->first();
+
+        if ($row === null) {
+            return null;
+        }
+
+        return [
+            'team_id' => (string) $row->team_id,
+            'season' => $row->season,
+            'sample_size' => $row->sample_size,
+            'offensive_rating_pctl' => $row->offensive_rating_pctl,
+            'defensive_rating_pctl' => $row->defensive_rating_pctl,
+            'net_rating_pctl' => $row->net_rating_pctl,
+            'pace_pctl' => $row->pace_pctl,
+            'efg_pct_pctl' => $row->efg_pct_pctl,
+            'tov_pct_pctl' => $row->tov_pct_pctl,
+            'formula_version' => $row->formula_version,
+            'computed_at' => $row->computed_at?->toIso8601String(),
+        ];
+    }
+
+    /**
+     * Letter grade for home vs away based on net-rating edge (+ home-court boost).
+     * Missing nets → null (never invent placeholders).
+     *
+     * @return array{grade: string, edge: float, summary: string, home_net: float, away_net: float}|null
+     */
+    public function matchupGrade(string|int $homeTeamId, string|int $awayTeamId, int $season): ?array
+    {
+        $homeNet = $this->netRating($homeTeamId, $season);
+        $awayNet = $this->netRating($awayTeamId, $season);
+        if ($homeNet === null || $awayNet === null) {
+            return null;
+        }
+
+        $edge = round($homeNet - $awayNet + self::MATCHUP_HOME_COURT_BOOST, 1);
+
+        if ($edge >= 8) {
+            $grade = 'A';
+        } elseif ($edge >= 4) {
+            $grade = 'B';
+        } elseif ($edge >= 0) {
+            $grade = 'C';
+        } elseif ($edge >= -4) {
+            $grade = 'D';
+        } else {
+            $grade = 'F';
+        }
+
+        $favored = $edge >= 0 ? 'home' : 'away';
+        $summary = sprintf(
+            'Net-rating edge %+0.1f (home court %+0.1f) favors the %s side — grade %s.',
+            $edge,
+            self::MATCHUP_HOME_COURT_BOOST,
+            $favored,
+            $grade
+        );
+
+        return [
+            'grade' => $grade,
+            'edge' => $edge,
+            'summary' => $summary,
+            'home_net' => $homeNet,
+            'away_net' => $awayNet,
+        ];
     }
 
     /**

@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\PlayerController;
 use App\Http\Controllers\Api\PredictionsController;
 use App\Http\Controllers\Api\PredictionTestingController;
 use App\Http\Controllers\Api\PropScannerController;
+use App\Http\Controllers\Api\RankingsInsightsController;
 use App\Http\Controllers\Api\StatsController;
 use App\Http\Controllers\Api\TeamController;
 use App\Http\Controllers\Api\WnbaIntelController;
@@ -131,7 +132,9 @@ Route::get('/status', function () {
 // Basic data endpoints
 Route::get('/teams', [TeamController::class, 'index']);
 Route::get('/teams/summary', [TeamController::class, 'summary']);
+Route::get('/teams/power-rankings', [RankingsInsightsController::class, 'powerRankings']);
 Route::get('/teams/{teamId}', [TeamController::class, 'show']);
+Route::get('/teams/{teamId}/percentiles', [RankingsInsightsController::class, 'teamPercentiles']);
 Route::get('/teams/{teamId}/players', [TeamController::class, 'players']);
 Route::post('/teams/clear-cache', [TeamController::class, 'clearCache']);
 
@@ -144,6 +147,7 @@ Route::get('/players/{id}/overview', [PlayerController::class, 'overview']);
 Route::get('/players/{id}/season-stats', [PlayerController::class, 'seasonStats']);
 Route::get('/players/{id}/news', [PlayerController::class, 'news']);
 Route::get('/players/{id}/injuries', [PlayerController::class, 'injuries']);
+Route::get('/players/{id}/percentiles', [RankingsInsightsController::class, 'playerPercentiles']);
 Route::get('/players/{id}', [PlayerController::class, 'show']);
 
 Route::get('/games', [GameController::class, 'index']);
@@ -174,6 +178,8 @@ Route::prefix('wnba')->group(function () {
         Route::get('/player/{playerId}', [PredictionsController::class, 'getPlayerAnalytics']);
         Route::get('/team/{teamId}', [PredictionsController::class, 'getTeamAnalytics']);
         Route::get('/game/{gameId}', [PredictionsController::class, 'getGameAnalytics']);
+        Route::get('/power-rankings', [RankingsInsightsController::class, 'powerRankings']);
+        Route::get('/insights/daily', [RankingsInsightsController::class, 'dailyInsights']);
     });
 
     // Data Import/Update Routes

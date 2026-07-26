@@ -16,6 +16,7 @@ use App\Models\WnbaTeamPerformanceTrend;
 use App\Models\WnbaTeamSeasonStat;
 use App\Services\WNBA\Agents\AggregateComputationService;
 use App\Services\WNBA\Agents\BoxScoreValidator;
+use App\Services\WNBA\Agents\RankingsInsightsComputationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -30,7 +31,10 @@ class AggregateComputationServiceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->service = new AggregateComputationService(new BoxScoreValidator);
+        $this->service = new AggregateComputationService(
+            new BoxScoreValidator,
+            new RankingsInsightsComputationService
+        );
         $this->seedTwoGames();
     }
 
