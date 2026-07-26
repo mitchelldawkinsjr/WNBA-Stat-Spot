@@ -238,6 +238,10 @@ class SportsDataverseFetcher
     }
 
     /**
+     * Normalizes sportsdataverse PBP CSV rows (id/type_id/text/home_team_* ...)
+     * to the canonical play keys the save pipeline expects. The play's team
+     * details are derived from the home/away columns via team_id.
+     *
      * @return array<int, array<string, mixed>>
      */
     private function parsePbpCsv(string $content): array
@@ -247,7 +251,40 @@ class SportsDataverseFetcher
         $records = [];
 
         foreach ($csv->getRecords() as $record) {
-            $records[] = $record;
+            $teamId = (string) ($record['team_id'] ?? '');
+            $side = match ($teamId) {
+                '' => null,
+                (string) ($record['home_team_id'] ?? null) => 'home',
+                (string) ($record['away_team_id'] ?? null) => 'away',
+                default => null,
+            };
+            $location = $side !== null ? ($record["{$side}_team_name"] ?? null) : null;
+            $mascot = $side !== null ? ($record["{$side}_team_mascot"] ?? null) : null;
+
+            $records[] = [
+                'game_id' => $record['game_id'] ?? null,
+                'season' => $record['season'] ?? $this->dataSeasonYear,
+                'season_type' => $record['season_type'] ?? null,
+                'game_date' => $record['game_date'] ?? null,
+                'game_date_time' => $record['game_date_time'] ?? null,
+                'play_id' => $record['id'] ?? null,
+                'play_sequence_number' => (int) ($record['sequence_number'] ?? 0),
+                'period' => $record['period_number'] ?? ($record['period'] ?? ''),
+                'period_display_value' => $record['period_display_value'] ?? '',
+                'clock_display_value' => $record['clock_display_value'] ?? '',
+                'team_id' => $teamId,
+                'team_name' => $mascot,
+                'team_location' => $location,
+                'team_abbreviation' => $side !== null ? ($record["{$side}_team_abbrev"] ?? null) : null,
+                'team_display_name' => trim(($location ?? '').' '.($mascot ?? '')) ?: null,
+                'play_type_id' => $record['type_id'] ?? '',
+                'play_type_text' => $record['type_text'] ?? '',
+                'play_type_abbreviation' => $record['type_abbreviation'] ?? '',
+                'play_text' => $record['text'] ?? '',
+                'athlete_id' => ($record['athlete_id_1'] ?? '') !== '' ? $record['athlete_id_1'] : null,
+                'score_value' => (int) ($record['score_value'] ?? 0),
+                'score_team_id' => strtoupper((string) ($record['scoring_play'] ?? '')) === 'TRUE' && $teamId !== '' ? $teamId : null,
+            ];
         }
 
         return $records;

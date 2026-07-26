@@ -756,87 +756,64 @@ class WnbaDataService
     public function savePbpData(array $records): void
     {
         foreach ($records as $record) {
-            // Create or update game
-            $game = WnbaGame::updateOrCreate(
+            if (empty($record['game_id']) || empty($record['play_id'])) {
+                continue;
+            }
+
+            // PBP rows carry no team metadata or player names, so ensure rows
+            // exist without overwriting details ingested from richer sources.
+            $game = WnbaGame::firstOrCreate(
                 ['game_id' => $record['game_id']],
                 [
-                    'season' => $record['season'],
+                    'season' => $record['season'] ?? $this->dataSeasonYear,
                     'season_type' => $this->normalizeSeasonType($record['season_type'] ?? null),
-                    'game_date' => $record['game_date'],
-                    'game_date_time' => $record['game_date_time'],
+                    'game_date' => $record['game_date'] ?? null,
+                    'game_date_time' => $record['game_date_time'] ?? null,
                 ]
             );
 
-            // Create or update team
-            $team = WnbaTeam::updateOrCreate(
-                ['team_id' => $record['team_id']],
-                [
-                    'team_name' => $record['team_name'],
-                    'team_location' => $record['team_location'],
-                    'team_abbreviation' => $record['team_abbreviation'],
-                    'team_display_name' => $record['team_display_name'],
-                    'team_uid' => $record['team_uid'],
-                    'team_slug' => $record['team_slug'],
-                    'team_logo' => $record['team_logo'],
-                    'team_color' => $record['team_color'],
-                    'team_alternate_color' => $record['team_alternate_color'],
-                ]
-            );
+            $teamId = (string) ($record['team_id'] ?? '');
+            if ($teamId !== '') {
+                WnbaTeam::firstOrCreate(
+                    ['team_id' => $teamId],
+                    [
+                        'team_name' => $record['team_name'] ?? 'Unknown Team',
+                        'team_location' => $record['team_location'] ?? 'Unknown',
+                        'team_abbreviation' => $record['team_abbreviation'] ?? 'UNK',
+                        'team_display_name' => $record['team_display_name'] ?? 'Unknown Team',
+                    ]
+                );
+            }
 
-            // Create or update player if exists
             $player = null;
             if (! empty($record['athlete_id'])) {
-                $player = WnbaPlayer::updateOrCreate(
+                $player = WnbaPlayer::firstOrCreate(
                     ['athlete_id' => $record['athlete_id']],
                     [
-                        'athlete_display_name' => $record['athlete_display_name'],
-                        'athlete_short_name' => $record['athlete_short_name'],
-                        'athlete_jersey' => $record['athlete_jersey'],
-                        'athlete_headshot_href' => $record['athlete_headshot_href'],
-                        'athlete_position_name' => $record['athlete_position_name'],
-                        'athlete_position_abbreviation' => $record['athlete_position_abbreviation'],
+                        'athlete_display_name' => $record['athlete_display_name'] ?? 'Unknown Player',
+                        'athlete_short_name' => $record['athlete_short_name'] ?? 'Unknown',
                     ]
                 );
             }
 
-            // Create or update score team if exists
-            $scoreTeam = null;
-            if (! empty($record['score_team_id'])) {
-                $scoreTeam = WnbaTeam::updateOrCreate(
-                    ['team_id' => $record['score_team_id']],
-                    [
-                        'team_name' => $record['score_team_name'],
-                        'team_location' => $record['score_team_location'],
-                        'team_abbreviation' => $record['score_team_abbreviation'],
-                        'team_display_name' => $record['score_team_display_name'],
-                        'team_uid' => $record['score_team_uid'],
-                        'team_slug' => $record['score_team_slug'],
-                        'team_logo' => $record['score_team_logo'],
-                        'team_color' => $record['score_team_color'],
-                        'team_alternate_color' => $record['score_team_alternate_color'],
-                    ]
-                );
-            }
-
-            // Create or update play
             $play = WnbaPlay::updateOrCreate(
                 [
                     'game_id' => $game->id,
                     'play_id' => $record['play_id'],
                 ],
                 array_merge([
-                    'play_sequence_number' => $record['play_sequence_number'],
-                    'period' => $record['period'],
-                    'period_display_value' => $record['period_display_value'],
-                    'clock_display_value' => $record['clock_display_value'],
-                    'team_id' => $team->team_id,
+                    'play_sequence_number' => (int) ($record['play_sequence_number'] ?? 0),
+                    'period' => (string) ($record['period'] ?? ''),
+                    'period_display_value' => (string) ($record['period_display_value'] ?? ''),
+                    'clock_display_value' => (string) ($record['clock_display_value'] ?? ''),
+                    'team_id' => $teamId !== '' ? $teamId : null,
                     'player_id' => $player?->id,
-                    'play_type_id' => $record['play_type_id'],
-                    'play_type_text' => $record['play_type_text'],
-                    'play_type_abbreviation' => $record['play_type_abbreviation'],
-                    'play_text' => $record['play_text'],
-                    'score_value' => $record['score_value'],
-                    'score_team_id' => $scoreTeam?->team_id,
+                    'play_type_id' => (string) ($record['play_type_id'] ?? ''),
+                    'play_type_text' => (string) ($record['play_type_text'] ?? ''),
+                    'play_type_abbreviation' => (string) ($record['play_type_abbreviation'] ?? ''),
+                    'play_text' => (string) ($record['play_text'] ?? ''),
+                    'score_value' => (int) ($record['score_value'] ?? 0),
+                    'score_team_id' => $record['score_team_id'] ?? null,
                 ], $this->lineageFields())
             );
             $this->trackWrite($play);
