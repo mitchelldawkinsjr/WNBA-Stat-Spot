@@ -75,6 +75,8 @@ class WnbaPlayerGame extends Model
 
     public function team(): BelongsTo
     {
-        return $this->belongsTo(WnbaTeam::class, 'team_id');
+        // wnba_player_games.team_id stores the external ESPN/provider team_id,
+        // not wnba_teams.id — join on that column or numeric ids collide (e.g. LV "17" → TOR PK 17).
+        return $this->belongsTo(WnbaTeam::class, 'team_id', 'team_id');
     }
 }

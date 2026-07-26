@@ -63,11 +63,12 @@ class WnbaGameTeam extends Model
 
     public function team(): BelongsTo
     {
-        return $this->belongsTo(WnbaTeam::class, 'team_id');
+        // External provider team_id, not wnba_teams primary key.
+        return $this->belongsTo(WnbaTeam::class, 'team_id', 'team_id');
     }
 
     public function opponentTeam(): BelongsTo
     {
-        return $this->belongsTo(WnbaTeam::class, 'opponent_team_id');
+        return $this->belongsTo(WnbaTeam::class, 'opponent_team_id', 'team_id');
     }
 }

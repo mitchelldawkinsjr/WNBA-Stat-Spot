@@ -41,7 +41,8 @@ class WnbaPlay extends Model
 
     public function team(): BelongsTo
     {
-        return $this->belongsTo(WnbaTeam::class, 'team_id');
+        // External provider team_id, not wnba_teams primary key.
+        return $this->belongsTo(WnbaTeam::class, 'team_id', 'team_id');
     }
 
     public function player(): BelongsTo
@@ -51,6 +52,6 @@ class WnbaPlay extends Model
 
     public function scoreTeam(): BelongsTo
     {
-        return $this->belongsTo(WnbaTeam::class, 'score_team_id');
+        return $this->belongsTo(WnbaTeam::class, 'score_team_id', 'team_id');
     }
 }
