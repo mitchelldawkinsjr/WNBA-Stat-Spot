@@ -44,17 +44,52 @@ jobs:
         working-directory: ./resources/js
         run: npm ci
         
+      # `npm audit` is broken as of July 2026: the legacy endpoints were retired
+      # and the bulk advisory endpoint returns gzip without a Content-Encoding
+      # header, which every npm client chokes on. Query the bulk endpoint
+      # directly and fail only on critical advisories (same gate as before).
       - name: NPM Security Audit
         working-directory: ./resources/js
         run: |
-          npm audit --audit-level critical --json > npm-audit.json || true
-          if [ -s npm-audit.json ]; then
-            echo "NPM vulnerabilities found:"
-            cat npm-audit.json
-            npm audit --audit-level critical
-          else
-            echo "No NPM vulnerabilities found"
-          fi
+          node --input-type=module - <<'EOF'
+          import {readFileSync, writeFileSync} from 'node:fs';
+          import {gunzipSync} from 'node:zlib';
+
+          const lock = JSON.parse(readFileSync('package-lock.json', 'utf8'));
+          const payload = {};
+          for (const [path, meta] of Object.entries(lock.packages)) {
+            if (!path) continue;
+            const name = path.split('node_modules/').pop();
+            (payload[name] ??= []).push(meta.version);
+          }
+
+          const res = await fetch('https://registry.npmjs.org/-/npm/v1/security/advisories/bulk', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload),
+          });
+          if (!res.ok) throw new Error(`bulk advisory endpoint returned ${res.status}`);
+          let body = Buffer.from(await res.arrayBuffer());
+          if (body[0] === 0x1f && body[1] === 0x8b) body = gunzipSync(body);
+          const advisories = JSON.parse(body.toString('utf8'));
+          writeFileSync('npm-audit.json', JSON.stringify(advisories, null, 2));
+
+          const counts = {};
+          const critical = [];
+          for (const [pkg, list] of Object.entries(advisories)) {
+            for (const adv of list) {
+              counts[adv.severity] = (counts[adv.severity] ?? 0) + 1;
+              if (adv.severity === 'critical') critical.push(`${pkg}: ${adv.title} (${adv.url})`);
+            }
+          }
+          console.log('Advisory counts:', JSON.stringify(counts));
+          if (critical.length) {
+            console.error('Critical NPM vulnerabilities found:');
+            critical.forEach(line => console.error(`  ${line}`));
+            process.exit(1);
+          }
+          console.log('No critical NPM vulnerabilities found');
+          EOF
           
       - name: Upload NPM Audit Results
         if: always()
