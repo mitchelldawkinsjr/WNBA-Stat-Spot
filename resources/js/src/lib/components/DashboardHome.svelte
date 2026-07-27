@@ -1,7 +1,15 @@
 <script lang="ts">
     import { onDestroy, onMount } from 'svelte';
     import { api } from '$lib/api/client';
-    import type { Game, LeagueLeader, PlayerSpotlight, PredictionAccuracyDashboard, TodaysProp } from '$lib/api/client';
+    import type {
+        DailyInsight,
+        Game,
+        LeagueLeader,
+        PlayerSpotlight,
+        PowerRankingRow,
+        PredictionAccuracyDashboard,
+        TodaysProp,
+    } from '$lib/api/client';
     import StatusBadge from '$lib/components/ui/StatusBadge.svelte';
     import DsIcon from '$lib/components/ui/DsIcon.svelte';
     import TodaysBestProps from '$lib/components/TodaysBestProps.svelte';
@@ -16,6 +24,10 @@
 
     let games: Game[] = [];
     let leaders: LeagueLeader[] = [];
+    let powerRankings: PowerRankingRow[] = [];
+    let powerRankingsAsOf: string | null = null;
+    let dailyInsights: DailyInsight[] = [];
+    let insightsDate: string | null = null;
     let newsItems: Array<Record<string, unknown>> = [];
     let accuracy: PredictionAccuracyDashboard | null = null;
     let topProp: TodaysProp | null = null;
@@ -52,17 +64,21 @@
     async function loadDashboard() {
         try {
             loading = true;
-            // Core dashboard data only — do not wait on external news feeds
-            // (those can take 10–15s on cold cache and used to hang first paint).
-            const [gamesRes, leadersRes, accuracyRes] = await Promise.all([
+            const [gamesRes, leadersRes, accuracyRes, rankingsRes, insightsRes] = await Promise.all([
                 api.games.getAll({ season: 2026 }),
                 api.players.getLeaders({ season: 2026 }),
                 api.wnba.predictions.getAccuracy('America/New_York').catch(() => null),
+                api.wnba.analytics.getPowerRankings({ season: 2026 }).catch(() => null),
+                api.wnba.analytics.getDailyInsights({ season: 2026, limit: 8 }).catch(() => null),
             ]);
             games = gamesRes.data ?? [];
             leaders = leadersRes.data?.leaders ?? [];
             accuracy = accuracyRes?.data ?? null;
             topProp = accuracy?.top_prop_of_day ?? null;
+            powerRankings = rankingsRes?.data?.rankings ?? [];
+            powerRankingsAsOf = rankingsRes?.data?.as_of_date ?? null;
+            dailyInsights = insightsRes?.data?.insights ?? [];
+            insightsDate = insightsRes?.data?.insight_date ?? null;
 
             const spotlight = leadersRes.data?.spotlight;
             if (spotlight) {
@@ -162,6 +178,28 @@
 
     function formatPct(value: number | null | undefined): string {
         return value != null ? `${value.toFixed(1)}%` : '—';
+    }
+
+    function formatRankDelta(delta: number | null | undefined): string {
+        if (delta == null || delta === 0) return '—';
+        return delta > 0 ? `↑${delta}` : `↓${Math.abs(delta)}`;
+    }
+
+    function rankDeltaClass(delta: number | null | undefined): string {
+        if (delta == null || delta === 0) return 'ds-rank-delta--flat';
+        return delta > 0 ? 'ds-rank-delta--up' : 'ds-rank-delta--down';
+    }
+
+    function insightTag(type: string): string {
+        const labels: Record<string, string> = {
+            player_surge: 'Surge',
+            player_fade: 'Fade',
+            team_hot: 'Hot',
+            team_cold: 'Cold',
+            net_rating_leader: 'Net+',
+            net_rating_trailer: 'Net−',
+        };
+        return labels[type] ?? type.replaceAll('_', ' ');
     }
 </script>
 
@@ -313,16 +351,72 @@
             </div>
 
             <div class="ds-panel">
-                <h3 class="ds-panel__title"><DsIcon name="query_stats" size={20} className="text-primary" /> Quick Links</h3>
-                <div class="ds-link-list">
-                    <a href="/reports/predictions" class="ds-link-row"><DsIcon name="auto_awesome" size={18} /> Prediction Engine</a>
-                    <a href="/reports/todays-props" class="ds-link-row"><DsIcon name="local_fire_department" size={18} /> Today's Best Props</a>
-                    <a href="/advanced/model-validation" class="ds-link-row"><DsIcon name="verified" size={18} /> Model Accuracy</a>
-                    <a href="/advanced/prop-scanner" class="ds-link-row"><DsIcon name="radar" size={18} /> Prop Scanner</a>
-                    <a href="/advanced/live-odds" class="ds-link-row"><DsIcon name="bolt" size={18} /> Live Odds</a>
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h3 class="ds-panel__title mb-0"><DsIcon name="leaderboard" size={20} className="text-primary" /> Power Rankings</h3>
+                    {#if powerRankingsAsOf}
+                        <span class="ds-meta-caps">{powerRankingsAsOf}</span>
+                    {/if}
+                </div>
+                <p class="ds-text-muted small mb-3">Net rating + recent form · week-over-week movement</p>
+                <div class="ds-leader-list">
+                    {#each powerRankings.slice(0, 12) as row}
+                        <a href="/teams/{row.team_id}" class="ds-leader-row">
+                            <div class="d-flex align-items-center gap-3">
+                                <span class="ds-leader-rank">{row.rank}</span>
+                                <div>
+                                    <span class="fw-semibold d-block">
+                                        {row.team_abbreviation ?? row.team_display_name ?? row.team_id}
+                                    </span>
+                                    <small class="ds-text-muted">{row.reason ?? '—'}</small>
+                                </div>
+                            </div>
+                            <div class="text-end">
+                                <span class="ds-stat-value text-primary">{Number(row.score).toFixed(1)}</span>
+                                <small class="ds-rank-delta d-block {rankDeltaClass(row.rank_delta)}">
+                                    {formatRankDelta(row.rank_delta)}
+                                </small>
+                            </div>
+                        </a>
+                    {:else}
+                        <p class="ds-text-muted mb-0">Power rankings appear after the analytics agent runs.</p>
+                    {/each}
                 </div>
             </div>
         </div>
+
+        <section class="ds-dashboard-section">
+            <div class="ds-section-header">
+                <div>
+                    <h2 class="ds-section-label mb-0">Daily Insights</h2>
+                    <small class="ds-text-muted">
+                        {insightsDate ? `Homegrown signals for ${insightsDate}` : 'Homegrown signals from league aggregates'}
+                    </small>
+                </div>
+            </div>
+            {#if dailyInsights.length > 0}
+                <div class="ds-insight-grid">
+                    {#each dailyInsights as insight}
+                        {#if insight.href}
+                            <a href={insight.href} class="ds-insight-card">
+                                <span class="ds-news-tag">{insightTag(insight.insight_type)}</span>
+                                <h4 class="ds-insight-title">{insight.title}</h4>
+                                <p class="ds-insight-body">{insight.body}</p>
+                            </a>
+                        {:else}
+                            <article class="ds-insight-card">
+                                <span class="ds-news-tag">{insightTag(insight.insight_type)}</span>
+                                <h4 class="ds-insight-title">{insight.title}</h4>
+                                <p class="ds-insight-body">{insight.body}</p>
+                            </article>
+                        {/if}
+                    {/each}
+                </div>
+            {:else}
+                <div class="ds-score-card">
+                    <span class="ds-text-muted">No insights yet — run the analytics agent to populate today’s board.</span>
+                </div>
+            {/if}
+        </section>
 
         <section class="ds-dashboard-section">
             <TodaysBestProps />
@@ -536,6 +630,39 @@
         border-radius: var(--ds-radius-lg);
         background: var(--ds-surface-variant);
         border: 1px solid var(--ds-border-subtle);
+    }
+    .ds-rank-delta { font-weight: 700; font-variant-numeric: tabular-nums; }
+    .ds-rank-delta--up { color: var(--ds-success, #1b7f4e); }
+    .ds-rank-delta--down { color: var(--ds-danger, #b42318); }
+    .ds-rank-delta--flat { color: var(--ds-text-muted); }
+    .ds-insight-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: var(--ds-spacing-sm);
+    }
+    @media (min-width: 768px) {
+        .ds-insight-grid { grid-template-columns: 1fr 1fr; }
+    }
+    .ds-insight-card {
+        display: block;
+        padding: var(--ds-spacing-md);
+        border-radius: var(--ds-radius-xl);
+        background: var(--ds-surface-container);
+        border: 1px solid var(--ds-border-subtle);
+        color: inherit;
+        text-decoration: none;
+    }
+    a.ds-insight-card:hover { background: var(--ds-surface-variant); }
+    .ds-insight-title {
+        font-size: 16px;
+        font-weight: 600;
+        margin: 8px 0 6px;
+    }
+    .ds-insight-body {
+        margin: 0;
+        color: var(--ds-text-muted);
+        font-size: 14px;
+        line-height: 1.4;
     }
     .ds-link-list { display: flex; flex-direction: column; gap: 4px; }
     .ds-link-row {

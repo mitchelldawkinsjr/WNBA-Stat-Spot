@@ -4,6 +4,8 @@ namespace Tests\Unit\Services\WNBA\Analytics;
 
 use App\Models\WnbaGame;
 use App\Models\WnbaGameTeam;
+use App\Models\WnbaPlayer;
+use App\Models\WnbaPlayerGame;
 use App\Models\WnbaTeam;
 use App\Services\WNBA\Agents\AggregateComputationService;
 use App\Services\WNBA\Analytics\GamePreviewService;
@@ -51,6 +53,79 @@ class GamePreviewSeasonScopeTest extends TestCase
         foreach ($h2h['recent_meetings'] as $meeting) {
             $this->assertSame(2026, (int) $meeting['season']);
         }
+    }
+
+    public function test_key_players_expose_athlete_id_not_database_pk(): void
+    {
+        $home = WnbaTeam::create([
+            'team_id' => '19',
+            'team_name' => 'Sparks',
+            'team_location' => 'Los Angeles',
+            'team_abbreviation' => 'LA',
+            'team_display_name' => 'Los Angeles Sparks',
+        ]);
+        $away = WnbaTeam::create([
+            'team_id' => '20',
+            'team_name' => 'Mercury',
+            'team_location' => 'Phoenix',
+            'team_abbreviation' => 'PHX',
+            'team_display_name' => 'Phoenix Mercury',
+        ]);
+
+        $player = WnbaPlayer::create([
+            'athlete_id' => '4433630',
+            'athlete_display_name' => 'Rickea Jackson',
+            'athlete_short_name' => 'R. Jackson',
+            'athlete_position_abbreviation' => 'F',
+        ]);
+
+        $game = WnbaGame::create([
+            'game_id' => '401900010',
+            'season' => 2026,
+            'season_type' => 2,
+            'game_date' => '2026-07-01',
+            'game_date_time' => '2026-07-01 19:00:00',
+        ]);
+
+        WnbaPlayerGame::create([
+            'game_id' => $game->id,
+            'player_id' => $player->id,
+            'team_id' => $home->team_id,
+            'minutes' => '32:00',
+            'points' => 22,
+            'rebounds' => 6,
+            'assists' => 2,
+            'field_goals_made' => 8,
+            'field_goals_attempted' => 16,
+            'three_point_field_goals_made' => 2,
+            'three_point_field_goals_attempted' => 5,
+            'free_throws_made' => 4,
+            'free_throws_attempted' => 4,
+            'offensive_rebounds' => 1,
+            'defensive_rebounds' => 5,
+            'steals' => 1,
+            'blocks' => 0,
+            'turnovers' => 2,
+            'fouls' => 2,
+            'plus_minus' => 8,
+            'starter' => true,
+            'ejected' => false,
+            'did_not_play' => false,
+            'active' => true,
+        ]);
+
+        $this->assertNotSame('4433630', (string) $player->id, 'DB pk must differ from athlete_id for this assertion');
+
+        $service = app(GamePreviewService::class);
+        $method = new ReflectionMethod(GamePreviewService::class, 'getKeyPlayers');
+        $method->setAccessible(true);
+
+        $keyPlayers = $method->invoke($service, (int) $home->team_id, 2026, (int) $away->team_id);
+
+        $this->assertCount(1, $keyPlayers);
+        $this->assertSame('4433630', $keyPlayers[0]['player_id']);
+        $this->assertSame('Rickea Jackson', $keyPlayers[0]['name']);
+        $this->assertNotSame((string) $player->id, $keyPlayers[0]['player_id']);
     }
 
     private function seedMeeting(

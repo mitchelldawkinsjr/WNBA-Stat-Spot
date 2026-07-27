@@ -399,12 +399,14 @@ class GamePreviewService
             ->whereRaw("UPPER(wnba_player_games.minutes) != 'DNP'")
             ->groupBy(
                 'wnba_player_games.player_id',
+                'wnba_players.athlete_id',
                 'wnba_players.athlete_display_name',
                 'wnba_players.athlete_position_abbreviation',
                 'wnba_players.athlete_headshot_href'
             )
             ->select([
                 'wnba_player_games.player_id',
+                'wnba_players.athlete_id',
                 'wnba_players.athlete_display_name as name',
                 'wnba_players.athlete_position_abbreviation as position',
                 'wnba_players.athlete_headshot_href as headshot',
@@ -418,7 +420,9 @@ class GamePreviewService
             ->get();
 
         return $leaders->map(function ($leader) use ($season, $opponentKeys) {
-            $recentForm = $this->getPlayerRecentForm((int) $leader->player_id, $season);
+            // Stats joins use wnba_players.id; public /players/{id} routes use athlete_id.
+            $dbPlayerId = (int) $leader->player_id;
+            $recentForm = $this->getPlayerRecentForm($dbPlayerId, $season);
 
             $vsOpponent = WnbaPlayerGame::query()
                 ->join('wnba_games', 'wnba_games.id', '=', 'wnba_player_games.game_id')
@@ -426,7 +430,7 @@ class GamePreviewService
                     $join->on('opp_gt.game_id', '=', 'wnba_games.id')
                         ->whereIn('opp_gt.team_id', $opponentKeys);
                 })
-                ->where('wnba_player_games.player_id', $leader->player_id)
+                ->where('wnba_player_games.player_id', $dbPlayerId)
                 ->where('wnba_games.season', $season)
                 ->where('wnba_player_games.did_not_play', false)
                 ->select([
@@ -436,7 +440,7 @@ class GamePreviewService
                 ->first();
 
             return [
-                'player_id' => (int) $leader->player_id,
+                'player_id' => (string) $leader->athlete_id,
                 'name' => $leader->name,
                 'position' => $leader->position,
                 'headshot' => $leader->headshot,

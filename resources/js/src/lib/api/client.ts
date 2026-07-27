@@ -121,6 +121,33 @@ export interface LeagueLeader {
     games_played: number;
 }
 
+export interface PowerRankingRow {
+    team_id: string;
+    rank: number;
+    previous_rank?: number | null;
+    rank_delta?: number | null;
+    score: number;
+    reason?: string | null;
+    components?: Record<string, unknown> | null;
+    as_of_date?: string | null;
+    team_abbreviation?: string | null;
+    team_display_name?: string | null;
+}
+
+export interface DailyInsight {
+    insight_type: string;
+    entity_type: string;
+    entity_id: string;
+    title: string;
+    body: string;
+    priority: number;
+    payload?: Record<string, unknown> | null;
+    insight_date?: string | null;
+    href?: string | null;
+    athlete_id?: string | null;
+    team_abbreviation?: string | null;
+}
+
 export interface PlayerSpotlight {
     player_id: string;
     name: string;
@@ -233,7 +260,8 @@ export interface GameBoxScorePlayer {
 }
 
 export interface GamePreviewPlayer {
-    player_id: number;
+    /** External athlete_id for /players/{id} links (not wnba_players.id). */
+    player_id: string;
     name: string;
     position: string | null;
     headshot: string | null;
@@ -1233,6 +1261,35 @@ export const api = {
             },
             getGame: (gameId: string) => {
                 return fetchApi<{ success: boolean; data: GameAnalytics }>(`/wnba/analytics/game/${gameId}`, { cacheTtl: 'medium' });
+            },
+            getPowerRankings: (options?: { season?: number; as_of?: string }) => {
+                const params = new URLSearchParams();
+                if (options?.season != null) params.append('season', String(options.season));
+                if (options?.as_of) params.append('as_of', options.as_of);
+                const qs = params.toString();
+                return fetchApi<{
+                    success: boolean;
+                    data: {
+                        season: number;
+                        as_of_date: string | null;
+                        rankings: PowerRankingRow[];
+                    };
+                }>(`/wnba/analytics/power-rankings${qs ? `?${qs}` : ''}`, { cacheTtl: 'medium' });
+            },
+            getDailyInsights: (options?: { season?: number; date?: string; limit?: number }) => {
+                const params = new URLSearchParams();
+                if (options?.season != null) params.append('season', String(options.season));
+                if (options?.date) params.append('date', options.date);
+                if (options?.limit != null) params.append('limit', String(options.limit));
+                const qs = params.toString();
+                return fetchApi<{
+                    success: boolean;
+                    data: {
+                        season: number;
+                        insight_date: string | null;
+                        insights: DailyInsight[];
+                    };
+                }>(`/wnba/analytics/insights/daily${qs ? `?${qs}` : ''}`, { cacheTtl: 'short' });
             },
         },
         /** @deprecated Prefer `api.players.getAggregatedData` — some builds dropped nested `api.wnba.data`. */
