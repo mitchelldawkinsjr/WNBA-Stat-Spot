@@ -75,6 +75,7 @@ class AgentRunApiTest extends TestCase
         $queue = $this->getJson('/api/wnba/data/review-queue');
         $queue->assertStatus(200);
         $this->assertSame(1, $queue->json('data.count'));
+        $this->assertIsArray($queue->json('data.items.0.entities'));
 
         $this->postJson("/api/wnba/data/review-queue/{$conflict->id}/resolve", [
             'resolution_reason' => 'same person, merged manually',

@@ -114,6 +114,9 @@
                 <div class="page-title-box">
                     <h4 class="page-title">Data Management</h4>
                     <p class="text-muted mb-0">Update database from WNBA stats endpoints</p>
+                    <p class="mb-0 mt-2">
+                        <a href="/advanced/review-queue" class="btn btn-outline-primary btn-sm">Open review queue</a>
+                    </p>
                 </div>
             </div>
         </div>

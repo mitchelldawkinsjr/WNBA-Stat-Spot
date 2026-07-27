@@ -752,6 +752,35 @@ export interface GameAnalytics {
     generated_at: string;
 }
 
+export interface ReviewQueueEntity {
+    id: number;
+    athlete_id?: string | null;
+    espn_athlete_id?: string | null;
+    tank01_player_id?: string | null;
+    name?: string | null;
+    short_name?: string | null;
+    games_count?: number;
+    profile_url?: string | null;
+}
+
+export interface ReviewQueueItem {
+    id: number;
+    entity_type: string;
+    entity_key: string;
+    field: string;
+    candidates?: unknown;
+    selected_value?: string | null;
+    selected_source?: string | null;
+    resolution_reason?: string | null;
+    confidence?: number | null;
+    requires_review: boolean;
+    resolved_at?: string | null;
+    agent_run_id?: number | null;
+    created_at?: string;
+    updated_at?: string;
+    entities?: ReviewQueueEntity[];
+}
+
 export interface CacheStats {
     total_keys: number;
     memory_usage: any[];
@@ -1306,6 +1335,27 @@ export const api = {
             importPlayerStats: () => fetchApi<{ success: boolean; message: string; data: any }>('/wnba/data/import/stats', {
                 method: 'POST'
             }),
+
+            getReviewQueue: (params?: { entity_type?: string; limit?: number }) => {
+                const search = new URLSearchParams();
+                if (params?.entity_type) search.set('entity_type', params.entity_type);
+                if (params?.limit != null) search.set('limit', String(params.limit));
+                search.set('_ts', String(Date.now()));
+                return fetchApi<{
+                    success: boolean;
+                    data: {
+                        count: number;
+                        items: ReviewQueueItem[];
+                    };
+                }>(`/wnba/data/review-queue?${search.toString()}`, { cacheTtl: 'short' });
+            },
+
+            resolveReviewItem: (id: number, body: { resolution_reason: string; selected_value?: string }) =>
+                fetchApi<{ success: boolean; data: ReviewQueueItem }>(`/wnba/data/review-queue/${id}/resolve`, {
+                    method: 'POST',
+                    body: JSON.stringify(body),
+                    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+                }),
         },
     },
     // The Odds API methods
@@ -1358,18 +1408,6 @@ export const api = {
         },
 
         // General Odds
-        getPlayerOdds: (params?: any) => {
-            const query = params ? `?${new URLSearchParams(params as any).toString()}` : '';
-            return fetchApi<{ success: boolean; data: OddsApiPlayerProp | null }>(`/odds/player${query}`, { cacheTtl: 'short' });
-        },
-        getHistoricalOdds: (params?: any) => {
-            const query = params ? `?${new URLSearchParams(params as any).toString()}` : '';
-            return fetchApi<{ success: boolean; data: OddsApiEvent[] }>(`/odds/historical${query}`, { cacheTtl: 'medium' });
-        },
-        getBestOdds: (params?: any) => {
-            const query = params ? `?${new URLSearchParams(params as any).toString()}` : '';
-            return fetchApi<{ success: boolean; data: BestOddsComparison[] }>(`/odds/best${query}`, { cacheTtl: 'short' });
-        },
         getLiveOdds: (params?: any) => {
             const query = params ? `?${new URLSearchParams(params as any).toString()}` : '';
             return fetchApi<{ success: boolean; data: OddsApiEvent[] }>(`/odds/live${query}`, { cacheTtl: 'short' });
@@ -1658,19 +1696,4 @@ export interface OddsApiUsageStats {
     requests_remaining_today: number;
     requests_remaining_month: number;
     status: 'normal' | 'warning' | 'critical' | 'daily_limit_reached' | 'approaching_daily_limit';
-}
-
-export interface BestOddsComparison {
-    event_id: string;
-    home_team: string;
-    away_team: string;
-    commence_time: string;
-    player_name?: string;
-    stat_type?: string;
-    line?: number;
-    best_odds: Array<{
-        bookmaker: string;
-        odds: number;
-        last_update: string;
-    }>;
 }

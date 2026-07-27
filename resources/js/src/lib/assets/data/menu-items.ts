@@ -124,6 +124,12 @@ export const MENU_ITEMS: MenuItemType[] = [
         url: '/advanced/data-management',
     },
     {
+        key: 'review-queue',
+        icon: 'iconamoon:check-circle-1-duotone',
+        label: 'Review Queue',
+        url: '/advanced/review-queue',
+    },
+    {
         key: 'model-feedback',
         icon: 'iconamoon:file-document-duotone',
         label: 'Model Feedback',

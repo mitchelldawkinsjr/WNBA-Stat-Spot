@@ -92,7 +92,8 @@ class AgentRunController extends Controller
             ->when($request->input('entity_type'), fn ($query, $type) => $query->where('entity_type', $type))
             ->orderByDesc('created_at')
             ->limit((int) $request->input('limit', 50))
-            ->get();
+            ->get()
+            ->map(fn (WnbaDataConflict $item) => $this->presentReviewItem($item));
 
         return response()->json([
             'success' => true,
@@ -125,6 +126,68 @@ class AgentRunController extends Controller
             'selected_value' => $validated['selected_value'] ?? $conflict->selected_value,
         ]);
 
-        return response()->json(['success' => true, 'data' => $conflict->refresh()]);
+        return response()->json(['success' => true, 'data' => $this->presentReviewItem($conflict->refresh())]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function presentReviewItem(WnbaDataConflict $item): array
+    {
+        $payload = $item->toArray();
+        $payload['entities'] = $this->resolveEntitiesForReview($item);
+
+        return $payload;
+    }
+
+    /**
+     * Attach lightweight entity snapshots so the UI can review without extra round-trips.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function resolveEntitiesForReview(WnbaDataConflict $item): array
+    {
+        if ($item->entity_type !== 'player') {
+            return [];
+        }
+
+        $ids = collect(explode(',', (string) $item->entity_key))
+            ->map(fn (string $id) => (int) trim($id))
+            ->filter(fn (int $id) => $id > 0)
+            ->values();
+
+        if ($ids->isEmpty()) {
+            return [];
+        }
+
+        return \App\Models\WnbaPlayer::query()
+            ->whereIn('id', $ids->all())
+            ->get([
+                'id',
+                'athlete_id',
+                'espn_athlete_id',
+                'tank01_player_id',
+                'athlete_display_name',
+                'athlete_short_name',
+            ])
+            ->map(function ($player) {
+                $games = \Illuminate\Support\Facades\DB::table('wnba_player_games')
+                    ->where('player_id', $player->id)
+                    ->count();
+
+                return [
+                    'id' => $player->id,
+                    'athlete_id' => $player->athlete_id,
+                    'espn_athlete_id' => $player->espn_athlete_id,
+                    'tank01_player_id' => $player->tank01_player_id,
+                    'name' => $player->athlete_display_name,
+                    'short_name' => $player->athlete_short_name,
+                    'games_count' => $games,
+                    'profile_url' => $player->athlete_id
+                        ? '/players/'.$player->athlete_id
+                        : null,
+                ];
+            })
+            ->all();
     }
 }
