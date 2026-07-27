@@ -132,6 +132,47 @@ class AggregateStatsReader
         return 'neutral';
     }
 
+    /**
+     * League rank of opponent defense (1 = stingiest).
+     * Points props use points_against_avg; other props use defensive_rating.
+     *
+     * @return array{rank: int|null, teams: int, basis: string}|null
+     */
+    public function opponentDefensiveRank(string|int|null $opponentTeamId, int $season, string $statType = 'points'): ?array
+    {
+        if ($opponentTeamId === null || $opponentTeamId === '') {
+            return null;
+        }
+
+        $basis = $statType === 'points' ? 'points_against' : 'defensive_rating';
+        $column = $basis === 'points_against' ? 'points_against_avg' : 'defensive_rating';
+
+        $rows = WnbaTeamSeasonStat::query()
+            ->where('season', $season)
+            ->whereNotNull($column)
+            ->orderBy($column)
+            ->get(['team_id', $column]);
+
+        if ($rows->isEmpty()) {
+            return ['rank' => null, 'teams' => 0, 'basis' => $basis];
+        }
+
+        $oppKeys = TeamForeignKeyResolver::foreignKeysForReference($opponentTeamId);
+        $rank = null;
+        foreach ($rows->values() as $index => $row) {
+            if (in_array((string) $row->team_id, $oppKeys, true)) {
+                $rank = $index + 1;
+                break;
+            }
+        }
+
+        return [
+            'rank' => $rank,
+            'teams' => $rows->count(),
+            'basis' => $basis,
+        ];
+    }
+
     public function matchupSummary(string|int $team1Id, string|int $team2Id, int $season): ?WnbaMatchupSummary
     {
         $team1 = TeamForeignKeyResolver::resolveTeam($team1Id);

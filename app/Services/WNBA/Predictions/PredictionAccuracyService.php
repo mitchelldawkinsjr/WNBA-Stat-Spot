@@ -126,7 +126,9 @@ class PredictionAccuracyService
                     'predicted_value' => (float) ($prop['predicted_value'] ?? $line),
                     'recommendation' => $recommendation,
                     'confidence' => isset($prop['confidence']) ? (float) $prop['confidence'] : null,
-                    'expected_value' => isset($prop['expected_value']) ? (float) $prop['expected_value'] : null,
+                    'expected_value' => array_key_exists('expected_value', $prop) && $prop['expected_value'] !== null
+                        ? (float) $prop['expected_value']
+                        : null,
                     'probability_over' => isset($prop['probability_over']) ? (float) $prop['probability_over'] : null,
                     'probability_under' => isset($prop['probability_under']) ? (float) $prop['probability_under'] : null,
                     'betting_value' => $prop['betting_value'] ?? null,

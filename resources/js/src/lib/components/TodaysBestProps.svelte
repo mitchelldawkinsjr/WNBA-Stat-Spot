@@ -1,43 +1,9 @@
 <script lang="ts">
     import { onMount } from 'svelte';
     import { api } from '$lib/api/client';
-
-    interface TodaysProp {
-        player_id: string;
-        player_name: string;
-        team_abbreviation: string;
-        opponent: string;
-        game_time: string;
-        stat_type: string;
-        suggested_line: number;
-        predicted_value: number;
-        confidence: number;
-        recommendation: 'over' | 'under' | 'avoid';
-        expected_value: number;
-        probability_over: number;
-        probability_under: number;
-        recent_form: number;
-        season_average: number;
-        matchup_difficulty: string;
-        betting_value: 'excellent' | 'good' | 'fair' | 'poor';
-        reasoning: string;
-        espn_line?: number;
-        espn_odds?: {
-            over: number;
-            under: number;
-        };
-        odds_api_line?: number;
-        odds_api_odds?: {
-            over: number;
-            under: number;
-        };
-        odds_available?: boolean;
-        odds_source?: string;
-        bookmakers?: {
-            over: string;
-            under: string;
-        };
-    }
+    import type { TodaysProp } from '$lib/api/client';
+    import HitRateStrip from '$lib/components/HitRateStrip.svelte';
+    import RecentVsLineBars from '$lib/components/RecentVsLineBars.svelte';
 
     let todaysProps: TodaysProp[] = [];
     let topProp: TodaysProp | null = null;
@@ -70,38 +36,16 @@
         }
     }
 
-    function getValueColor(value: string): string {
-        switch (value) {
-            case 'excellent': return 'text-success';
-            case 'good': return 'text-info';
-            case 'fair': return 'text-warning';
-            case 'poor': return 'text-danger';
-            default: return 'text-muted';
-        }
-    }
-
-    function getRecommendationColor(rec: string): string {
-        switch (rec) {
-            case 'over': return 'text-success';
-            case 'under': return 'text-danger';
-            case 'avoid': return 'text-muted';
-            default: return 'text-muted';
-        }
-    }
-
-    function formatStat(statType: string): string {
-        return statType.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-    }
-
     function formatPercentage(value: number): string {
-        // Handle both decimal (0.65) and percentage (65) formats
         if (value <= 1) {
-            // Decimal format - multiply by 100
             return `${(value * 100).toFixed(1)}%`;
-        } else {
-            // Already in percentage format - just format
-            return `${value.toFixed(1)}%`;
         }
+        return `${value.toFixed(1)}%`;
+    }
+
+    function formatEv(value: number | null | undefined): string {
+        if (value === null || value === undefined) return '—';
+        return `${value > 0 ? '+' : ''}${value.toFixed(1)}%`;
     }
 
     function getBadgeColor(value: string): string {
@@ -110,8 +54,15 @@
             case 'good': return 'info';
             case 'fair': return 'warning';
             case 'poor': return 'danger';
+            case 'research': return 'secondary';
             default: return 'secondary';
         }
+    }
+
+    function oppDefLabel(prop: TodaysProp): string {
+        if (prop.opp_def_rank == null) return '';
+        const basis = prop.opp_def_rank_basis === 'points_against' ? 'Pts all.' : 'DRtg';
+        return `Opp ${basis} #${prop.opp_def_rank}`;
     }
 </script>
 
@@ -200,8 +151,11 @@
                             </div>
                             <small class="text-muted">
                                 {topProp.team_abbreviation} {topProp.opponent}
-                                · EV {topProp.expected_value?.toFixed?.(1) ?? topProp.expected_value}
+                                · EV {formatEv(topProp.expected_value)}
                                 · Conf {formatPercentage(topProp.confidence > 1 ? topProp.confidence / 100 : topProp.confidence)}
+                                {#if !topProp.odds_available}
+                                    · Est. line
+                                {/if}
                             </small>
                         </div>
                         <a href="/advanced/model-validation" class="btn btn-sm btn-outline-primary">Track Accuracy</a>
@@ -242,6 +196,13 @@
                                     </div>
                                 </div>
 
+                                <div class="mb-2">
+                                    <HitRateStrip hitRates={prop.hit_rates} compact />
+                                    <div class="mt-2">
+                                        <RecentVsLineBars games={prop.recent_games} />
+                                    </div>
+                                </div>
+
                                 <div class="row g-2 mb-2">
                                     <div class="col-6">
                                         <div class="text-center p-2 bg-light rounded">
@@ -260,21 +221,27 @@
                                 <div class="mb-2">
                                     <div class="d-flex justify-content-between">
                                         <small class="text-muted">Expected Value:</small>
-                                        <small class="fw-bold text-{prop.expected_value > 10 ? 'success' : 'warning'}">
-                                            +{prop.expected_value.toFixed(1)}%
+                                        <small class="fw-bold {prop.expected_value === null ? 'text-muted' : prop.expected_value > 10 ? 'text-success' : 'text-warning'}">
+                                            {formatEv(prop.expected_value)}
                                         </small>
                                     </div>
                                     <div class="d-flex justify-content-between">
                                         <small class="text-muted">Confidence:</small>
                                         <small class="fw-bold">{formatPercentage(prop.confidence)}</small>
                                     </div>
+                                    {#if oppDefLabel(prop)}
+                                        <div class="d-flex justify-content-between">
+                                            <small class="text-muted">Defense:</small>
+                                            <small class="fw-bold">{oppDefLabel(prop)}</small>
+                                        </div>
+                                    {/if}
                                     <div class="d-flex justify-content-between">
                                         <small class="text-muted">Recent Form:</small>
                                         <small class="fw-bold">{prop.recent_form}</small>
                                     </div>
                                 </div>
 
-                                {#if prop.odds_api_line}
+                                {#if prop.odds_available && prop.odds_api_line}
                                     <div class="border-top pt-2 mt-2">
                                         <div class="d-flex justify-content-between align-items-center">
                                             <small class="text-muted">Market Line:</small>
@@ -283,9 +250,9 @@
                                         <div class="d-flex justify-content-between">
                                             <small class="text-muted">O/U Odds:</small>
                                             <small>
-                                                <span class="text-success">{(prop.odds_api_odds?.over ?? 0) > 0 ? '+' : ''}{prop.odds_api_odds?.over ?? 0}</span>
+                                                <span class="text-success">{(prop.odds_api_odds?.over ?? 0) > 0 ? '+' : ''}{prop.odds_api_odds?.over ?? '—'}</span>
                                                 /
-                                                <span class="text-danger">{(prop.odds_api_odds?.under ?? 0) > 0 ? '+' : ''}{prop.odds_api_odds?.under ?? 0}</span>
+                                                <span class="text-danger">{(prop.odds_api_odds?.under ?? 0) > 0 ? '+' : ''}{prop.odds_api_odds?.under ?? '—'}</span>
                                             </small>
                                         </div>
                                         {#if prop.bookmakers}
@@ -296,14 +263,12 @@
                                         {/if}
                                         <div class="d-flex justify-content-between">
                                             <small class="text-muted">Source:</small>
-                                            <small class="badge bg-{prop.odds_available ? 'success' : 'warning'}-subtle text-{prop.odds_available ? 'success' : 'warning'}">
-                                                {prop.odds_source === 'odds_api' ? 'Live Odds' : 'Estimated'}
-                                            </small>
+                                            <small class="badge bg-success-subtle text-success">Live Odds</small>
                                         </div>
                                     </div>
                                 {:else}
                                     <div class="border-top pt-2 mt-2">
-                                        <small class="text-muted fst-italic">Live odds not available</small>
+                                        <small class="text-muted fst-italic">No live book odds — research line only (EV hidden)</small>
                                     </div>
                                 {/if}
 

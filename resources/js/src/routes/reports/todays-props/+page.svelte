@@ -1,28 +1,10 @@
 <script lang="ts">
     import { onMount } from 'svelte';
     import { api } from '$lib/api/client';
+    import type { TodaysProp } from '$lib/api/client';
     import DefaultLayout from "$lib/layouts/DefaultLayout.svelte";
-
-    interface TodaysProp {
-        player_id: string;
-        player_name: string;
-        team_abbreviation: string;
-        opponent: string;
-        game_time: string;
-        stat_type: string;
-        suggested_line: number;
-        predicted_value: number;
-        confidence: number;
-        recommendation: 'over' | 'under' | 'avoid';
-        expected_value: number;
-        probability_over: number;
-        probability_under: number;
-        recent_form: number;
-        season_average: number;
-        matchup_difficulty: string;
-        betting_value: string;
-        reasoning: string;
-    }
+    import HitRateStrip from '$lib/components/HitRateStrip.svelte';
+    import RecentVsLineBars from '$lib/components/RecentVsLineBars.svelte';
 
     let props: TodaysProp[] = [];
     let loading = true;
@@ -32,6 +14,7 @@
         min_confidence: 0,
         min_expected_value: 0,
         recommendation: '',
+        real_odds_only: false,
         sort_by: 'expected_value',
         sort_order: 'desc'
     };
@@ -54,31 +37,49 @@
 
     const sortOptions = [
         { value: 'expected_value', label: 'Expected Value' },
+        { value: 'l10_hit_rate', label: 'L10 Hit Rate' },
         { value: 'confidence', label: 'Confidence' },
         { value: 'predicted_value', label: 'Predicted Value' },
         { value: 'player_name', label: 'Player Name' },
         { value: 'game_time', label: 'Game Time' }
     ];
 
+    function sortValue(prop: TodaysProp, key: string): number | string | null {
+        if (key === 'l10_hit_rate') {
+            return prop.hit_rates?.l10?.rate ?? -1;
+        }
+        if (key === 'expected_value') {
+            return prop.expected_value ?? -999;
+        }
+        const val = prop[key as keyof TodaysProp];
+        if (typeof val === 'number' || typeof val === 'string') return val;
+        return null;
+    }
+
     $: filteredProps = props.filter(prop => {
         if (filters.stat_type && prop.stat_type !== filters.stat_type) return false;
 
-        // Handle confidence filtering for both decimal (0.65) and percentage (65) formats
         const normalizedConfidence = prop.confidence <= 1 ? prop.confidence * 100 : prop.confidence;
         if (normalizedConfidence < filters.min_confidence) return false;
 
-        if (prop.expected_value < filters.min_expected_value) return false;
+        if (filters.real_odds_only && !prop.odds_available) return false;
+
+        if (filters.min_expected_value > 0) {
+            if (prop.expected_value === null || prop.expected_value < filters.min_expected_value) return false;
+        }
         if (filters.recommendation && prop.recommendation !== filters.recommendation) return false;
         return true;
     }).sort((a, b) => {
-        const aVal = a[filters.sort_by as keyof TodaysProp];
-        const bVal = b[filters.sort_by as keyof TodaysProp];
+        const aVal = sortValue(a, filters.sort_by);
+        const bVal = sortValue(b, filters.sort_by);
+        if (aVal === bVal) return 0;
+        if (aVal === null) return 1;
+        if (bVal === null) return -1;
 
         if (filters.sort_order === 'desc') {
             return bVal > aVal ? 1 : -1;
-        } else {
-            return aVal > bVal ? 1 : -1;
         }
+        return aVal > bVal ? 1 : -1;
     });
 
     async function loadTodaysProps() {
@@ -102,24 +103,29 @@
     }
 
     function formatPercentage(value: number): string {
-        // Handle both decimal (0.65) and percentage (65) formats
         if (value <= 1) {
-            // Decimal format - multiply by 100
             return `${(value * 100).toFixed(1)}%`;
-        } else {
-            // Already in percentage format - just format
-            return `${value.toFixed(1)}%`;
         }
+        return `${value.toFixed(1)}%`;
     }
 
     function formatNumber(value: number): string {
         return value.toFixed(1);
     }
 
-    function getConfidenceColor(confidence: number): string {
-        // Normalize confidence to 0-1 range for comparison
-        const normalizedConfidence = confidence <= 1 ? confidence : confidence / 100;
+    function formatEv(value: number | null | undefined): string {
+        if (value === null || value === undefined) return '—';
+        return `${value > 0 ? '+' : ''}${formatNumber(value)}%`;
+    }
 
+    function oppDefLabel(prop: TodaysProp): string {
+        if (prop.opp_def_rank == null) return '';
+        const basis = prop.opp_def_rank_basis === 'points_against' ? 'Pts all.' : 'DRtg';
+        return `Opp ${basis} #${prop.opp_def_rank}`;
+    }
+
+    function getConfidenceColor(confidence: number): string {
+        const normalizedConfidence = confidence <= 1 ? confidence : confidence / 100;
         if (normalizedConfidence >= 0.8) return 'success';
         if (normalizedConfidence >= 0.6) return 'warning';
         return 'danger';
@@ -140,6 +146,7 @@
             case 'good': return 'info';
             case 'fair': return 'warning';
             case 'poor': return 'danger';
+            case 'research': return 'secondary';
             default: return 'secondary';
         }
     }
@@ -159,6 +166,7 @@
             min_confidence: 0,
             min_expected_value: 0,
             recommendation: '',
+            real_odds_only: false,
             sort_by: 'expected_value',
             sort_order: 'desc'
         };
@@ -268,14 +276,25 @@
                             </div>
                         </div>
                         <div class="row mt-3">
-                            <div class="col-12">
+                            <div class="col-12 d-flex flex-wrap align-items-center gap-3">
+                                <div class="form-check mb-0">
+                                    <input
+                                        class="form-check-input"
+                                        type="checkbox"
+                                        id="real-odds-filter"
+                                        bind:checked={filters.real_odds_only}
+                                    />
+                                    <label class="form-check-label" for="real-odds-filter">
+                                        Real odds only
+                                    </label>
+                                </div>
                                 <button
                                     on:click={clearFilters}
                                     class="btn btn-outline-secondary btn-sm"
                                 >
                                     <i class="fas fa-times me-1"></i>Clear Filters
                                 </button>
-                                <span class="text-muted ms-3">
+                                <span class="text-muted">
                                     Showing {filteredProps.length} of {props.length} props
                                 </span>
                             </div>
@@ -349,15 +368,15 @@
                                             <th>Game</th>
                                             <th>Stat</th>
                                             <th>Line</th>
+                                            <th>Hit rates</th>
+                                            <th>Recent</th>
                                             <th>Predicted</th>
                                             <th>Confidence</th>
-                                            <th>Recommendation</th>
-                                            <th>Expected Value</th>
-                                            <th>Over/Under Prob</th>
-                                            <th>Form</th>
+                                            <th>Rec</th>
+                                            <th>EV</th>
+                                            <th>O/U</th>
                                             <th>Matchup</th>
                                             <th>Value</th>
-                                            <th>Reasoning</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -380,7 +399,20 @@
                                                         {prop.stat_type}
                                                     </span>
                                                 </td>
-                                                <td class="fw-medium">{formatNumber(prop.suggested_line)}</td>
+                                                <td>
+                                                    <div class="fw-medium">{formatNumber(prop.suggested_line)}</div>
+                                                    {#if prop.odds_available}
+                                                        <span class="badge bg-success-subtle text-success">Live</span>
+                                                    {:else}
+                                                        <span class="badge bg-secondary-subtle text-secondary">Est. line</span>
+                                                    {/if}
+                                                </td>
+                                                <td>
+                                                    <HitRateStrip hitRates={prop.hit_rates} compact />
+                                                </td>
+                                                <td>
+                                                    <RecentVsLineBars games={prop.recent_games} />
+                                                </td>
                                                 <td class="fw-bold text-primary">{formatNumber(prop.predicted_value)}</td>
                                                 <td>
                                                     <span class="badge bg-{getConfidenceColor(prop.confidence)}-subtle text-{getConfidenceColor(prop.confidence)}">
@@ -392,38 +424,27 @@
                                                         {prop.recommendation}
                                                     </span>
                                                 </td>
-                                                <td class="fw-medium {prop.expected_value > 0 ? 'text-success' : 'text-danger'}">
-                                                    {prop.expected_value > 0 ? '+' : ''}{formatNumber(prop.expected_value)}%
+                                                <td class="fw-medium {prop.expected_value !== null && prop.expected_value > 0 ? 'text-success' : prop.expected_value === null ? 'text-muted' : 'text-danger'}">
+                                                    {formatEv(prop.expected_value)}
                                                 </td>
                                                 <td>
                                                     <div class="small">
-                                                        <div>Over: {formatPercentage(prop.probability_over)}</div>
-                                                        <div>Under: {formatPercentage(prop.probability_under)}</div>
+                                                        <div>O {formatPercentage(prop.probability_over)}</div>
+                                                        <div>U {formatPercentage(prop.probability_under)}</div>
                                                     </div>
                                                 </td>
                                                 <td>
-                                                    <div class="small">
-                                                        <div>Recent: {formatNumber(prop.recent_form)}</div>
-                                                        <div>Season: {formatNumber(prop.season_average)}</div>
-                                                    </div>
-                                                </td>
-                                                <td>
-                                                    <span class="badge bg-{getMatchupDifficultyColor(prop.matchup_difficulty)}-subtle text-{getMatchupDifficultyColor(prop.matchup_difficulty)} text-capitalize">
-                                                        {prop.matchup_difficulty}
+                                                    <span class="badge bg-{getMatchupDifficultyColor(prop.matchup_difficulty || 'neutral')}-subtle text-{getMatchupDifficultyColor(prop.matchup_difficulty || 'neutral')} text-capitalize">
+                                                        {prop.matchup_difficulty || 'neutral'}
                                                     </span>
+                                                    {#if oppDefLabel(prop)}
+                                                        <div class="small text-muted mt-1">{oppDefLabel(prop)}</div>
+                                                    {/if}
                                                 </td>
                                                 <td>
                                                     <span class="badge bg-{getBettingValueColor(prop.betting_value)}-subtle text-{getBettingValueColor(prop.betting_value)} text-capitalize">
                                                         {prop.betting_value}
                                                     </span>
-                                                </td>
-                                                <td>
-                                                    <small class="text-muted" title={prop.reasoning}>
-                                                        {prop.reasoning.length > 50
-                                                            ? prop.reasoning.substring(0, 50) + '...'
-                                                            : prop.reasoning
-                                                        }
-                                                    </small>
                                                 </td>
                                             </tr>
                                         {/each}
@@ -465,7 +486,7 @@
                                 <div class="col-md-3">
                                     <div class="text-center">
                                         <h4 class="text-info">
-                                            {filteredProps.filter(p => p.expected_value > 0).length}
+                                            {filteredProps.filter(p => p.expected_value !== null && p.expected_value > 0).length}
                                         </h4>
                                         <p class="text-muted mb-0">Positive EV Props</p>
                                     </div>
@@ -473,7 +494,12 @@
                                 <div class="col-md-3">
                                     <div class="text-center">
                                         <h4 class="text-warning">
-                                            {formatNumber(Math.max(...filteredProps.map(p => p.expected_value)))}%
+                                            {(() => {
+                                                const evs = filteredProps
+                                                    .map(p => p.expected_value)
+                                                    .filter((v): v is number => v !== null);
+                                                return evs.length ? formatNumber(Math.max(...evs)) + '%' : '—';
+                                            })()}
                                         </h4>
                                         <p class="text-muted mb-0">Best Expected Value</p>
                                     </div>

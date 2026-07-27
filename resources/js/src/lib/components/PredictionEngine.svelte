@@ -1,6 +1,8 @@
 <script lang="ts">
     import { api } from '$lib/api/client';
     import type { Prediction } from '$lib/api/client';
+    import HitRateStrip from '$lib/components/HitRateStrip.svelte';
+    import RecentVsLineBars from '$lib/components/RecentVsLineBars.svelte';
 
     export let playerId: string;
     export let playerName: string;
@@ -26,10 +28,7 @@
     ];
 
     function validateAndNormalizeLine(value: number): number {
-        // Ensure positive value (minimum 0.5)
         const positiveValue = Math.max(0.5, Math.abs(value));
-
-        // Round to nearest .5 increment
         return Math.round(positiveValue * 2) / 2;
     }
 
@@ -55,22 +54,19 @@
                 line: selectedLine
             });
 
-            // Handle both direct data and wrapped response
             const predictionData = response.data || response;
 
-            // Ensure we have all required fields with fallbacks
             prediction = {
                 player_id: predictionData.player_id || playerId,
                 player_name: predictionData.player_name || playerName,
                 player_position: predictionData.player_position || 'N/A',
                 stat: predictionData.stat || selectedStat,
-                line: predictionData.line || selectedLine,
-                predicted_value: predictionData.predicted_value || (selectedLine + (Math.random() * 4 - 2)),
-                confidence: predictionData.confidence || (0.6 + Math.random() * 0.3),
-                recommendation: predictionData.recommendation || (Math.random() > 0.5 ? 'over' : 'under'),
-                expected_value: predictionData.expected_value || ((Math.random() - 0.5) * 20),
+                line: predictionData.line ?? selectedLine,
+                predicted_value: predictionData.predicted_value ?? selectedLine,
+                confidence: predictionData.confidence ?? 0.6,
+                recommendation: predictionData.recommendation || 'avoid',
+                expected_value: predictionData.expected_value ?? null,
                 created_at: predictionData.created_at || new Date().toISOString(),
-                // Spread any additional properties from the API response
                 ...(predictionData && typeof predictionData === 'object' ? Object.fromEntries(
                     Object.entries(predictionData).filter(([key]) =>
                         !['player_id', 'player_name', 'player_position', 'stat', 'line', 'predicted_value', 'confidence', 'recommendation', 'expected_value', 'created_at'].includes(key)
@@ -90,9 +86,13 @@
     }
 
     function formatNumber(value: number): string {
-        // Ensure positive value and round to .5 increments before formatting
         const normalizedValue = Math.max(0.5, Math.round(Math.abs(value) * 2) / 2);
         return normalizedValue.toFixed(1);
+    }
+
+    function formatEv(value: number | null | undefined): string {
+        if (value === null || value === undefined) return '—';
+        return `${value > 0 ? '+' : ''}${Number(value).toFixed(1)}%`;
     }
 
     function getConfidenceColor(confidence: number): string {
@@ -117,13 +117,11 @@
         error = '';
     }
 
-    // Export function for parent components to pre-fill values
     export function prefillStat(stat: string, line?: number) {
         selectedStat = stat;
         if (line !== undefined) {
             selectedLine = validateAndNormalizeLine(line);
         }
-        // Clear any existing prediction to show the form
         prediction = null;
         error = '';
     }
@@ -245,11 +243,20 @@
                                     </div>
                                     <div class="col-auto">
                                         <small class="text-muted">Expected Value:</small>
-                                        <div class="fw-bold {prediction.expected_value > 0 ? 'text-success' : 'text-danger'}">
-                                            {prediction.expected_value > 0 ? '+' : ''}{formatNumber(prediction.expected_value)}%
+                                        <div class="fw-bold {prediction.expected_value === null ? 'text-muted' : prediction.expected_value > 0 ? 'text-success' : 'text-danger'}">
+                                            {formatEv(prediction.expected_value)}
                                         </div>
+                                        {#if prediction.expected_value === null || prediction.odds_available === false}
+                                            <small class="text-muted">Research only (no book odds)</small>
+                                        {/if}
                                     </div>
                                 </div>
+                                {#if prediction.hit_rates || prediction.recent_games}
+                                    <div class="mt-3 d-flex flex-wrap align-items-end gap-3">
+                                        <HitRateStrip hitRates={prediction.hit_rates} />
+                                        <RecentVsLineBars games={prediction.recent_games} />
+                                    </div>
+                                {/if}
                             </div>
                             <div class="col-md-4 text-md-end">
                                 <div class="d-flex flex-column gap-2">

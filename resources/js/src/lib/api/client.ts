@@ -336,6 +336,26 @@ export interface Stats extends PlayerGame {
 }
 
 // WNBA Analytics Interfaces
+export interface HitRateWindow {
+    hits: number;
+    games: number;
+    rate: number | null;
+}
+
+export interface PropHitRates {
+    l5?: HitRateWindow | null;
+    l10?: HitRateWindow | null;
+    l20?: HitRateWindow | null;
+    season?: HitRateWindow | null;
+    h2h?: HitRateWindow | null;
+}
+
+export interface RecentGameVsLine {
+    game_date?: string | null;
+    value: number;
+    over: boolean;
+}
+
 export interface Prediction {
     id?: number;
     player_id: string;
@@ -349,23 +369,27 @@ export interface Prediction {
     probability_over?: number;
     probability_under?: number;
     recommendation: string;
-    expected_value: number;
+    expected_value: number | null;
+    betting_value?: string;
     reasoning?: string;
     data_source?: string;
     line_source?: string;
+    odds_available?: boolean;
     odds_data?: {
-        line?: number;
-        over_odds?: number;
-        under_odds?: number;
+        line?: number | null;
+        over_odds?: number | null;
+        under_odds?: number | null;
         available?: boolean;
         source?: string;
-        bookmaker_over?: string;
-        bookmaker_under?: string;
+        bookmaker_over?: string | null;
+        bookmaker_under?: string | null;
         last_update?: string;
         event_id?: string;
         commence_time?: string;
         total_bookmakers?: number;
     };
+    hit_rates?: PropHitRates;
+    recent_games?: RecentGameVsLine[];
     created_at: string;
 }
 
@@ -433,14 +457,31 @@ export interface TodaysProp {
     predicted_value: number;
     confidence: number;
     recommendation: 'over' | 'under' | 'avoid';
-    expected_value: number;
+    expected_value: number | null;
     probability_over: number;
     probability_under: number;
     recent_form?: number;
     season_average?: number;
     matchup_difficulty?: string;
-    betting_value: 'excellent' | 'good' | 'fair' | 'poor' | string;
+    opp_def_rank?: number | null;
+    opp_def_rank_basis?: string | null;
+    opp_def_rank_teams?: number | null;
+    betting_value: 'excellent' | 'good' | 'fair' | 'poor' | 'research' | string;
     reasoning: string;
+    line_source?: string;
+    odds_available?: boolean;
+    odds_source?: string;
+    odds_api_line?: number | null;
+    odds_api_odds?: {
+        over: number | null;
+        under: number | null;
+    } | null;
+    bookmakers?: {
+        over: string;
+        under: string;
+    } | null;
+    hit_rates?: PropHitRates;
+    recent_games?: RecentGameVsLine[];
     espn_line?: number;
     espn_odds?: {
         over: number;
