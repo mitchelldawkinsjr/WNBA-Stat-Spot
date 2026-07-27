@@ -2,15 +2,15 @@
 
 namespace App\Services\Odds;
 
-use App\Contracts\OddsProvider;
+use App\Services\Odds\Providers\Tank01OddsProvider;
 
 /**
- * Facade delegating to the configured OddsProvider implementation.
+ * Odds helpers on top of Tank01 (the only odds source).
  */
 class OddsService
 {
     public function __construct(
-        private OddsProvider $provider
+        private Tank01OddsProvider $provider
     ) {}
 
     public function providerName(): string
@@ -48,11 +48,6 @@ class OddsService
     }
 
     public function getWnbaEvents(): array
-    {
-        return $this->provider->getWnbaEvents();
-    }
-
-    public function getEvents(string $sport = 'basketball_wnba'): array
     {
         return $this->provider->getWnbaEvents();
     }
@@ -104,11 +99,6 @@ class OddsService
         }
 
         return $bestOdds;
-    }
-
-    public function getHistoricalOdds(string $sport, \Carbon\Carbon $date): array
-    {
-        return [];
     }
 
     public function getPlayerOdds(string $playerName, string $statType, string $sport = 'basketball_wnba'): ?array

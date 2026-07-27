@@ -2,8 +2,8 @@
 
 namespace Tests\Unit\Tank01;
 
-use App\Contracts\OddsProvider;
 use App\Contracts\WnbaStatsProvider;
+use App\Services\Odds\OddsService;
 use App\Services\Odds\Providers\Tank01OddsProvider;
 use App\Services\WNBA\Data\Providers\Tank01WnbaProvider;
 use Tests\TestCase;
@@ -18,9 +18,10 @@ class ProviderBindingTest extends TestCase
         ]);
 
         app()->forgetInstance(WnbaStatsProvider::class);
-        app()->forgetInstance(OddsProvider::class);
+        app()->forgetInstance(OddsService::class);
 
         $this->assertInstanceOf(Tank01WnbaProvider::class, app(WnbaStatsProvider::class));
-        $this->assertInstanceOf(Tank01OddsProvider::class, app(OddsProvider::class));
+        $this->assertInstanceOf(OddsService::class, app(OddsService::class));
+        $this->assertInstanceOf(Tank01OddsProvider::class, app(Tank01OddsProvider::class));
     }
 }

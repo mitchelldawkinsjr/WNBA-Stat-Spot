@@ -50,16 +50,11 @@ ensure_queue_tables() {
     return 0
 }
 
-# Function to clear any stuck jobs
-clear_stuck_jobs() {
-    echo "🧹 Clearing any stuck jobs..."
-    php artisan queue:clear || echo "⚠️  Queue clear failed, continuing..."
-    php artisan queue:restart || echo "⚠️  Queue restart failed, continuing..."
-}
-
 # Function to optimize Laravel for queue processing
 optimize_laravel() {
     echo "⚡ Optimizing Laravel for queue processing..."
+    # Avoid queue:restart / queue:clear here: restart signals + later cache:clear
+    # make the worker exit 0, and supervisord will not bring it back.
     php artisan config:cache || echo "⚠️  Config cache failed, continuing..."
     php artisan route:cache || echo "⚠️  Route cache failed, continuing..."
     php artisan view:cache || echo "⚠️  View cache failed, continuing..."
@@ -118,9 +113,6 @@ if ! ensure_queue_tables; then
     exit 1
 fi
 
-# Clear any stuck jobs from previous runs
-clear_stuck_jobs
-
 # Optimize Laravel
 optimize_laravel
 
@@ -129,7 +121,8 @@ export PHP_MEMORY_LIMIT=512M
 
 echo "🚀 Starting queue worker with optimized settings..."
 
-# Start the queue worker with robust settings
+# Start the queue worker with robust settings.
+# max-jobs/max-time recycle the process; supervisord must autorestart=true.
 exec php artisan queue:work \
     --verbose \
     --tries=3 \
