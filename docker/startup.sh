@@ -374,10 +374,9 @@ wait_for_database() {
     echo "🔄 Application will continue running without database features..."
     echo ""
     echo "🚨 TROUBLESHOOTING STEPS:"
-    echo "1. Check that your Render database service is running"
-    echo "2. Verify database environment variables are set correctly"
-    echo "3. Ensure database service name matches render.yaml configuration"
-    echo "4. Check RENDER_DATABASE_TROUBLESHOOTING.md for detailed help"
+    echo "1. Check that the Postgres service is healthy (docker compose ps)"
+    echo "2. Verify DB_* environment variables in .env"
+    echo "3. Confirm DB_HOST matches the compose service (wnba-stat-spot-postgres)"
     echo ""
     return 1
 }

@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>WNBA Stat Spot — Prod Refresh Findings</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0e141a;
+      --bg-elev: #161c22;
+      --bg-high: #1a2026;
+      --bg-highest: #252b31;
+      --line: #2f3944;
+      --text: #dde3eb;
+      --muted: #aab8c5;
+      --primary: #ff6c2f;
+      --primary-soft: #ffb59b;
+      --ok: #22c55e;
+      --warn: #f9b931;
+      --bad: #ef5f5f;
+      --info: #3491fc;
+      --radius: 10px;
+      --font: "Hanken Grotesk", system-ui, sans-serif;
+      --mono: "IBM Plex Mono", ui-monospace, monospace;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: var(--font); }
+    body {
+      min-height: 100vh;
+      background:
+        radial-gradient(900px 420px at 12% -10%, rgba(255, 108, 47, 0.16), transparent 60%),
+        radial-gradient(700px 360px at 90% 0%, rgba(52, 145, 252, 0.08), transparent 55%),
+        var(--bg);
+    }
+
+    .shell { max-width: 1080px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+
+    header.hero { margin-bottom: 1.75rem; }
+    .eyebrow {
+      font-size: 0.75rem; letter-spacing: 0.14em; text-transform: uppercase;
+      color: var(--primary-soft); font-weight: 600; margin: 0 0 0.5rem;
+    }
+    h1 {
+      font-size: clamp(1.75rem, 3vw, 2.35rem); line-height: 1.15;
+      letter-spacing: -0.02em; margin: 0 0 0.6rem; font-weight: 700;
+    }
+    .lede { color: var(--muted); max-width: 46rem; margin: 0; line-height: 1.55; }
+
+    .tabs {
+      display: flex; flex-wrap: wrap; gap: 0.4rem;
+      margin: 1.5rem 0 1.25rem; border-bottom: 1px solid var(--line); padding-bottom: 0.75rem;
+    }
+    .tab {
+      appearance: none; border: 1px solid transparent; background: transparent;
+      color: var(--muted); font: inherit; font-size: 0.9rem; font-weight: 600;
+      padding: 0.45rem 0.85rem; border-radius: 999px; cursor: pointer;
+    }
+    .tab:hover { color: var(--text); background: var(--bg-elev); }
+    .tab[aria-selected="true"] {
+      color: #1a1c1c; background: var(--primary); border-color: var(--primary);
+    }
+
+    .panel { display: none; animation: in 220ms ease; }
+    .panel.active { display: block; }
+    @keyframes in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+    .grid { display: grid; gap: 0.85rem; }
+    .grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    @media (max-width: 860px) {
+      .grid-4, .grid-3, .grid-2 { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 560px) {
+      .grid-4, .grid-3, .grid-2 { grid-template-columns: 1fr; }
+    }
+
+    .stat, .card {
+      background: var(--bg-elev); border: 1px solid var(--line); border-radius: var(--radius);
+    }
+    .stat { padding: 1rem 1.05rem; }
+    .stat .v {
+      font-size: 1.45rem; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 0.2rem;
+      font-variant-numeric: tabular-nums;
+    }
+    .stat .l { margin: 0; color: var(--muted); font-size: 0.8rem; }
+    .stat.ok .v { color: var(--ok); }
+    .stat.warn .v { color: var(--warn); }
+    .stat.bad .v { color: var(--bad); }
+
+    .card { overflow: hidden; }
+    .card-h {
+      display: flex; align-items: center; justify-content: space-between; gap: 0.75rem;
+      padding: 0.85rem 1.05rem; border-bottom: 1px solid var(--line); background: var(--bg-high);
+    }
+    .card-h h2, .card-h h3 { margin: 0; font-size: 0.95rem; font-weight: 600; }
+    .card-b { padding: 1.05rem; }
+
+    .pill {
+      display: inline-flex; align-items: center; gap: 0.3rem;
+      font-size: 0.72rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+      padding: 0.2rem 0.55rem; border-radius: 999px; border: 1px solid var(--line);
+      color: var(--muted); background: var(--bg-highest);
+    }
+    .pill.ok { color: #052e14; background: var(--ok); border-color: var(--ok); }
+    .pill.warn { color: #2a1d00; background: var(--warn); border-color: var(--warn); }
+    .pill.bad { color: #2b0505; background: var(--bad); border-color: var(--bad); }
+    .pill.info { color: #031526; background: var(--info); border-color: var(--info); }
+
+    .callout {
+      border: 1px solid var(--line); border-left: 3px solid var(--warn);
+      background: var(--bg-high); border-radius: var(--radius); padding: 0.95rem 1.05rem;
+      margin: 0 0 1rem;
+    }
+    .callout.bad { border-left-color: var(--bad); }
+    .callout.ok { border-left-color: var(--ok); }
+    .callout.info { border-left-color: var(--info); }
+    .callout h3 { margin: 0 0 0.35rem; font-size: 0.95rem; }
+    .callout p { margin: 0; color: var(--muted); line-height: 1.5; font-size: 0.92rem; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+    th, td { text-align: left; padding: 0.65rem 0.55rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { color: var(--muted); font-weight: 600; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; }
+    tr[data-tone="success"] td:first-child { box-shadow: inset 3px 0 0 var(--ok); }
+    tr[data-tone="warning"] td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
+    tr[data-tone="danger"] td:first-child { box-shadow: inset 3px 0 0 var(--bad); }
+    .mono { font-family: var(--mono); font-size: 0.8rem; }
+
+    .bars { display: grid; gap: 0.7rem; }
+    .bar-row { display: grid; grid-template-columns: 11rem 1fr 4.5rem; gap: 0.65rem; align-items: center; }
+    @media (max-width: 640px) { .bar-row { grid-template-columns: 1fr; gap: 0.25rem; } }
+    .bar-label { font-size: 0.85rem; color: var(--muted); }
+    .bar-track { height: 10px; background: var(--bg-highest); border-radius: 999px; overflow: hidden; }
+    .bar-fill { height: 100%; border-radius: 999px; background: var(--primary); width: 0; transition: width 700ms ease; }
+    .bar-fill.partial { background: var(--warn); }
+    .bar-fill.ok { background: var(--ok); }
+    .bar-val { font-family: var(--mono); font-size: 0.78rem; color: var(--muted); text-align: right; }
+
+    .compare { display: grid; gap: 0.55rem; }
+    .compare-row { display: grid; grid-template-columns: 8.5rem 1fr; gap: 0.6rem; align-items: center; }
+    .dual { display: flex; height: 12px; border-radius: 999px; overflow: hidden; background: var(--bg-highest); }
+    .dual span { display: block; height: 100%; }
+    .dual .before { background: #4a5560; }
+    .dual .after { background: var(--ok); }
+
+    .filters { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.85rem; }
+    .filter {
+      appearance: none; border: 1px solid var(--line); background: var(--bg-elev);
+      color: var(--muted); font: inherit; font-size: 0.8rem; font-weight: 600;
+      padding: 0.35rem 0.7rem; border-radius: 999px; cursor: pointer;
+    }
+    .filter[aria-pressed="true"] { background: var(--primary); color: #1a1c1c; border-color: var(--primary); }
+
+    .finding { display: none; padding: 0.9rem 0; border-bottom: 1px solid var(--line); }
+    .finding.show { display: block; }
+    .finding-top { display: flex; flex-wrap: wrap; gap: 0.45rem; align-items: center; margin-bottom: 0.35rem; }
+    .finding h4 { margin: 0; font-size: 0.98rem; }
+    .finding p { margin: 0.25rem 0 0; color: var(--muted); line-height: 1.5; font-size: 0.9rem; }
+
+    .stack { display: grid; gap: 1rem; }
+    footer {
+      margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--line);
+      color: var(--muted); font-size: 0.78rem;
+    }
+    .legend { display: flex; gap: 1rem; flex-wrap: wrap; color: var(--muted); font-size: 0.8rem; }
+    .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 0.35rem; }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header class="hero">
+      <p class="eyebrow">WNBA Stat Spot · Production audit</p>
+      <h1>Full agent refresh — interactive findings</h1>
+      <p class="lede">
+        Timed end-to-end refresh on <strong>wnba.360web.cloud</strong> (2026-07-26, 20:31–20:42 UTC):
+        identity sync → data backfill → entity audit → analytics recompute.
+        Use the tabs to explore timing, agent outcomes, coverage, and actionable findings.
+      </p>
+    </header>
+
+    <nav class="tabs" role="tablist" aria-label="Report sections">
+      <button class="tab" role="tab" aria-selected="true" data-tab="overview">Overview</button>
+      <button class="tab" role="tab" aria-selected="false" data-tab="timing">Timing</button>
+      <button class="tab" role="tab" aria-selected="false" data-tab="agents">Agents</button>
+      <button class="tab" role="tab" aria-selected="false" data-tab="coverage">Coverage</button>
+      <button class="tab" role="tab" aria-selected="false" data-tab="findings">Findings</button>
+    </nav>
+
+    <section id="overview" class="panel active" role="tabpanel">
+      <div class="callout">
+        <h3>Verdict: usable for matchups, not fully clean</h3>
+        <p>
+          All 221 final games have box scores and advanced aggregates. Analytics recomputed successfully.
+          Data + entity agents finished <strong>partial</strong>. Odds remain empty (Tank01 quota).
+          Two hard failures in schedule / team-box steps need code fixes.
+        </p>
+      </div>
+      <div class="grid grid-4" style="margin-bottom:1rem">
+        <div class="stat"><p class="v">10m 24s</p><p class="l">Wall clock</p></div>
+        <div class="stat ok"><p class="v">4 / 4</p><p class="l">Steps finished</p></div>
+        <div class="stat warn"><p class="v">2 partial</p><p class="l">Agent statuses</p></div>
+        <div class="stat bad"><p class="v">7</p><p class="l">Findings logged</p></div>
+      </div>
+      <div class="card">
+        <div class="card-h">
+          <h2>Pipeline outcome</h2>
+          <span class="pill warn">partial chain</span>
+        </div>
+        <div class="card-b" style="padding:0">
+          <table>
+            <thead>
+              <tr><th>Stage</th><th>Duration</th><th>Status</th><th>Notes</th></tr>
+            </thead>
+            <tbody>
+              <tr data-tone="success"><td>Identity sync</td><td class="mono">3s</td><td>success</td><td>15 teams / 205 players / 350 games</td></tr>
+              <tr data-tone="warning"><td>Data backfill</td><td class="mono">9m 39s</td><td>partial</td><td>Player boxes + PBP ok; schedule/team box errors</td></tr>
+              <tr data-tone="warning"><td>Entity audit</td><td class="mono">&lt;1s</td><td>partial</td><td>0 orphans; mapping gaps + multi-team warnings</td></tr>
+              <tr data-tone="success"><td>Analytics recompute</td><td class="mono">42s</td><td>success</td><td>Full aggregates + rankings/insights</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section id="timing" class="panel" role="tabpanel">
+      <div class="stack">
+        <div class="callout bad">
+          <h3>Queue timeout mismatch</h3>
+          <p>
+            Prod <span class="mono">queue:work --timeout=300</span> cannot host a 579s data backfill.
+            Queued nightly chains risk silent kill; this refresh ran inline with <span class="mono">--no-chain</span>.
+          </p>
+        </div>
+        <div class="card">
+          <div class="card-h"><h2>Stage timing (seconds)</h2><span class="pill">backfill + PBP</span></div>
+          <div class="card-b">
+            <div class="bars" id="timing-bars"></div>
+            <p class="legend" style="margin-top:1rem">
+              <span><i style="background:var(--ok)"></i>success</span>
+              <span><i style="background:var(--warn)"></i>partial</span>
+            </p>
+          </div>
+        </div>
+        <div class="grid grid-2">
+          <div class="stat warn"><p class="v">92.8%</p><p class="l">Wall clock in data backfill</p></div>
+          <div class="stat"><p class="v">84,009</p><p class="l">PBP rows written (dominant cost)</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="agents" class="panel" role="tabpanel">
+      <div class="grid grid-3" style="margin-bottom:1rem">
+        <div class="card">
+          <div class="card-h"><h3>Data · backfill #11</h3><span class="pill warn">partial</span></div>
+          <div class="card-b">
+            <p class="mono" style="color:var(--muted);margin:0 0 .6rem">20:31:47 → 20:41:26 UTC</p>
+            <p>Player box records: <strong>4,908</strong></p>
+            <p>PBP records: <strong>84,009</strong></p>
+            <p>Records updated: <strong>86,620</strong></p>
+            <p>Created: <strong>480</strong> · Injuries <strong>+3</strong></p>
+            <p style="color:var(--bad);margin-top:.75rem;font-size:.88rem">Errors: venue_id, team_logo</p>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-h"><h3>Entity · audit #12</h3><span class="pill warn">partial</span></div>
+          <div class="card-b">
+            <p>Orphans: <strong>0 / 0</strong></p>
+            <p>Duplicate players: <strong>1</strong></p>
+            <p>Mapping gaps: <strong>323</strong></p>
+            <p>Multi-team players: <strong>49</strong> (was 27)</p>
+            <p>Identical opponents: <strong>0</strong></p>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-h"><h3>Analytics · #13</h3><span class="pill ok">success</span></div>
+          <div class="card-b">
+            <p>Player advanced: <strong>5,050</strong></p>
+            <p>Player season: <strong>310</strong></p>
+            <p>Team season: <strong>17</strong></p>
+            <p>Matchups: <strong>108</strong></p>
+            <p>Power ranks / insights: <strong>17 / 15</strong></p>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-h">
+          <h2>Analytics lift vs prior run (#10 → #13)</h2>
+          <span class="pill info">relative bars</span>
+        </div>
+        <div class="card-b">
+          <div class="compare" id="analytics-compare"></div>
+          <p class="legend" style="margin-top:1rem">
+            <span><i style="background:#4a5560"></i>before</span>
+            <span><i style="background:var(--ok)"></i>after</span>
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section id="coverage" class="panel" role="tabpanel">
+      <div class="grid grid-4" style="margin-bottom:1rem">
+        <div class="stat ok"><p class="v">221/221</p><p class="l">Finals w/ player games</p></div>
+        <div class="stat ok"><p class="v">221/221</p><p class="l">Finals w/ team boxes</p></div>
+        <div class="stat ok"><p class="v">221/221</p><p class="l">Finals w/ advanced</p></div>
+        <div class="stat ok"><p class="v">17/17</p><p class="l">Active teams season stats</p></div>
+      </div>
+      <div class="grid grid-3" style="margin-bottom:1rem">
+        <div class="stat"><p class="v">84,009</p><p class="l">Play-by-play rows</p></div>
+        <div class="stat"><p class="v">44</p><p class="l">Injury reports</p></div>
+        <div class="stat bad"><p class="v">0</p><p class="l">Odds snapshots</p></div>
+      </div>
+      <div class="callout ok">
+        <h3>Site health post-refresh</h3>
+        <p><span class="pill ok">ok</span> &nbsp; <span class="mono">/api/health</span> production · containers healthy · public site responding.</p>
+      </div>
+      <div class="callout info">
+        <h3>What “complete” means here</h3>
+        <p>Box + aggregate surfaces used by matchup preview are populated. Odds history and full cross-provider identity mapping are not.</p>
+      </div>
+    </section>
+
+    <section id="findings" class="panel" role="tabpanel">
+      <div class="filters" id="severity-filters" aria-label="Filter by severity">
+        <button class="filter" aria-pressed="true" data-sev="all">All</button>
+        <button class="filter" aria-pressed="false" data-sev="high">High</button>
+        <button class="filter" aria-pressed="false" data-sev="medium">Medium</button>
+        <button class="filter" aria-pressed="false" data-sev="low">Low</button>
+      </div>
+      <div class="card">
+        <div class="card-h"><h2>Findings</h2><span class="pill" id="finding-count">7 shown</span></div>
+        <div class="card-b" id="findings-list"></div>
+      </div>
+      <div class="card" style="margin-top:1rem">
+        <div class="card-h"><h2>Recommended next actions</h2></div>
+        <div class="card-b" style="padding:0">
+          <table>
+            <thead><tr><th>#</th><th>Action</th></tr></thead>
+            <tbody>
+              <tr><td class="mono">1</td><td>Null-safe <span class="mono">venue_id</span> / <span class="mono">team_logo</span> in schedule &amp; team-box paths</td></tr>
+              <tr><td class="mono">2</td><td>Raise <span class="mono">queue:work --timeout</span> above worst-case backfill (e.g. 3600)</td></tr>
+              <tr><td class="mono">3</td><td>Restore Tank01 budget or defer odds; confirm <span class="mono">odds_snapshots</span> ingest</td></tr>
+              <tr><td class="mono">4</td><td>Triage mapping-gap metric + resolve kokorotanaka duplicate in review queue</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <footer>
+      Generated from prod refresh · agent runs #11–#13 · season 2026 ·
+      script <span class="mono">scripts/prod-full-refresh.sh</span>
+    </footer>
+  </div>
+
+  <script>
+    const STEPS = [
+      { label: "Identity sync", seconds: 3, status: "ok" },
+      { label: "Data backfill", seconds: 579, status: "partial" },
+      { label: "Entity audit", seconds: 1, status: "partial" },
+      { label: "Analytics", seconds: 42, status: "ok" },
+    ];
+    const MAX = Math.max(...STEPS.map(s => s.seconds));
+
+    const COMPARE = [
+      { label: "Player advanced", before: 4485, after: 5050 },
+      { label: "Player season", before: 308, after: 310 },
+      { label: "Percentiles", before: 194, after: 213 },
+      { label: "Vs defense", before: 735, after: 763 },
+      { label: "Player trends", before: 1232, after: 1240 },
+    ];
+
+    const FINDINGS = [
+      { id: "F1", severity: "high", area: "Data agent", title: "Schedule step throws on missing venue_id", detail: "Backfill schedule failed with Undefined array key \"venue_id\". Step recorded as error; agent continued." },
+      { id: "F2", severity: "high", area: "Data agent", title: "Team box scores throw on missing team_logo", detail: "team_box_scores failed with Undefined array key \"team_logo\". Player boxes and PBP still completed." },
+      { id: "F3", severity: "medium", area: "Odds / Tank01", title: "Tank01 API budget exhausted — odds empty", detail: "Identity sync logged Tank01 budget exceeded. wnba_odds_snapshots remained at 0 after refresh." },
+      { id: "F4", severity: "medium", area: "Entity", title: "323 player identity mapping gaps", detail: "Entity audit still reports 323 players missing ESPN or Tank01 mapping despite sync (15/205/350 synced)." },
+      { id: "F5", severity: "medium", area: "Entity", title: "Multi-team players rose 27 → 49", detail: "Likely more complete box coverage revealing trades/splits, or mis-attribution — needs review queue triage." },
+      { id: "F6", severity: "low", area: "Entity", title: "Open duplicate-name review item", detail: "1 open conflict: players share normalized name \"kokorotanaka\" under athlete_ids [5345336, 5346805]." },
+      { id: "F7", severity: "high", area: "Ops", title: "Queue worker timeout too low for backfill", detail: "queue:work --timeout=300 but data backfill took 579s. Queued nightly chain would kill a long run; inline --no-chain required." },
+    ];
+
+    function fmt(seconds) {
+      if (seconds < 60) return seconds + "s";
+      const m = Math.floor(seconds / 60);
+      const s = seconds % 60;
+      return m + "m " + String(s).padStart(2, "0") + "s";
+    }
+
+    function renderBars() {
+      const root = document.getElementById("timing-bars");
+      root.innerHTML = STEPS.map(s => `
+        <div class="bar-row">
+          <div class="bar-label">${s.label}</div>
+          <div class="bar-track"><div class="bar-fill ${s.status}" style="width:0" data-w="${(s.seconds / MAX) * 100}"></div></div>
+          <div class="bar-val">${fmt(s.seconds)}</div>
+        </div>
+      `).join("");
+      requestAnimationFrame(() => {
+        root.querySelectorAll(".bar-fill").forEach(el => {
+          el.style.width = el.dataset.w + "%";
+        });
+      });
+    }
+
+    function renderCompare() {
+      const root = document.getElementById("analytics-compare");
+      const max = Math.max(...COMPARE.flatMap(c => [c.before, c.after]));
+      root.innerHTML = COMPARE.map(c => {
+        const b = (c.before / max) * 100;
+        const a = (c.after / max) * 100;
+        const delta = c.after - c.before;
+        return `
+          <div class="compare-row">
+            <div class="bar-label">${c.label}<div class="mono" style="font-size:.7rem;margin-top:.15rem">+${delta}</div></div>
+            <div>
+              <div class="dual" title="before ${c.before} / after ${c.after}">
+                <span class="before" style="width:${b}%"></span>
+              </div>
+              <div class="dual" style="margin-top:3px" title="after ${c.after}">
+                <span class="after" style="width:${a}%"></span>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    function sevClass(s) {
+      if (s === "high") return "bad";
+      if (s === "medium") return "warn";
+      return "info";
+    }
+
+    function renderFindings(filter) {
+      const root = document.getElementById("findings-list");
+      const items = filter === "all" ? FINDINGS : FINDINGS.filter(f => f.severity === filter);
+      root.innerHTML = FINDINGS.map(f => `
+        <article class="finding ${items.includes(f) ? "show" : ""}" data-sev="${f.severity}">
+          <div class="finding-top">
+            <span class="mono">${f.id}</span>
+            <span class="pill ${sevClass(f.severity)}">${f.severity}</span>
+            <span class="pill">${f.area}</span>
+            <h4>${f.title}</h4>
+          </div>
+          <p>${f.detail}</p>
+        </article>
+      `).join("");
+      document.getElementById("finding-count").textContent = items.length + " shown";
+    }
+
+    document.querySelectorAll(".tab").forEach(btn => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".tab").forEach(b => b.setAttribute("aria-selected", "false"));
+        document.querySelectorAll(".panel").forEach(p => p.classList.remove("active"));
+        btn.setAttribute("aria-selected", "true");
+        document.getElementById(btn.dataset.tab).classList.add("active");
+        if (btn.dataset.tab === "timing") renderBars();
+      });
+    });
+
+    document.querySelectorAll("#severity-filters .filter").forEach(btn => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll("#severity-filters .filter").forEach(b => b.setAttribute("aria-pressed", "false"));
+        btn.setAttribute("aria-pressed", "true");
+        renderFindings(btn.dataset.sev);
+      });
+    });
+
+    renderBars();
+    renderCompare();
+    renderFindings("all");
+  </script>
+</body>
+</html>

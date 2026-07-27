@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Traits\ApiResponseTrait;
-use App\Http\Traits\CacheHelper;
 use App\Services\Odds\OddsService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -13,7 +12,7 @@ use Carbon\Carbon;
 
 class OddsController extends Controller
 {
-    use ApiResponseTrait, CacheHelper;
+    use ApiResponseTrait;
 
     private OddsService $oddsApi;
 
@@ -304,52 +303,6 @@ class OddsController extends Controller
     }
 
     /**
-     * Get odds for a specific player and stat
-     */
-    public function getPlayerOdds(Request $request)
-    {
-        try {
-            $validated = $request->validate([
-                'player_name' => 'required|string',
-                'stat_type' => 'required|string|in:points,rebounds,assists,three_point_field_goals_made',
-                'sport' => 'nullable|string'
-            ]);
-
-            $playerName = $validated['player_name'];
-            $statType = $validated['stat_type'];
-            $sport = $validated['sport'] ?? 'basketball_wnba';
-
-            $odds = $this->oddsApi->getPlayerOdds($playerName, $statType, $sport);
-
-            if (!$odds) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'No odds found for this player and stat combination',
-                    'data' => null
-                ], 404);
-            }
-
-            return response()->json([
-                'success' => true,
-                'data' => $odds,
-                'player_name' => $playerName,
-                'stat_type' => $statType
-            ]);
-        } catch (\Exception $e) {
-            Log::error('Failed to get player odds', [
-                'error' => $e->getMessage(),
-                'request' => $request->all()
-            ]);
-
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to fetch player odds',
-                'error' => $e->getMessage()
-            ], 500);
-        }
-    }
-
-    /**
      * Get upcoming WNBA events
      */
     public function getWnbaEvents()
@@ -370,43 +323,6 @@ class OddsController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to fetch WNBA events',
-                'error' => $e->getMessage()
-            ], 500);
-        }
-    }
-
-    /**
-     * Get historical odds for a specific date
-     */
-    public function getHistoricalOdds(Request $request)
-    {
-        try {
-            $validated = $request->validate([
-                'date' => 'required|date',
-                'sport' => 'nullable|string'
-            ]);
-
-            $date = Carbon::parse($validated['date']);
-            $sport = $validated['sport'] ?? 'basketball_wnba';
-
-            $odds = $this->oddsApi->getHistoricalOdds($sport, $date);
-
-            return response()->json([
-                'success' => true,
-                'data' => $odds,
-                'count' => count($odds),
-                'date' => $date->format('Y-m-d'),
-                'sport' => $sport
-            ]);
-        } catch (\Exception $e) {
-            Log::error('Failed to get historical odds', [
-                'error' => $e->getMessage(),
-                'request' => $request->all()
-            ]);
-
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to fetch historical odds',
                 'error' => $e->getMessage()
             ], 500);
         }
@@ -565,55 +481,6 @@ class OddsController extends Controller
     }
 
     /**
-     * Get best odds comparison across bookmakers
-     */
-    public function getBestOdds(Request $request)
-    {
-        try {
-            $validated = $request->validate([
-                'market' => 'required|string|in:h2h,spreads,totals,player_points,player_rebounds,player_assists',
-                'player_name' => 'nullable|string',
-                'team' => 'nullable|string'
-            ]);
-
-            $market = $validated['market'];
-            $playerName = $validated['player_name'] ?? null;
-            $team = $validated['team'] ?? null;
-
-            // Get all odds for the market
-            if (str_starts_with($market, 'player_')) {
-                $allOdds = $this->oddsApi->getPlayerProps('basketball_wnba', [$market]);
-            } else {
-                $allOdds = $this->oddsApi->getOdds('basketball_wnba', [$market]);
-            }
-
-            // Filter and find best odds
-            $bestOdds = $this->findBestOdds($allOdds, $market, $playerName, $team);
-
-            return response()->json([
-                'success' => true,
-                'data' => $bestOdds,
-                'market' => $market,
-                'filters' => [
-                    'player_name' => $playerName,
-                    'team' => $team
-                ]
-            ]);
-        } catch (\Exception $e) {
-            Log::error('Failed to get best odds', [
-                'error' => $e->getMessage(),
-                'request' => $request->all()
-            ]);
-
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to fetch best odds',
-                'error' => $e->getMessage()
-            ], 500);
-        }
-    }
-
-    /**
      * Get live odds updates
      */
     public function getLiveOdds()
@@ -741,57 +608,5 @@ class OddsController extends Controller
         }
 
         return $recommendations;
-    }
-
-    // Private helper methods
-
-    /**
-     * Find best odds from multiple bookmakers
-     */
-    private function findBestOdds(array $allOdds, string $market, ?string $playerName = null, ?string $team = null): array
-    {
-        $bestOdds = [];
-
-        foreach ($allOdds as $event) {
-            // Apply filters
-            if ($playerName && isset($event['player_name']) && stripos($event['player_name'], $playerName) === false) {
-                continue;
-            }
-
-            if ($team && (!str_contains($event['home_team'], $team) && !str_contains($event['away_team'], $team))) {
-                continue;
-            }
-
-            // Find best odds for this event
-            $eventBestOdds = [
-                'event_id' => $event['id'] ?? $event['event_id'],
-                'home_team' => $event['home_team'],
-                'away_team' => $event['away_team'],
-                'commence_time' => $event['commence_time'],
-                'best_odds' => []
-            ];
-
-            if (isset($event['player_name'])) {
-                $eventBestOdds['player_name'] = $event['player_name'];
-                $eventBestOdds['stat_type'] = $event['stat_type'];
-                $eventBestOdds['line'] = $event['line'];
-            }
-
-            // Process bookmakers to find best odds
-            $bookmakers = $event['bookmakers'] ?? [];
-            foreach ($bookmakers as $bookmaker) {
-                // Implementation depends on the specific market structure
-                // This is a simplified version
-                $eventBestOdds['best_odds'][] = [
-                    'bookmaker' => $bookmaker['title'] ?? $bookmaker['bookmaker'],
-                    'odds' => $bookmaker['price'] ?? $bookmaker['odds'],
-                    'last_update' => $bookmaker['last_update']
-                ];
-            }
-
-            $bestOdds[] = $eventBestOdds;
-        }
-
-        return $bestOdds;
     }
 }

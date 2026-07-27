@@ -348,43 +348,72 @@ class DataAggregatorService
 
     private function calculateSeasonStats($games): array
     {
-        $avg = static function ($collection, string $attr, int $precision = 1): float {
-            return round((float) ($collection->avg($attr) ?? 0), $precision);
+        $avg = function (string $attr, int $precision = 1) use ($games): float {
+            if ($games->isEmpty()) {
+                return 0.0;
+            }
+
+            return round(
+                (float) $games->avg(fn ($game) => $this->toNumericStatValue($game->{$attr})),
+                $precision
+            );
         };
+
+        $sum = function (string $attr) use ($games): float {
+            return (float) $games->sum(fn ($game) => $this->toNumericStatValue($game->{$attr}));
+        };
+
+        $plusMinusGames = $games->filter(
+            fn ($game) => $game->plus_minus !== null && $game->plus_minus !== ''
+        );
 
         return [
             'games_played' => $games->count(),
             'averages' => [
-                'points' => $avg($games, 'points'),
-                'rebounds' => $avg($games, 'rebounds'),
-                'assists' => $avg($games, 'assists'),
-                'steals' => $avg($games, 'steals'),
-                'blocks' => $avg($games, 'blocks'),
-                'turnovers' => $avg($games, 'turnovers'),
-                'minutes' => $avg($games, 'minutes'),
-                'plus_minus' => $games->whereNotNull('plus_minus')->isNotEmpty()
-                    ? round((float) $games->whereNotNull('plus_minus')->avg('plus_minus'), 1)
+                'points' => $avg('points'),
+                'rebounds' => $avg('rebounds'),
+                'assists' => $avg('assists'),
+                'steals' => $avg('steals'),
+                'blocks' => $avg('blocks'),
+                'turnovers' => $avg('turnovers'),
+                'minutes' => $avg('minutes'),
+                'plus_minus' => $plusMinusGames->isNotEmpty()
+                    ? round(
+                        (float) $plusMinusGames->avg(
+                            fn ($game) => $this->toNumericStatValue($game->plus_minus)
+                        ),
+                        1
+                    )
                     : 0,
-                'field_goals_made' => $avg($games, 'field_goals_made'),
-                'field_goals_attempted' => $avg($games, 'field_goals_attempted'),
-                'three_point_made' => $avg($games, 'three_point_field_goals_made'),
-                'three_point_attempted' => $avg($games, 'three_point_field_goals_attempted'),
-                'free_throws_made' => $avg($games, 'free_throws_made'),
-                'free_throws_attempted' => $avg($games, 'free_throws_attempted'),
+                'field_goals_made' => $avg('field_goals_made'),
+                'field_goals_attempted' => $avg('field_goals_attempted'),
+                'three_point_made' => $avg('three_point_field_goals_made'),
+                'three_point_attempted' => $avg('three_point_field_goals_attempted'),
+                'free_throws_made' => $avg('free_throws_made'),
+                'free_throws_attempted' => $avg('free_throws_attempted'),
             ],
             'totals' => [
-                'points' => $games->sum('points'),
-                'rebounds' => $games->sum('rebounds'),
-                'assists' => $games->sum('assists'),
-                'steals' => $games->sum('steals'),
-                'blocks' => $games->sum('blocks'),
-                'turnovers' => $games->sum('turnovers'),
-                'minutes' => $games->sum('minutes'),
+                'points' => $sum('points'),
+                'rebounds' => $sum('rebounds'),
+                'assists' => $sum('assists'),
+                'steals' => $sum('steals'),
+                'blocks' => $sum('blocks'),
+                'turnovers' => $sum('turnovers'),
+                'minutes' => $sum('minutes'),
             ],
             'percentages' => [
-                'field_goal_pct' => $this->calculatePercentage($games->sum('field_goals_made'), $games->sum('field_goals_attempted')),
-                'three_point_pct' => $this->calculatePercentage($games->sum('three_point_field_goals_made'), $games->sum('three_point_field_goals_attempted')),
-                'free_throw_pct' => $this->calculatePercentage($games->sum('free_throws_made'), $games->sum('free_throws_attempted')),
+                'field_goal_pct' => $this->calculatePercentage(
+                    (int) $sum('field_goals_made'),
+                    (int) $sum('field_goals_attempted')
+                ),
+                'three_point_pct' => $this->calculatePercentage(
+                    (int) $sum('three_point_field_goals_made'),
+                    (int) $sum('three_point_field_goals_attempted')
+                ),
+                'free_throw_pct' => $this->calculatePercentage(
+                    (int) $sum('free_throws_made'),
+                    (int) $sum('free_throws_attempted')
+                ),
             ],
         ];
     }
@@ -481,7 +510,12 @@ class DataAggregatorService
             'effective_fg_pct' => $totalFga > 0 ? round((($totalFgm + 0.5 * $totalTpm) / $totalFga) * 100, 1) : null,
             'assist_turnover_ratio' => $totalTov > 0 ? round($totalAst / $totalTov, 2) : ($totalAst > 0 ? null : 0.0),
             'game_score_avg' => null,
-            'plus_minus_avg' => $plusMinus->isNotEmpty() ? round((float) $plusMinus->avg('plus_minus'), 2) : null,
+            'plus_minus_avg' => $plusMinus->isNotEmpty()
+                ? round(
+                    (float) $plusMinus->avg(fn ($game) => $this->toNumericStatValue($game->plus_minus)),
+                    2
+                )
+                : null,
             'per_30_stats' => $per30,
             'per_36_stats' => $per36,
             'player_efficiency_rating' => null,
@@ -628,14 +662,28 @@ class DataAggregatorService
             return [];
         }
 
+        $avg = fn (string $attr): float => round(
+            (float) $games->avg(fn ($game) => $this->toNumericStatValue($game->{$attr})),
+            1
+        );
+
+        $plusMinusGames = $games->filter(
+            fn ($game) => $game->plus_minus !== null && $game->plus_minus !== ''
+        );
+
         return [
             'games' => $games->count(),
-            'points' => round($games->avg('points'), 1),
-            'rebounds' => round($games->avg('rebounds'), 1),
-            'assists' => round($games->avg('assists'), 1),
-            'minutes' => round($games->avg('minutes'), 1),
-            'plus_minus' => $games->whereNotNull('plus_minus')->isNotEmpty()
-                ? round((float) $games->whereNotNull('plus_minus')->avg('plus_minus'), 1)
+            'points' => $avg('points'),
+            'rebounds' => $avg('rebounds'),
+            'assists' => $avg('assists'),
+            'minutes' => $avg('minutes'),
+            'plus_minus' => $plusMinusGames->isNotEmpty()
+                ? round(
+                    (float) $plusMinusGames->avg(
+                        fn ($game) => $this->toNumericStatValue($game->plus_minus)
+                    ),
+                    1
+                )
                 : null,
         ];
     }
@@ -705,10 +753,10 @@ class DataAggregatorService
             return 0;
         }
 
-        $totalPlayerFGA = $games->sum('field_goals_attempted');
-        $totalPlayerFTA = $games->sum('free_throws_attempted');
-        $totalPlayerTOV = $games->sum('turnovers');
-        $totalPlayerMinutes = $games->sum('minutes');
+        $totalPlayerFGA = $games->sum(fn ($game) => $this->toNumericStatValue($game->field_goals_attempted));
+        $totalPlayerFTA = $games->sum(fn ($game) => $this->toNumericStatValue($game->free_throws_attempted));
+        $totalPlayerTOV = $games->sum(fn ($game) => $this->toNumericStatValue($game->turnovers));
+        $totalPlayerMinutes = $games->sum(fn ($game) => $this->toNumericStatValue($game->minutes));
 
         if ($totalPlayerMinutes == 0) {
             return 0;
@@ -1043,11 +1091,15 @@ class DataAggregatorService
 
         return [
             'home' => [
-                'average' => $homeGames->isEmpty() ? 0 : round($homeGames->avg($statType), 2),
+                'average' => $homeGames->isEmpty()
+                    ? 0
+                    : round((float) $homeGames->avg(fn ($game) => $this->toNumericStatValue($game->{$statType})), 2),
                 'games' => $homeGames->count(),
             ],
             'away' => [
-                'average' => $awayGames->isEmpty() ? 0 : round($awayGames->avg($statType), 2),
+                'average' => $awayGames->isEmpty()
+                    ? 0
+                    : round((float) $awayGames->avg(fn ($game) => $this->toNumericStatValue($game->{$statType})), 2),
                 'games' => $awayGames->count(),
             ],
             'vs_top_teams' => [

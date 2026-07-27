@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Traits\ApiResponseTrait;
-use App\Http\Traits\CacheHelper;
 use App\Models\WnbaPlayer;
 use App\Models\WnbaPlayerGame;
 use App\Models\WnbaTeam;
@@ -16,7 +15,9 @@ use Illuminate\Support\Facades\Schema;
 
 class TeamController extends Controller
 {
-    use ApiResponseTrait, CacheHelper;
+    use ApiResponseTrait;
+
+    private int $defaultCacheTtl = 3600;
 
     public function index(Request $request): JsonResponse
     {

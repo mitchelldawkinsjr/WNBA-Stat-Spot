@@ -43,36 +43,5 @@ class WnbaServiceProvider extends ServiceProvider
         $this->app->singleton(PredictionEngine::class);
         $this->app->singleton(PropsPredictionService::class);
         $this->app->singleton(PredictionModelParamStore::class);
-
-        $this->app->alias(PropsPredictionService::class, 'wnba.predictions');
-        $this->app->alias(PlayerAnalyticsService::class, 'wnba.player.analytics');
-        $this->app->alias(TeamAnalyticsService::class, 'wnba.team.analytics');
-        $this->app->alias(GameAnalyticsService::class, 'wnba.game.analytics');
-        $this->app->alias(PredictionEngine::class, 'wnba.prediction.engine');
-    }
-
-    public function boot(): void
-    {
-        $this->publishes([
-            __DIR__.'/../../config/wnba.php' => config_path('wnba.php'),
-        ], 'wnba-config');
-    }
-
-    public function provides(): array
-    {
-        return [
-            DataAggregatorService::class,
-            PlayerAnalyticsService::class,
-            TeamAnalyticsService::class,
-            GameAnalyticsService::class,
-            StatisticalEngineService::class,
-            PredictionEngine::class,
-            PropsPredictionService::class,
-            'wnba.predictions',
-            'wnba.player.analytics',
-            'wnba.team.analytics',
-            'wnba.game.analytics',
-            'wnba.prediction.engine',
-        ];
     }
 }

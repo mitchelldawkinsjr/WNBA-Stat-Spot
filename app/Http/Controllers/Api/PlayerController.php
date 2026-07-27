@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Traits\ApiResponseTrait;
-use App\Http\Traits\CacheHelper;
 use App\Models\WnbaPlayer;
 use App\Services\WNBA\Data\PlayerGamelogService;
 use App\Services\WNBA\Data\PlayerIntelService;
@@ -16,9 +15,11 @@ use Illuminate\Support\Facades\Schema;
 
 class PlayerController extends Controller
 {
-    use ApiResponseTrait, CacheHelper;
+    use ApiResponseTrait;
 
     private const PER_PAGE = 100;
+
+    private int $defaultCacheTtl = 3600;
 
     public function index(Request $request): JsonResponse
     {
