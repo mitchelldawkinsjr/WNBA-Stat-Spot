@@ -355,7 +355,7 @@ class OddsController extends Controller
     public function getWnbaEvents()
     {
         try {
-            $events = $this->oddsApi->getEvents('basketball_wnba');
+            $events = $this->oddsApi->getWnbaEvents();
 
             return response()->json([
                 'success' => true,

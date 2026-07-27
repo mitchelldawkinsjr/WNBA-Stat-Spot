@@ -52,6 +52,12 @@ class OddsService
         return $this->provider->getWnbaEvents();
     }
 
+    /** @deprecated Use getWnbaEvents() */
+    public function getEvents(string $sport = 'basketball_wnba'): array
+    {
+        return $this->provider->getWnbaEvents();
+    }
+
     public function getEventPlayerProps(string $eventId, array $options = []): array
     {
         $props = $this->provider->getWnbaPlayerProps($options);
