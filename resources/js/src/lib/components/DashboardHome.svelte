@@ -52,15 +52,15 @@
     async function loadDashboard() {
         try {
             loading = true;
-            const [gamesRes, leadersRes, newsRes, accuracyRes] = await Promise.all([
+            // Core dashboard data only — do not wait on external news feeds
+            // (those can take 10–15s on cold cache and used to hang first paint).
+            const [gamesRes, leadersRes, accuracyRes] = await Promise.all([
                 api.games.getAll({ season: 2026 }),
                 api.players.getLeaders({ season: 2026 }),
-                api.wnba.getNews({ limit: 4 }).catch(() => null),
                 api.wnba.predictions.getAccuracy('America/New_York').catch(() => null),
             ]);
             games = gamesRes.data ?? [];
             leaders = leadersRes.data?.leaders ?? [];
-            newsItems = newsRes?.data?.items ?? [];
             accuracy = accuracyRes?.data ?? null;
             topProp = accuracy?.top_prop_of_day ?? null;
 
@@ -78,6 +78,18 @@
             console.error('Dashboard load failed', e);
         } finally {
             loading = false;
+        }
+
+        void loadNews();
+    }
+
+    async function loadNews() {
+        try {
+            const newsRes = await api.wnba.getNews({ limit: 4 });
+            newsItems = newsRes?.data?.items ?? [];
+        } catch (e) {
+            console.error('News load failed', e);
+            newsItems = [];
         }
     }
 

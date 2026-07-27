@@ -7,6 +7,7 @@ use App\Services\WNBA\Data\Providers\EspnWnbaProvider;
 use App\Services\WNBA\Data\Providers\ExternalNewsProvider;
 use App\Services\WNBA\Data\Providers\Tank01WnbaProvider;
 use App\Services\WNBA\Data\Support\NewsItemAggregator;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
@@ -187,6 +188,35 @@ class PlayerIntelService
     public function leagueNews(?int $limit = 25, ?string $filter = null): array
     {
         $limit = $limit ?? 25;
+        $filterKey = $filter ?: 'default';
+        $cacheTtl = (int) config('wnba.news_feeds.cache_ttl', 600);
+        $cacheKey = "wnba_league_news_{$filterKey}_{$limit}";
+
+        if ($cacheTtl > 0) {
+            $cached = Cache::get($cacheKey);
+            if (is_array($cached) && isset($cached['items'])) {
+                return $cached;
+            }
+        }
+
+        $result = $this->fetchLeagueNewsUncached($limit, $filter);
+
+        if ($cacheTtl > 0 && ($result['items'] ?? []) !== []) {
+            Cache::put($cacheKey, $result, $cacheTtl);
+        }
+
+        return $result;
+    }
+
+    /**
+     * @return array{
+     *     provider: string,
+     *     sources: array<int, string>,
+     *     items: array<int, array<string, mixed>>
+     * }
+     */
+    private function fetchLeagueNewsUncached(int $limit, ?string $filter): array
+    {
         $groups = [];
         $sources = [];
 

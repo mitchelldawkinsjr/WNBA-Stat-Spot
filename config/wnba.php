@@ -102,14 +102,18 @@ return [
     'news_feeds' => [
         'enabled' => env('WNBA_NEWS_FEEDS_ENABLED', true),
         'cache_ttl' => (int) env('WNBA_NEWS_FEEDS_CACHE_TTL', 600),
-        'timeout' => (int) env('WNBA_NEWS_FEEDS_TIMEOUT', 15),
+        // Keep short: a hung upstream used to block /api/wnba/news for the full
+        // timeout and stall the homepage Promise.all.
+        'timeout' => (int) env('WNBA_NEWS_FEEDS_TIMEOUT', 4),
+        'connect_timeout' => (int) env('WNBA_NEWS_FEEDS_CONNECT_TIMEOUT', 2),
         'user_agent' => env(
             'WNBA_NEWS_FEEDS_USER_AGENT',
             'Mozilla/5.0 (compatible; WnbaStatSpot/1.0; +https://wnbastatspot.com)'
         ),
         'sources' => [
+            // NBA content API often hangs from the VPS; leave off unless verified.
             'wnba_com' => [
-                'enabled' => env('WNBA_NEWS_WNBA_COM_ENABLED', true),
+                'enabled' => env('WNBA_NEWS_WNBA_COM_ENABLED', false),
                 'label' => 'WNBA',
                 'url' => env(
                     'WNBA_NEWS_WNBA_COM_URL',

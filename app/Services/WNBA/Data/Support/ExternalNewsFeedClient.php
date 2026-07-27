@@ -67,7 +67,8 @@ class ExternalNewsFeedClient
             'User-Agent' => (string) config('wnba.news_feeds.user_agent'),
             'Accept' => $accept,
         ])
-            ->timeout((int) config('wnba.news_feeds.timeout', 15))
+            ->connectTimeout((int) config('wnba.news_feeds.connect_timeout', 2))
+            ->timeout((int) config('wnba.news_feeds.timeout', 4))
             ->get($url, $query);
 
         if (! $response->successful()) {
