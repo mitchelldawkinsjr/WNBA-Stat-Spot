@@ -94,7 +94,8 @@ Runs record counters (`player_season_stats_computed`,
 `AgentRunReporter`. Recomputation is idempotent (`updateOrCreate` on natural
 keys) — recomputing a season with unchanged inputs yields identical rows.
 After a successful run the response cache is cleared so the API serves fresh
-aggregates.
+aggregates. The preceding data-agent run also clears cache so schedule/box
+endpoints do not stay stale while analytics is still queued.
 
 **After deploy:** run `php artisan app:wnba-agent analytics` (or
 `POST /api/wnba/data/agent-run`) for the current season so the rankings/

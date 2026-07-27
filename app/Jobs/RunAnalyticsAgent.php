@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Services\WNBA\Agents\AgentResponseCache;
 use App\Services\WNBA\Agents\AgentRunReporter;
 use App\Services\WNBA\Agents\AggregateComputationService;
 use Illuminate\Bus\Queueable;
@@ -9,7 +10,6 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Log;
 
 class RunAnalyticsAgent implements ShouldQueue
@@ -62,10 +62,6 @@ class RunAnalyticsAgent implements ShouldQueue
         }
 
         // Aggregates changed; clear response caches so the API serves fresh data.
-        try {
-            Artisan::call('cache:clear');
-        } catch (\Throwable $e) {
-            Log::warning('Cache clear after analytics run failed', ['error' => $e->getMessage()]);
-        }
+        AgentResponseCache::clear('analytics_agent');
     }
 }

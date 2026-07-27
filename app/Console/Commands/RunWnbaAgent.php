@@ -6,6 +6,7 @@ use App\Jobs\RunAnalyticsAgent;
 use App\Jobs\RunDataAgent;
 use App\Jobs\RunEntityAgent;
 use App\Models\WnbaAgentRun;
+use App\Services\WNBA\Agents\AgentResponseCache;
 use App\Services\WNBA\Agents\AgentRunReporter;
 use App\Services\WNBA\Agents\AggregateComputationService;
 use App\Services\WNBA\Agents\DataAgentService;
@@ -67,6 +68,18 @@ class RunWnbaAgent extends Command
 
         $run = $this->runInline($agent, $params);
         $this->renderRun($run);
+
+        // Nightly schedule runs data inline; clear so schedule/box endpoints
+        // refresh before the chained entity/analytics jobs finish. Analytics
+        // clears again after aggregates land.
+        if (
+            in_array($agent, ['data', 'analytics'], true)
+            && ! $params['dry_run']
+            && $run->status !== 'failed'
+        ) {
+            AgentResponseCache::clear("inline_{$agent}_agent");
+            $this->info('Application response cache cleared.');
+        }
 
         // Inline data-agent runs chain via queued jobs like scheduled runs do.
         if ($agent === 'data' && ($params['chain'] ?? false) && ! $params['dry_run'] && $run->status !== 'failed') {

@@ -10,9 +10,11 @@ process needed.
 | **Entity Integrity** | Audits teams/players/games: orphans, duplicates, ID-mapping gaps, metadata problems. Writes findings to the review queue. | Chained after every data run; weekly full audit Mon 03:00 |
 | **Analytics** | Precomputes player/team season stats, per-game advanced stats, and matchup summaries into aggregate tables the API reads. | Chained after the entity audit; `app:wnba-agent analytics` |
 
-Nightly chain: **data → entity (audit) → analytics → cache clear**. The
-evening Tank01 live sync (`app:sync-wnba-live`) also records agent runs with
-mode `live`.
+Nightly chain: **data → entity (audit) → analytics**. Response cache is
+cleared after a successful **data** run (so schedule/box/injury APIs refresh
+immediately) and again after **analytics** (so leaders/previews/aggregates
+refresh). Live sync (`app:sync-wnba-live`) keeps short TTLs and does not
+flush the full cache.
 
 **Queue worker timeout:** `docker/queue-worker.sh` must use `--timeout` ≥ the
 longest agent job timeout (`RunDataAgent` = 3600s). A worker timeout below the
