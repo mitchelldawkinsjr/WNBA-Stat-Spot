@@ -406,7 +406,7 @@ class PredictionsController extends Controller
                 'user_time' => Carbon::now($timezone)->toString(),
             ]);
 
-            $cacheKey = 'todays_best_props_with_odds_v5_'.str_replace('/', '_', $timezone);
+            $cacheKey = 'todays_best_props_with_odds_v6_'.str_replace('/', '_', $timezone);
 
             $props = Cache::remember($cacheKey, now()->addMinutes(30), function () use ($timezone) {
                 try {
@@ -437,6 +437,10 @@ class PredictionsController extends Controller
                 'success' => true,
                 'data' => $props,
                 'top_prop' => $props[0] ?? null,
+                'gates' => [
+                    'min_avg_minutes' => $this->paramStore->minAvgMinutes(),
+                    'min_game_minutes' => $this->paramStore->minGameMinutes(),
+                ],
             ]);
         } catch (\Exception $e) {
             Log::error('Failed to get today\'s best props', [
@@ -707,6 +711,18 @@ class PredictionsController extends Controller
             return [];
         }
 
+        $avgMinutes = $this->resolvePlayerAvgMinutes($internalPlayerId, $season, $player['minutes'] ?? null);
+        if ($avgMinutes === null || $avgMinutes < $this->paramStore->minAvgMinutes()) {
+            Log::info('Skipping prop generation: player below min avg minutes', [
+                'player_id' => $internalPlayerId,
+                'player_name' => $playerName,
+                'avg_minutes' => $avgMinutes,
+                'min_avg_minutes' => $this->paramStore->minAvgMinutes(),
+            ]);
+
+            return [];
+        }
+
         foreach ($statTypes as $statType) {
             try {
                 $recentStats = $this->getPlayerRecentStats($internalPlayerId, $statType);
@@ -786,6 +802,7 @@ class PredictionsController extends Controller
                     'probability_under' => ($prediction['prediction']['under_probability'] ?? 0.5) * 100,
                     'recent_form' => $recentAvg,
                     'season_average' => $prediction['season_average'] ?? $recentStats['season_average'] ?? $line,
+                    'avg_minutes' => round($avgMinutes, 1),
                     'matchup_difficulty' => $game ? $this->getMatchupDifficulty($player, $game) : 'neutral',
                     'opp_def_rank' => $oppDef['rank'] ?? null,
                     'opp_def_rank_basis' => $oppDef['basis'] ?? null,
@@ -1165,11 +1182,19 @@ class PredictionsController extends Controller
                 ->map(function ($player) {
                     return (array) $player;
                 })
+                ->filter(function (array $player) use ($game) {
+                    $season = (int) ($game['season'] ?? config('wnba.seasons.current_season'));
+                    $avg = $this->resolvePlayerAvgMinutes((int) $player['id'], $season, $player['minutes'] ?? null);
+
+                    return $avg !== null && $avg >= $this->paramStore->minAvgMinutes();
+                })
+                ->values()
                 ->toArray();
 
             Log::info('DEBUG: getPlayersFromGame result', [
                 'game_id' => $game['game_id'] ?? 'unknown',
                 'players_found' => count($players),
+                'min_avg_minutes' => $this->paramStore->minAvgMinutes(),
                 'sample_players' => array_slice(array_map(function ($p) {
                     return ['name' => $p['name'], 'team_id' => $p['team_id']];
                 }, $players), 0, 3),
@@ -1184,6 +1209,71 @@ class PredictionsController extends Controller
 
             return [];
         }
+    }
+
+    /**
+     * Season average minutes for prop eligibility. Prefers precomputed season stats,
+     * then recent game average, then a single-game fallback (e.g. last box score).
+     */
+    private function resolvePlayerAvgMinutes(int $playerId, int $season, mixed $fallbackMinutes = null): ?float
+    {
+        $seasonStat = $this->aggregates->playerSeasonStat($playerId, $season);
+        if ($seasonStat !== null && $seasonStat->minutes_avg !== null) {
+            return (float) $seasonStat->minutes_avg;
+        }
+
+        $recentAvg = $this->recentMinutesAverage($playerId, $season);
+        if ($recentAvg !== null) {
+            return $recentAvg;
+        }
+
+        return $this->parseMinutesValue($fallbackMinutes);
+    }
+
+    private function recentMinutesAverage(int $playerId, int $season): ?float
+    {
+        $rows = DB::table('wnba_player_games as pg')
+            ->join('wnba_games as g', 'pg.game_id', '=', 'g.id')
+            ->where('pg.player_id', $playerId)
+            ->where('g.season', $season)
+            ->where('pg.did_not_play', false)
+            ->orderByDesc('g.game_date')
+            ->limit(20)
+            ->pluck('pg.minutes');
+
+        $parsed = [];
+        foreach ($rows as $minutes) {
+            $value = $this->parseMinutesValue($minutes);
+            if ($value !== null && $value > 0) {
+                $parsed[] = $value;
+            }
+        }
+
+        if ($parsed === []) {
+            return null;
+        }
+
+        return array_sum($parsed) / count($parsed);
+    }
+
+    private function parseMinutesValue(mixed $minutes): ?float
+    {
+        if ($minutes === null || $minutes === '') {
+            return null;
+        }
+
+        if (is_numeric($minutes)) {
+            return (float) $minutes;
+        }
+
+        if (is_string($minutes) && str_contains($minutes, ':')) {
+            [$mins, $secs] = array_pad(explode(':', $minutes, 2), 2, '0');
+            if (is_numeric($mins) && is_numeric($secs)) {
+                return round((float) $mins + ((float) $secs) / 60, 2);
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -1219,7 +1309,13 @@ class PredictionsController extends Controller
                 ->toArray();
 
             $formattedPlayers = [];
+            $season = (int) config('wnba.seasons.current_season');
             foreach ($players as $player) {
+                $avgMinutes = $this->resolvePlayerAvgMinutes((int) $player->id, $season);
+                if ($avgMinutes === null || $avgMinutes < $this->paramStore->minAvgMinutes()) {
+                    continue;
+                }
+
                 // Get team abbreviation
                 $teamAbbr = $this->getTeamAbbreviationFromId($player->team_id);
 
@@ -1231,6 +1327,7 @@ class PredictionsController extends Controller
                     'team_abbreviation' => $teamAbbr,
                     'position' => $player->position ?? 'G',
                     'avg_points' => round($player->avg_points, 1),
+                    'avg_minutes' => round($avgMinutes, 1),
                     'games_played' => $player->games_played,
                 ];
             }

@@ -64,6 +64,11 @@ return [
             'gates' => [
                 'min_confidence' => 0.6,
                 'min_ev' => 0.05,
+                // Season avg minutes required before a player is eligible for prop
+                // suggestions / prop of the day. Override via WNBA_PROP_MIN_AVG_MINUTES.
+                'min_avg_minutes' => (float) env('WNBA_PROP_MIN_AVG_MINUTES', 15),
+                // Per-game minutes floor for hit-rate samples (excludes DNP / 0-min rows).
+                'min_game_minutes' => (float) env('WNBA_PROP_MIN_GAME_MINUTES', 1),
                 'by_stat' => [],
             ],
         ],
@@ -75,6 +80,8 @@ return [
             'shrinkage' => [0.0, 0.5],
             'min_confidence' => [0.5, 0.8],
             'min_ev' => [0.0, 0.15],
+            'min_avg_minutes' => [0.0, 30.0],
+            'min_game_minutes' => [0.0, 20.0],
         ],
     ],
 

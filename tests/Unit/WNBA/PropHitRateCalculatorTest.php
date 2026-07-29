@@ -7,6 +7,7 @@ use App\Models\WnbaGameTeam;
 use App\Models\WnbaPlayer;
 use App\Models\WnbaPlayerGame;
 use App\Models\WnbaTeam;
+use App\Services\WNBA\Predictions\PredictionModelParamStore;
 use App\Services\WNBA\Predictions\PropHitRateCalculator;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\Test;
@@ -25,8 +26,11 @@ class PropHitRateCalculatorTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->calculator = new PropHitRateCalculator;
         config(['wnba.seasons.current_season' => self::SEASON]);
+        config(['wnba.predictions.defaults.gates.min_game_minutes' => 1]);
+        config(['wnba.predictions.defaults.gates.min_avg_minutes' => 15]);
+        app(PredictionModelParamStore::class)->forgetCache();
+        $this->calculator = app(PropHitRateCalculator::class);
 
         WnbaTeam::create([
             'team_id' => '5',
@@ -167,6 +171,61 @@ class PropHitRateCalculatorTest extends TestCase
             'blocks' => 0,
             'did_not_play' => true,
             'active' => false,
+            'starter' => false,
+            'ejected' => false,
+            'plus_minus' => 0,
+            'minutes' => '0:00',
+            'field_goals_made' => 0,
+            'field_goals_attempted' => 0,
+            'three_point_field_goals_made' => 0,
+            'three_point_field_goals_attempted' => 0,
+            'free_throws_made' => 0,
+            'free_throws_attempted' => 0,
+            'offensive_rebounds' => 0,
+            'defensive_rebounds' => 0,
+            'turnovers' => 0,
+            'fouls' => 0,
+        ]);
+
+        $result = $this->calculator->calculate($this->playerId, 'points', 20.5, null, self::SEASON);
+        $this->assertSame(10, $result['season']['games']);
+    }
+
+    #[Test]
+    public function excludes_games_below_min_game_minutes(): void
+    {
+        $game = WnbaGame::create([
+            'game_id' => '40198888',
+            'season' => self::SEASON,
+            'season_type' => 2,
+            'game_date' => '2026-06-22',
+            'game_date_time' => '2026-06-22 19:00:00',
+        ]);
+        WnbaGameTeam::create([
+            'game_id' => $game->id,
+            'team_id' => '5',
+            'opponent_team_id' => '9',
+            'home_away' => 'home',
+            'team_winner' => true,
+            'team_score' => 80,
+            'opponent_team_score' => 70,
+            'field_goals_made' => 30, 'field_goals_attempted' => 60,
+            'three_point_field_goals_made' => 8, 'three_point_field_goals_attempted' => 25,
+            'free_throws_made' => 12, 'free_throws_attempted' => 20,
+            'offensive_rebounds' => 10, 'defensive_rebounds' => 25, 'rebounds' => 35,
+            'assists' => 20, 'steals' => 7, 'blocks' => 4, 'turnovers' => 15, 'fouls' => 18,
+        ]);
+        WnbaPlayerGame::create([
+            'game_id' => $game->id,
+            'player_id' => $this->playerId,
+            'team_id' => '5',
+            'points' => 40,
+            'rebounds' => 0,
+            'assists' => 0,
+            'steals' => 0,
+            'blocks' => 0,
+            'did_not_play' => false,
+            'active' => true,
             'starter' => false,
             'ejected' => false,
             'plus_minus' => 0,

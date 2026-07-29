@@ -16,7 +16,7 @@ class PredictionModelParamStore
      *     version: string,
      *     adjustments: array{rest_b2b: float, rest_well: float, home: float, opponent_scale: float},
      *     calibration: array{shrinkage: float},
-     *     gates: array{min_confidence: float, min_ev: float, by_stat: array<string, array{min_confidence?: float, min_ev?: float}>}
+     *     gates: array{min_confidence: float, min_ev: float, min_avg_minutes: float, min_game_minutes: float, by_stat: array<string, array{min_confidence?: float, min_ev?: float}>}
      * }
      */
     public function champion(): array
@@ -54,7 +54,7 @@ class PredictionModelParamStore
     }
 
     /**
-     * @return array{min_confidence: float, min_ev: float, by_stat: array<string, array{min_confidence?: float, min_ev?: float}>}
+     * @return array{min_confidence: float, min_ev: float, min_avg_minutes: float, min_game_minutes: float, by_stat: array<string, array{min_confidence?: float, min_ev?: float}>}
      */
     public function gates(?string $statType = null): array
     {
@@ -65,11 +65,23 @@ class PredictionModelParamStore
             return [
                 'min_confidence' => (float) ($override['min_confidence'] ?? $gates['min_confidence']),
                 'min_ev' => (float) ($override['min_ev'] ?? $gates['min_ev']),
+                'min_avg_minutes' => (float) $gates['min_avg_minutes'],
+                'min_game_minutes' => (float) $gates['min_game_minutes'],
                 'by_stat' => $gates['by_stat'],
             ];
         }
 
         return $gates;
+    }
+
+    public function minAvgMinutes(): float
+    {
+        return (float) $this->gates()['min_avg_minutes'];
+    }
+
+    public function minGameMinutes(): float
+    {
+        return (float) $this->gates()['min_game_minutes'];
     }
 
     public function applyShrinkage(float $probability): float
@@ -91,7 +103,7 @@ class PredictionModelParamStore
      *     version: string,
      *     adjustments: array{rest_b2b: float, rest_well: float, home: float, opponent_scale: float},
      *     calibration: array{shrinkage: float},
-     *     gates: array{min_confidence: float, min_ev: float, by_stat: array<string, array{min_confidence?: float, min_ev?: float}>}
+     *     gates: array{min_confidence: float, min_ev: float, min_avg_minutes: float, min_game_minutes: float, by_stat: array<string, array{min_confidence?: float, min_ev?: float}>}
      * }
      */
     public function normalize(string $version, array $params): array
@@ -117,6 +129,8 @@ class PredictionModelParamStore
             'gates' => [
                 'min_confidence' => (float) $gates['min_confidence'],
                 'min_ev' => (float) $gates['min_ev'],
+                'min_avg_minutes' => (float) $gates['min_avg_minutes'],
+                'min_game_minutes' => (float) $gates['min_game_minutes'],
                 'by_stat' => $gates['by_stat'],
             ],
         ];
@@ -126,7 +140,7 @@ class PredictionModelParamStore
      * @return array{
      *     adjustments: array{rest_b2b: float, rest_well: float, home: float, opponent_scale: float},
      *     calibration: array{shrinkage: float},
-     *     gates: array{min_confidence: float, min_ev: float, by_stat: array<string, mixed>}
+     *     gates: array{min_confidence: float, min_ev: float, min_avg_minutes: float, min_game_minutes: float, by_stat: array<string, mixed>}
      * }
      */
     public function defaultParams(): array
@@ -147,6 +161,8 @@ class PredictionModelParamStore
             'gates' => [
                 'min_confidence' => (float) $defaults['gates']['min_confidence'],
                 'min_ev' => (float) $defaults['gates']['min_ev'],
+                'min_avg_minutes' => (float) ($defaults['gates']['min_avg_minutes'] ?? 15),
+                'min_game_minutes' => (float) ($defaults['gates']['min_game_minutes'] ?? 1),
                 'by_stat' => is_array($defaults['gates']['by_stat'] ?? null) ? $defaults['gates']['by_stat'] : [],
             ],
         ];
@@ -157,7 +173,7 @@ class PredictionModelParamStore
      *     version: string,
      *     adjustments: array{rest_b2b: float, rest_well: float, home: float, opponent_scale: float},
      *     calibration: array{shrinkage: float},
-     *     gates: array{min_confidence: float, min_ev: float, by_stat: array<string, array{min_confidence?: float, min_ev?: float}>}
+     *     gates: array{min_confidence: float, min_ev: float, min_avg_minutes: float, min_game_minutes: float, by_stat: array<string, array{min_confidence?: float, min_ev?: float}>}
      * }
      */
     private function bootstrapDefaults(): array

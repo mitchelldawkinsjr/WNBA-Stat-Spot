@@ -2,6 +2,7 @@
 
 namespace App\Services\WNBA\Predictions;
 
+use App\Services\WNBA\Agents\BoxScoreValidator;
 use App\Services\WNBA\Data\Support\TeamForeignKeyResolver;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -13,6 +14,11 @@ use Illuminate\Support\Facades\DB;
 class PropHitRateCalculator
 {
     private const ALLOWED_STATS = ['points', 'rebounds', 'assists', 'steals', 'blocks'];
+
+    public function __construct(
+        private BoxScoreValidator $minutesParser,
+        private PredictionModelParamStore $paramStore,
+    ) {}
 
     /**
      * @return array{
@@ -82,10 +88,12 @@ class PropHitRateCalculator
     }
 
     /**
-     * @return Collection<int, object{value: float|int, game_date: mixed, opponent_team_id: mixed}>
+     * @return Collection<int, object{value: float|int, game_date: mixed, opponent_team_id: mixed, minutes: mixed}>
      */
     private function fetchSeasonGames(int $playerId, string $statType, int $season): Collection
     {
+        $minGameMinutes = $this->paramStore->minGameMinutes();
+
         return DB::table('wnba_player_games as pg')
             ->join('wnba_games as g', 'pg.game_id', '=', 'g.id')
             ->leftJoin('wnba_game_teams as gt', function ($join) {
@@ -105,8 +113,15 @@ class PropHitRateCalculator
                 "pg.{$statType} as value",
                 'g.game_date',
                 'gt.opponent_team_id',
+                'pg.minutes',
             ])
-            ->get();
+            ->get()
+            ->filter(function ($row) use ($minGameMinutes) {
+                $minutes = $this->minutesParser->parseMinutes($row->minutes ?? null);
+
+                return $minutes !== null && $minutes >= $minGameMinutes;
+            })
+            ->values();
     }
 
     /**

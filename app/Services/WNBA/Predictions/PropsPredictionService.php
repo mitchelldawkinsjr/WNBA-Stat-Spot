@@ -166,7 +166,8 @@ class PropsPredictionService
 
         $predictions = [];
         foreach ($game->playerGames as $playerGame) {
-            if ($playerGame->minutes > 10) { // Only predict for players with significant minutes
+            $minutes = $this->parseMinutesValue($playerGame->minutes);
+            if ($minutes !== null && $minutes >= $this->paramStore->minAvgMinutes()) {
                 $predictions[$playerGame->player->athlete_display_name] = $this->predictAllProps(
                     $playerGame->player_id,
                     $gameId
@@ -818,5 +819,25 @@ class PropsPredictionService
     private function getDaysSinceLastGame($gameDate): int
     {
         return 2;
+    }
+
+    private function parseMinutesValue(mixed $minutes): ?float
+    {
+        if ($minutes === null || $minutes === '') {
+            return null;
+        }
+
+        if (is_numeric($minutes)) {
+            return (float) $minutes;
+        }
+
+        if (is_string($minutes) && str_contains($minutes, ':')) {
+            [$mins, $secs] = array_pad(explode(':', $minutes, 2), 2, '0');
+            if (is_numeric($mins) && is_numeric($secs)) {
+                return round((float) $mins + ((float) $secs) / 60, 2);
+            }
+        }
+
+        return null;
     }
 }

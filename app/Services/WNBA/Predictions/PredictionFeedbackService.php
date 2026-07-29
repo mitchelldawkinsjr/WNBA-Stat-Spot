@@ -238,8 +238,8 @@ class PredictionFeedbackService
     }
 
     /**
-     * @param  array{min_confidence: float, min_ev: float, by_stat: array<string, mixed>}  $current
-     * @return array{min_confidence: float, min_ev: float, by_stat: array<string, array{min_confidence: float, min_ev: float}>}
+     * @param  array{min_confidence: float, min_ev: float, min_avg_minutes?: float, min_game_minutes?: float, by_stat: array<string, mixed>}  $current
+     * @return array{min_confidence: float, min_ev: float, min_avg_minutes: float, min_game_minutes: float, by_stat: array<string, array{min_confidence: float, min_ev: float}>}
      */
     private function optimizeGates(Collection $props, array $current): array
     {
@@ -254,9 +254,12 @@ class PredictionFeedbackService
             $byStat[$stat] = $this->bestGateForSlice($slice, $current, $clamps);
         }
 
+        // Minutes gates are operator-selected, not auto-tuned.
         return [
             'min_confidence' => $global['min_confidence'],
             'min_ev' => $global['min_ev'],
+            'min_avg_minutes' => (float) ($current['min_avg_minutes'] ?? config('wnba.predictions.defaults.gates.min_avg_minutes', 15)),
+            'min_game_minutes' => (float) ($current['min_game_minutes'] ?? config('wnba.predictions.defaults.gates.min_game_minutes', 1)),
             'by_stat' => $byStat,
         ];
     }

@@ -462,6 +462,7 @@ export interface TodaysProp {
     probability_under: number;
     recent_form?: number;
     season_average?: number;
+    avg_minutes?: number | null;
     matchup_difficulty?: string;
     opp_def_rank?: number | null;
     opp_def_rank_basis?: string | null;
@@ -1225,7 +1226,12 @@ export const api = {
                 const params = new URLSearchParams();
                 params.append('timezone', userTimezone);
 
-                return fetchApi<{ success: boolean; data: TodaysProp[]; top_prop?: TodaysProp | null }>(
+                return fetchApi<{
+                    success: boolean;
+                    data: TodaysProp[];
+                    top_prop?: TodaysProp | null;
+                    gates?: { min_avg_minutes: number; min_game_minutes: number };
+                }>(
                     `/wnba/predictions/todays-best?${params.toString()}`,
                     { cacheTtl: 'short' }
                 );
@@ -1235,7 +1241,12 @@ export const api = {
                 const params = new URLSearchParams();
                 params.append('timezone', userTimezone);
 
-                return fetchApi<{ success: boolean; data: TodaysProp[]; top_prop?: TodaysProp | null }>(
+                return fetchApi<{
+                    success: boolean;
+                    data: TodaysProp[];
+                    top_prop?: TodaysProp | null;
+                    gates?: { min_avg_minutes: number; min_game_minutes: number };
+                }>(
                     `/wnba/predictions/todays-best?${params.toString()}`,
                     { cacheTtl: 'short' }
                 );

@@ -9,15 +9,26 @@
     let props: TodaysProp[] = [];
     let loading = true;
     let error = '';
+    let serverMinAvgMinutes = 15;
     let filters = {
         stat_type: '',
         min_confidence: 0,
         min_expected_value: 0,
+        min_avg_minutes: 15,
         recommendation: '',
         real_odds_only: false,
         sort_by: 'expected_value',
         sort_order: 'desc'
     };
+
+    const minMinutesOptions = [
+        { value: 0, label: 'Any (server gate)' },
+        { value: 10, label: '10+ min' },
+        { value: 15, label: '15+ min' },
+        { value: 20, label: '20+ min' },
+        { value: 25, label: '25+ min' },
+        { value: 30, label: '30+ min' },
+    ];
 
     const statTypes = [
         { value: '', label: 'All Stats' },
@@ -67,6 +78,10 @@
         if (filters.min_expected_value > 0) {
             if (prop.expected_value === null || prop.expected_value < filters.min_expected_value) return false;
         }
+        if (filters.min_avg_minutes > 0) {
+            const avgMin = prop.avg_minutes ?? 0;
+            if (avgMin < Number(filters.min_avg_minutes)) return false;
+        }
         if (filters.recommendation && prop.recommendation !== filters.recommendation) return false;
         return true;
     }).sort((a, b) => {
@@ -91,6 +106,13 @@
 
             if (response.success) {
                 props = response.data || [];
+                if (response.gates?.min_avg_minutes != null) {
+                    serverMinAvgMinutes = Number(response.gates.min_avg_minutes);
+                    const current = Number(filters.min_avg_minutes);
+                    if (current === 15 || current === 0) {
+                        filters = { ...filters, min_avg_minutes: serverMinAvgMinutes };
+                    }
+                }
             } else {
                 error = 'Failed to load today\'s props';
             }
@@ -165,6 +187,7 @@
             stat_type: '',
             min_confidence: 0,
             min_expected_value: 0,
+            min_avg_minutes: serverMinAvgMinutes,
             recommendation: '',
             real_odds_only: false,
             sort_by: 'expected_value',
@@ -250,6 +273,14 @@
                                     step="0.1"
                                     placeholder="0"
                                 />
+                            </div>
+                            <div class="col-md-2">
+                                <label for="minutes-filter" class="form-label">Min Avg Minutes</label>
+                                <select id="minutes-filter" class="form-select" bind:value={filters.min_avg_minutes}>
+                                    {#each minMinutesOptions as opt}
+                                        <option value={opt.value}>{opt.label}</option>
+                                    {/each}
+                                </select>
                             </div>
                             <div class="col-md-2">
                                 <label for="recommendation-filter" class="form-label">Recommendation</label>
