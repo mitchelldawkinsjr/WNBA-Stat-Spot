@@ -69,7 +69,7 @@ class EspnMapper
                 'home_team_location' => $home['team']['location'] ?? null,
                 'home_team_abbreviation' => $home['team']['abbreviation'] ?? null,
                 'home_team_display_name' => $home['team']['displayName'] ?? null,
-                'home_team_score' => isset($home['score']['value']) ? (int) $home['score']['value'] : null,
+                'home_team_score' => $this->competitorScore($home),
                 'home_team_winner' => (bool) ($home['winner'] ?? false),
                 'home_team_logo' => $home['team']['logo'] ?? ($home['team']['logos'][0]['href'] ?? null),
                 'away_team_id' => $away['team']['id'] ?? null,
@@ -77,7 +77,7 @@ class EspnMapper
                 'away_team_location' => $away['team']['location'] ?? null,
                 'away_team_abbreviation' => $away['team']['abbreviation'] ?? null,
                 'away_team_display_name' => $away['team']['displayName'] ?? null,
-                'away_team_score' => isset($away['score']['value']) ? (int) $away['score']['value'] : null,
+                'away_team_score' => $this->competitorScore($away),
                 'away_team_winner' => (bool) ($away['winner'] ?? false),
                 'away_team_logo' => $away['team']['logo'] ?? ($away['team']['logos'][0]['href'] ?? null),
                 'venue_name' => $venue['fullName'] ?? null,
@@ -315,6 +315,30 @@ class EspnMapper
         }
 
         return [];
+    }
+
+    /**
+     * ESPN schedule/scoreboard scores arrive as int, numeric string, or {value: n}.
+     *
+     * @param  array<string, mixed>  $competitor
+     */
+    private function competitorScore(array $competitor): ?int
+    {
+        $score = $competitor['score'] ?? null;
+
+        if ($score === null || $score === '') {
+            return null;
+        }
+
+        if (is_array($score) && isset($score['value']) && is_numeric($score['value'])) {
+            return (int) $score['value'];
+        }
+
+        if (is_numeric($score)) {
+            return (int) $score;
+        }
+
+        return null;
     }
 
     /**

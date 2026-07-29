@@ -3,7 +3,7 @@
     import { api } from '$lib/api/client';
     import type { Game } from '$lib/api/client';
     import DefaultLayout from "$lib/layouts/DefaultLayout.svelte";
-    import { isGameTodayEt, sortGamesForToday, WNBA_TIMEZONE } from '$lib/utils/gameDates';
+    import { isGameTodayEt, shouldShowScore, sortGamesForToday, WNBA_TIMEZONE } from '$lib/utils/gameDates';
 
     let games: Game[] = [];
     let loading = true;
@@ -239,7 +239,7 @@
                                                                         <img src={game.away_team.logo} alt={game.away_team.abbreviation} class="avatar-xs rounded me-2" />
                                                                     {/if}
                                                                     <span class="fw-medium">{game.away_team.abbreviation}</span>
-                                                                    {#if game.final_score?.final && game.away_team.score !== null}
+                                                                    {#if shouldShowScore(game) && game.away_team.score !== null && game.away_team.score !== undefined}
                                                                         <span class="ms-2 badge bg-{game.away_team.winner ? 'success' : 'secondary'}-subtle text-{game.away_team.winner ? 'success' : 'secondary'}">
                                                                             {game.away_team.score}
                                                                         </span>
@@ -251,7 +251,7 @@
                                                                         <img src={game.home_team.logo} alt={game.home_team.abbreviation} class="avatar-xs rounded me-2" />
                                                                     {/if}
                                                                     <span class="fw-medium">{game.home_team.abbreviation}</span>
-                                                                    {#if game.final_score?.final && game.home_team.score !== null}
+                                                                    {#if shouldShowScore(game) && game.home_team.score !== null && game.home_team.score !== undefined}
                                                                         <span class="ms-2 badge bg-{game.home_team.winner ? 'success' : 'secondary'}-subtle text-{game.home_team.winner ? 'success' : 'secondary'}">
                                                                             {game.home_team.score}
                                                                         </span>

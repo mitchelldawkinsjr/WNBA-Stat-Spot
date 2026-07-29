@@ -265,11 +265,24 @@ class Tank01WnbaProvider implements WnbaStatsProvider
         $scoreboard = $this->fetchScoreboard($gameDate);
         $calls++;
 
-        foreach ($scoreboard as $game) {
-            if ($calls >= $maxCalls) {
-                break;
-            }
+        // Live games first so the budget is spent on in-progress scores.
+        $scoreboard = collect($scoreboard)
+            ->filter(fn ($game) => is_array($game))
+            ->sortByDesc(function (array $game) {
+                $status = (string) ($game['gameStatus'] ?? '');
+                if ($this->mapper->isGameLive($status)) {
+                    return 2;
+                }
+                if ($this->mapper->isGameCompleted($status)) {
+                    return 1;
+                }
 
+                return 0;
+            })
+            ->values()
+            ->all();
+
+        foreach ($scoreboard as $game) {
             $status = (string) ($game['gameStatus'] ?? '');
             if (! $this->mapper->isGameLive($status) && ! $this->mapper->isGameCompleted($status)) {
                 continue;
@@ -280,8 +293,16 @@ class Tank01WnbaProvider implements WnbaStatsProvider
                 continue;
             }
 
-            if (! $this->usageTracker->canMakeRequest()) {
-                break;
+            // Always persist scoreboard points/status even if we can't afford a box.
+            $schedule[] = $this->mapper->mapScheduleGame((string) $gameId, $game);
+
+            if ($calls >= $maxCalls || ! $this->usageTracker->canMakeRequest()) {
+                continue;
+            }
+
+            // Prefer box fetches for live games; completed can wait for nightly ingest.
+            if (! $this->mapper->isGameLive($status) && $calls >= max(2, (int) floor($maxCalls / 2))) {
+                continue;
             }
 
             try {
@@ -293,10 +314,14 @@ class Tank01WnbaProvider implements WnbaStatsProvider
                         : config('tank01.cache_ttl.box_score_final'),
                 );
                 $calls++;
-                $mapped = $this->mapper->mapBoxScore($body);
+                $mapped = $this->mapper->mapBoxScore(is_array($body) ? $body : []);
                 $player = array_merge($player, $mapped['player']);
                 $team = array_merge($team, $mapped['team']);
-                $schedule[] = $this->mapper->mapScheduleGame($gameId, array_merge($game, $body));
+                // Prefer box-enriched schedule row (same game id) when available.
+                $schedule[array_key_last($schedule)] = $this->mapper->mapScheduleGame(
+                    (string) $gameId,
+                    array_merge($game, is_array($body) ? $body : [])
+                );
             } catch (RuntimeException $e) {
                 Log::warning('Tank01 live sync box score failed', ['game_id' => $gameId]);
             }

@@ -42,6 +42,13 @@ class ConflictResolver
             return true;
         }
 
+        // Live scores only move forward. Prefer the higher team_score /
+        // opponent_team_score regardless of source priority so Tank01 live
+        // updates are not blocked by an earlier ESPN placeholder write.
+        if ($this->incomingScoresAreAhead($existingValues, $incomingValues)) {
+            return true;
+        }
+
         $winningSource = $incomingWins ? $incomingSource : $existingSource;
 
         foreach ($incomingValues as $field => $incomingValue) {
@@ -106,6 +113,37 @@ class ConflictResolver
         }
 
         return $a == $b;
+    }
+
+    /**
+     * @param  array<string, mixed>  $existingValues
+     * @param  array<string, mixed>  $incomingValues
+     */
+    private function incomingScoresAreAhead(array $existingValues, array $incomingValues): bool
+    {
+        $scoreFields = ['team_score', 'opponent_team_score'];
+        $sawScoreField = false;
+        $ahead = false;
+
+        foreach ($scoreFields as $field) {
+            if (! array_key_exists($field, $incomingValues)) {
+                continue;
+            }
+            $sawScoreField = true;
+            $existing = $existingValues[$field] ?? null;
+            $incoming = $incomingValues[$field];
+            if (! is_numeric($incoming)) {
+                return false;
+            }
+            if ($existing !== null && is_numeric($existing) && (float) $incoming < (float) $existing) {
+                return false;
+            }
+            if ($existing === null || (float) $incoming > (float) $existing) {
+                $ahead = true;
+            }
+        }
+
+        return $sawScoreField && $ahead;
     }
 
     private function confidenceFor(string $winningSource): float

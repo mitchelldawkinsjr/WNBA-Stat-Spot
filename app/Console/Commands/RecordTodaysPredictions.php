@@ -17,14 +17,19 @@ class RecordTodaysPredictions extends Command
     public function handle(PredictionsController $controller): int
     {
         $timezone = (string) $this->option('timezone');
-        $cacheKey = 'todays_best_props_with_odds_v3_'.str_replace('/', '_', $timezone);
+        $cacheKey = PredictionsController::todaysPropsCacheKey($timezone);
 
         $this->info("Recording today's predictions for timezone {$timezone}...");
 
         try {
+            // Bust the warm cache so generation + tracking always run for the
+            // morning slate capture (tracking also runs on cache hits via API).
             Cache::forget($cacheKey);
 
-            $response = $controller->getTodaysBestProps(new Request(['timezone' => $timezone]));
+            $response = $controller->getTodaysBestProps(new Request([
+                'timezone' => $timezone,
+                'record' => true,
+            ]));
             $payload = $response->getData(true);
             $count = is_array($payload['data'] ?? null) ? count($payload['data']) : 0;
 
@@ -32,6 +37,7 @@ class RecordTodaysPredictions extends Command
             Log::info('Recorded today\'s predictions', [
                 'timezone' => $timezone,
                 'prop_count' => $count,
+                'cache_key' => $cacheKey,
             ]);
 
             return self::SUCCESS;

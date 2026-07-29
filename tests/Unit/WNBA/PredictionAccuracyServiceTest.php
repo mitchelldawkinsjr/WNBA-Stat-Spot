@@ -157,6 +157,100 @@ class PredictionAccuracyServiceTest extends TestCase
         $this->assertSame('Test Player', $dashboard['top_prop_of_day']['player_name']);
     }
 
+    public function test_locks_first_prop_pick_of_the_day(): void
+    {
+        $this->service->recordTodaysProps([
+            [
+                'player_id' => '1001',
+                'player_name' => 'Test Player',
+                'stat_type' => 'points',
+                'suggested_line' => 20.5,
+                'predicted_value' => 23.1,
+                'recommendation' => 'over',
+                'confidence' => 72,
+            ],
+        ], 'America/New_York');
+
+        $this->service->recordTodaysProps([
+            [
+                'player_id' => '1001',
+                'player_name' => 'Test Player',
+                'stat_type' => 'points',
+                'suggested_line' => 20.5,
+                'predicted_value' => 99.0,
+                'recommendation' => 'under',
+                'confidence' => 10,
+            ],
+        ], 'America/New_York');
+
+        $row = TrackedPropPrediction::query()->first();
+        $this->assertSame(1, TrackedPropPrediction::query()->count());
+        $this->assertSame(23.1, (float) $row->predicted_value);
+        $this->assertSame('over', $row->recommendation);
+    }
+
+    public function test_grades_dnp_props_as_void_without_affecting_accuracy(): void
+    {
+        $player = WnbaPlayer::query()->create([
+            'athlete_id' => '1009',
+            'athlete_display_name' => 'DNP Player',
+            'athlete_short_name' => 'D. Player',
+        ]);
+        $home = $this->makeTeam('11', 'SEA');
+        $away = $this->makeTeam('12', 'PHX');
+        $game = $this->makeFinalGame('401900009', $home, $away, 80, 75);
+
+        WnbaPlayerGame::query()->create([
+            'game_id' => $game->id,
+            'player_id' => $player->id,
+            'team_id' => $home->team_id,
+            'points' => 0,
+            'rebounds' => 0,
+            'assists' => 0,
+            'steals' => 0,
+            'blocks' => 0,
+            'turnovers' => 0,
+            'fouls' => 0,
+            'field_goals_made' => 0,
+            'field_goals_attempted' => 0,
+            'three_point_field_goals_made' => 0,
+            'three_point_field_goals_attempted' => 0,
+            'free_throws_made' => 0,
+            'free_throws_attempted' => 0,
+            'offensive_rebounds' => 0,
+            'defensive_rebounds' => 0,
+            'plus_minus' => 0,
+            'starter' => false,
+            'ejected' => false,
+            'did_not_play' => true,
+            'active' => false,
+        ]);
+
+        $this->service->recordTodaysProps([
+            [
+                'player_id' => '1009',
+                'player_name' => 'DNP Player',
+                'game_id' => '401900009',
+                'stat_type' => 'points',
+                'suggested_line' => 12.5,
+                'predicted_value' => 14.0,
+                'recommendation' => 'over',
+                'confidence' => 60,
+            ],
+        ], 'America/New_York');
+
+        $graded = $this->service->gradePendingProps();
+        $this->assertSame(1, $graded);
+
+        $row = TrackedPropPrediction::query()->first();
+        $this->assertNotNull($row->graded_at);
+        $this->assertNull($row->correct);
+        $this->assertNull($row->actual_value);
+
+        $dashboard = $this->service->getAccuracyDashboard('America/New_York');
+        $this->assertSame(0, $dashboard['props']['graded']);
+    }
+
     /**
      * @return array<string, mixed>
      */

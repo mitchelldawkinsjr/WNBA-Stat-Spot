@@ -63,5 +63,9 @@ class RunAnalyticsAgent implements ShouldQueue
 
         // Aggregates changed; clear response caches so the API serves fresh data.
         AgentResponseCache::clear('analytics_agent');
+
+        // After finals/boxes are ingested and aggregates refresh, grade yesterday's
+        // (and any other pending) game-score + prop picks for the accuracy board.
+        GradePredictionsJob::dispatch();
     }
 }

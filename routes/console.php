@@ -9,10 +9,11 @@ Artisan::command('inspire', function () {
 })->purpose('Display an inspiring quote');
 
 // Nightly Data Agent run: ingests schedule/boxes/PBP/injuries/odds with raw
-// payload lineage, then chains the Entity Integrity and Analytics agents.
+// payload lineage, then chains Entity → Analytics → GradePredictionsJob so
+// yesterday's saved game-score + prop picks are graded once finals land.
 Schedule::command('app:wnba-agent data --mode=incremental')
     ->dailyAt('02:00')
-    ->description('WNBA data agent: incremental ingest + chained audits/aggregates')
+    ->description('WNBA data agent: incremental ingest + chained audits/aggregates/grading')
     ->withoutOverlapping()
     ->onOneServer();
 
@@ -24,14 +25,24 @@ Schedule::command('app:wnba-agent entity --mode=audit --season=all')
     ->onOneServer();
 
 Schedule::command('app:sync-wnba-live')
-    ->everyThirtyMinutes()
-    ->between('17:00', '23:59')
-    ->description('Live WNBA sync via Tank01')
+    ->everyFiveMinutes()
+    ->timezone('America/New_York')
+    ->between('11:00', '23:59')
+    ->description('Live WNBA sync via Tank01 (ET afternoon/evening window)')
+    ->withoutOverlapping()
+    ->when(fn () => config('wnba.features.enable_live_updates') || config('tank01.live_sync.enabled'));
+
+// Early-morning ET spillover for West Coast / late tips (00:00–02:00 ET).
+Schedule::command('app:sync-wnba-live')
+    ->everyFiveMinutes()
+    ->timezone('America/New_York')
+    ->between('00:00', '02:00')
+    ->description('Live WNBA sync via Tank01 (late ET spillover)')
     ->withoutOverlapping()
     ->when(fn () => config('wnba.features.enable_live_updates') || config('tank01.live_sync.enabled'));
 
 // Grading only reads the local DB, so an hourly run is cheap. It picks up
-// finals from the evening live sync and from the 02:00 daily import.
+// finals from the evening live sync; the nightly agent chain also grades.
 Schedule::command('app:grade-predictions')
     ->hourly()
     ->description('Grade pending predictions against final results')
@@ -46,7 +57,7 @@ Schedule::command('app:record-todays-predictions')
     ->withoutOverlapping()
     ->onOneServer();
 
-// Nightly learning loop after data agent / finals land.
+// Nightly learning loop after data agent / finals land (grades again, then tunes).
 Schedule::command('app:run-prediction-feedback')
     ->dailyAt('03:30')
     ->timezone('America/New_York')

@@ -43,6 +43,7 @@ class Tank01Mapper
         $awayTeam = $this->findTeam($teamsBody, $awayAbv, $game['teamIDAway'] ?? null);
         $homeTeam = $this->findTeam($teamsBody, $homeAbv, $game['teamIDHome'] ?? null);
         $gameDate = $this->formatGameDate($game['gameDate'] ?? substr($gameId, 0, 8));
+        $rawStatus = (string) ($game['gameStatus'] ?? '');
 
         return [
             'game_id' => $gameId,
@@ -55,11 +56,13 @@ class Tank01Mapper
             'home_team_location' => $homeTeam['teamCity'] ?? null,
             'home_team_abbreviation' => $homeAbv,
             'home_team_display_name' => $this->teamDisplayName($homeTeam, $homeAbv),
+            'home_team_score' => isset($game['homePts']) && is_numeric($game['homePts']) ? (int) $game['homePts'] : null,
             'away_team_id' => $awayTeam['teamID'] ?? $game['teamIDAway'] ?? null,
             'away_team_name' => $awayTeam['teamName'] ?? $awayAbv,
             'away_team_location' => $awayTeam['teamCity'] ?? null,
             'away_team_abbreviation' => $awayAbv,
             'away_team_display_name' => $this->teamDisplayName($awayTeam, $awayAbv),
+            'away_team_score' => isset($game['awayPts']) && is_numeric($game['awayPts']) ? (int) $game['awayPts'] : null,
             'venue_name' => $game['arena'] ?? null,
             'venue_city' => null,
             'venue_state' => null,
@@ -68,8 +71,9 @@ class Tank01Mapper
             'venue_capacity' => null,
             'venue_surface' => null,
             'venue_indoor' => true,
-            'status_name' => $game['gameStatus'] ?? null,
-            'status_type' => $this->mapGameStatusType($game['gameStatus'] ?? ''),
+            // Normalize to ESPN-like STATUS_* so frontend live badges match.
+            'status_name' => $this->normalizeStatusName($rawStatus),
+            'status_type' => $this->mapGameStatusType($rawStatus),
             'status_abbreviation' => $game['gameStatusCode'] ?? null,
             'status_id' => null,
         ];
@@ -118,10 +122,14 @@ class Tank01Mapper
 
         $teamRecords = [];
         foreach (['away' => $awayAbv, 'home' => $homeAbv] as $side => $abv) {
-            $opponentSide = $side === 'home' ? 'away' : 'home';
             $opponentAbv = $side === 'home' ? $awayAbv : $homeAbv;
             $stats = $boxScoreBody['teamStats'][$abv] ?? [];
-            if (empty($stats)) {
+            $teamScore = (int) ($side === 'home' ? ($boxScoreBody['homePts'] ?? 0) : ($boxScoreBody['awayPts'] ?? 0));
+            $opponentScore = (int) ($side === 'home' ? ($boxScoreBody['awayPts'] ?? 0) : ($boxScoreBody['homePts'] ?? 0));
+
+            // Early live boxes often have homePts/awayPts before teamStats land.
+            // Still emit a score row so the board updates.
+            if (empty($stats) && $teamScore === 0 && $opponentScore === 0) {
                 continue;
             }
 
@@ -133,9 +141,9 @@ class Tank01Mapper
                 $side === 'home' ? ($boxScoreBody['teamIDHome'] ?? null) : ($boxScoreBody['teamIDAway'] ?? null),
                 $opponentAbv,
                 $side === 'home' ? ($boxScoreBody['teamIDAway'] ?? null) : ($boxScoreBody['teamIDHome'] ?? null),
-                (int) ($side === 'home' ? ($boxScoreBody['homePts'] ?? 0) : ($boxScoreBody['awayPts'] ?? 0)),
-                (int) ($side === 'home' ? ($boxScoreBody['awayPts'] ?? 0) : ($boxScoreBody['homePts'] ?? 0)),
-                $stats
+                $teamScore,
+                $opponentScore,
+                is_array($stats) ? $stats : []
             );
         }
 
@@ -435,6 +443,18 @@ class Tank01Mapper
         }
 
         return 'scheduled';
+    }
+
+    private function normalizeStatusName(string $status): string
+    {
+        if ($this->isGameLive($status)) {
+            return 'STATUS_IN_PROGRESS';
+        }
+        if ($this->isGameCompleted($status)) {
+            return 'STATUS_FINAL';
+        }
+
+        return 'STATUS_SCHEDULED';
     }
 
     /**

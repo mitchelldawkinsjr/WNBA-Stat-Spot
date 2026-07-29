@@ -728,7 +728,7 @@ class WnbaDataService
                 // schedules. firstOrCreate (not updateOrCreate) so a schedule sync
                 // can never reset real box-score values back to zero.
                 if ($homeTeam && $awayTeam) {
-                    WnbaGameTeam::firstOrCreate(
+                    $homeRow = WnbaGameTeam::firstOrCreate(
                         [
                             'game_id' => $game->id,
                             'team_id' => $homeTeam->team_id,
@@ -739,7 +739,7 @@ class WnbaDataService
                         ], $this->lineageFields())
                     );
 
-                    WnbaGameTeam::firstOrCreate(
+                    $awayRow = WnbaGameTeam::firstOrCreate(
                         [
                             'game_id' => $game->id,
                             'team_id' => $awayTeam->team_id,
@@ -748,6 +748,15 @@ class WnbaDataService
                             'opponent_team_id' => $homeTeam->team_id,
                             'home_away' => 'away',
                         ], $this->lineageFields())
+                    );
+
+                    // Scoreboard points (live sync) — advance scores without
+                    // requiring a full box / teamStats payload.
+                    $this->applyScheduleScores(
+                        $homeRow,
+                        $awayRow,
+                        isset($record['home_team_score']) ? (int) $record['home_team_score'] : null,
+                        isset($record['away_team_score']) ? (int) $record['away_team_score'] : null,
                     );
                 }
             } catch (\Throwable $e) {
@@ -761,6 +770,48 @@ class WnbaDataService
                     'game_id' => $record['game_id'] ?? null,
                     'error' => $e->getMessage(),
                 ]);
+            }
+        }
+    }
+
+    /**
+     * Advance live/final scores from scoreboard without wiping box stats.
+     * Scores are monotonic during a game — only move forward.
+     */
+    private function applyScheduleScores(
+        WnbaGameTeam $homeRow,
+        WnbaGameTeam $awayRow,
+        ?int $homeScore,
+        ?int $awayScore,
+    ): void {
+        if ($homeScore === null && $awayScore === null) {
+            return;
+        }
+
+        $homeChanged = false;
+        $awayChanged = false;
+
+        if ($homeScore !== null && $homeScore >= (int) $homeRow->team_score) {
+            $homeRow->team_score = $homeScore;
+            $homeRow->opponent_team_score = $awayScore ?? (int) $homeRow->opponent_team_score;
+            $homeChanged = true;
+        }
+
+        if ($awayScore !== null && $awayScore >= (int) $awayRow->team_score) {
+            $awayRow->team_score = $awayScore;
+            $awayRow->opponent_team_score = $homeScore ?? (int) $awayRow->opponent_team_score;
+            $awayChanged = true;
+        }
+
+        if ($homeChanged || $awayChanged) {
+            $homeWinner = (int) $homeRow->team_score > (int) $awayRow->team_score;
+            $homeRow->team_winner = $homeWinner;
+            $awayRow->team_winner = ! $homeWinner && (int) $awayRow->team_score !== (int) $homeRow->team_score;
+            if ($homeChanged) {
+                $homeRow->save();
+            }
+            if ($awayChanged) {
+                $awayRow->save();
             }
         }
     }

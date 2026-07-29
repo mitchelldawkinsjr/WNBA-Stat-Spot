@@ -111,35 +111,53 @@ class PredictionAccuracyService
             }
 
             $rank = $index + 1;
-            $row = TrackedPropPrediction::query()->updateOrCreate(
-                [
-                    'prediction_date' => $predictionDate,
-                    'player_id' => $playerId,
-                    'stat_type' => $statType,
-                    'line' => $line,
-                ],
-                [
-                    'game_id' => isset($prop['game_id']) ? (string) $prop['game_id'] : null,
-                    'player_name' => (string) ($prop['player_name'] ?? 'Unknown'),
-                    'team_abbreviation' => $prop['team_abbreviation'] ?? null,
-                    'opponent' => $prop['opponent'] ?? null,
-                    'predicted_value' => (float) ($prop['predicted_value'] ?? $line),
-                    'recommendation' => $recommendation,
-                    'confidence' => isset($prop['confidence']) ? (float) $prop['confidence'] : null,
-                    'expected_value' => array_key_exists('expected_value', $prop) && $prop['expected_value'] !== null
-                        ? (float) $prop['expected_value']
-                        : null,
-                    'probability_over' => isset($prop['probability_over']) ? (float) $prop['probability_over'] : null,
-                    'probability_under' => isset($prop['probability_under']) ? (float) $prop['probability_under'] : null,
-                    'betting_value' => $prop['betting_value'] ?? null,
-                    'reasoning' => $prop['reasoning'] ?? null,
-                    'feature_snapshot' => $prop['feature_snapshot'] ?? null,
-                    'model_version' => $prop['model_version'] ?? $championVersion,
-                    'is_top_prop' => $rank === 1,
-                    'rank' => $rank,
-                    'predicted_at' => now(),
-                ]
-            );
+            $existing = TrackedPropPrediction::query()
+                ->whereDate('prediction_date', $predictionDate)
+                ->where('player_id', $playerId)
+                ->where('stat_type', $statType)
+                ->where('line', $line)
+                ->first();
+
+            // Lock the first pick of the day for accuracy — later refreshes
+            // only refresh ranking / top-prop flags until the row is graded.
+            if ($existing !== null) {
+                if ($existing->graded_at === null) {
+                    $existing->fill([
+                        'is_top_prop' => $rank === 1,
+                        'rank' => $rank,
+                    ]);
+                    $existing->save();
+                }
+                $recorded[] = $existing;
+
+                continue;
+            }
+
+            $row = TrackedPropPrediction::query()->create([
+                'prediction_date' => $predictionDate,
+                'player_id' => $playerId,
+                'stat_type' => $statType,
+                'line' => $line,
+                'game_id' => isset($prop['game_id']) ? (string) $prop['game_id'] : null,
+                'player_name' => (string) ($prop['player_name'] ?? 'Unknown'),
+                'team_abbreviation' => $prop['team_abbreviation'] ?? null,
+                'opponent' => $prop['opponent'] ?? null,
+                'predicted_value' => (float) ($prop['predicted_value'] ?? $line),
+                'recommendation' => $recommendation,
+                'confidence' => isset($prop['confidence']) ? (float) $prop['confidence'] : null,
+                'expected_value' => array_key_exists('expected_value', $prop) && $prop['expected_value'] !== null
+                    ? (float) $prop['expected_value']
+                    : null,
+                'probability_over' => isset($prop['probability_over']) ? (float) $prop['probability_over'] : null,
+                'probability_under' => isset($prop['probability_under']) ? (float) $prop['probability_under'] : null,
+                'betting_value' => $prop['betting_value'] ?? null,
+                'reasoning' => $prop['reasoning'] ?? null,
+                'feature_snapshot' => $prop['feature_snapshot'] ?? null,
+                'model_version' => $prop['model_version'] ?? $championVersion,
+                'is_top_prop' => $rank === 1,
+                'rank' => $rank,
+                'predicted_at' => now(),
+            ]);
 
             $recorded[] = $row;
         }
@@ -272,8 +290,21 @@ class PredictionAccuracyService
         }
 
         $playerGame = $gameQuery->orderByDesc('id')->first();
-        if ($playerGame === null || $playerGame->did_not_play) {
+        if ($playerGame === null) {
             return false;
+        }
+
+        // DNP / scratched: mark graded so pending counts clear (excluded from
+        // hit-rate via correct=null, same as pushes).
+        if ($playerGame->did_not_play) {
+            $prediction->fill([
+                'actual_value' => null,
+                'correct' => null,
+                'graded_at' => now(),
+            ]);
+            $prediction->save();
+
+            return true;
         }
 
         $statColumn = $this->statColumn($prediction->stat_type);

@@ -40,7 +40,8 @@ class SyncWnbaLive extends Command
         $reporter = app(AgentRunReporter::class);
         $reporter->start('data', 'live', ['season' => (int) config('wnba.seasons.current_season')]);
         $dataService->setAgentContext($reporter, app(ConflictResolver::class));
-        $gameDate = $this->option('date') ?: now()->format('Ymd');
+        // Tank01 scoreboard is calendar-day in US Eastern, not UTC.
+        $gameDate = $this->option('date') ?: now('America/New_York')->format('Ymd');
         $maxCalls = (int) config('tank01.live_sync.max_calls_per_run', 5);
 
         $this->info("Syncing live WNBA data for {$gameDate} (max {$maxCalls} API calls)...");
@@ -60,6 +61,11 @@ class SyncWnbaLive extends Command
         $reporter->set('sources_attempted', 1);
         $reporter->set('sources_succeeded', 1);
         $reporter->finish();
+
+        // Bust the games list so the API does not keep serving pre-sync scores.
+        \App\Services\WNBA\Agents\AgentResponseCache::forgetGameListCaches(
+            (int) config('wnba.seasons.current_season')
+        );
 
         $this->info(sprintf(
             'Live sync complete: %d schedule, %d team, %d player records.',

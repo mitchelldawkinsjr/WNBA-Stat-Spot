@@ -99,5 +99,7 @@ JSON, true, 512, JSON_THROW_ON_ERROR);
         $this->assertCount(1, $records);
         $this->assertSame('401857013', $records[0]['game_id']);
         $this->assertSame('20', $records[0]['home_team_id']);
+        $this->assertSame(94, $records[0]['home_team_score']);
+        $this->assertSame(87, $records[0]['away_team_score']);
     }
 }

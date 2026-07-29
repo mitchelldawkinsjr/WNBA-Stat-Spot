@@ -117,10 +117,18 @@ class GameScheduleService
         $dbGame['home_team'] = $this->mergeTeamScores($dbGame['home_team'], $espn['home_team']);
         $dbGame['away_team'] = $this->mergeTeamScores($dbGame['away_team'], $espn['away_team']);
 
-        if ($dbGame['final_score'] === null && $espn['final_score'] !== null) {
-            $dbGame['final_score'] = $espn['final_score'];
-        } elseif ($espn['final_score'] !== null && ($espn['final_score']['final'] ?? false)) {
-            $dbGame['final_score'] = $espn['final_score'];
+        $isFinal = ($espn['final_score']['final'] ?? false)
+            || str_contains(strtoupper((string) ($dbGame['status_name'] ?? '')), 'FINAL');
+
+        $homeScore = $this->normalizeScore($dbGame['home_team']['score'] ?? null);
+        $awayScore = $this->normalizeScore($dbGame['away_team']['score'] ?? null);
+
+        if ($homeScore !== null || $awayScore !== null || ($espn['final_score'] ?? null) !== null) {
+            $dbGame['final_score'] = [
+                'home' => $homeScore ?? ($espn['final_score']['home'] ?? null),
+                'away' => $awayScore ?? ($espn['final_score']['away'] ?? null),
+                'final' => $isFinal,
+            ];
         }
 
         return $dbGame;
@@ -157,9 +165,18 @@ class GameScheduleService
             return $dbTeam;
         }
 
-        if (($dbTeam['score'] === null || $dbTeam['score'] === 0) && $espnTeam['score'] !== null) {
-            $dbTeam['score'] = $espnTeam['score'];
-            $dbTeam['winner'] = $espnTeam['winner'];
+        // Prefer the fresher / higher in-progress score. Freezing on the first
+        // non-zero DB write left LIVE badges with stuck Tank01 snapshots.
+        $dbScore = $this->normalizeScore($dbTeam['score'] ?? null);
+        $espnScore = $this->normalizeScore($espnTeam['score'] ?? null);
+
+        if ($espnScore !== null && ($dbScore === null || $espnScore > $dbScore)) {
+            $dbTeam['score'] = $espnScore;
+            if (array_key_exists('winner', $espnTeam)) {
+                $dbTeam['winner'] = $espnTeam['winner'];
+            }
+        } elseif ($dbScore !== null) {
+            $dbTeam['score'] = $dbScore;
         }
 
         foreach (['name', 'abbreviation', 'logo'] as $field) {
@@ -169,6 +186,27 @@ class GameScheduleService
         }
 
         return $dbTeam;
+    }
+
+    private function normalizeScore(mixed $score): ?int
+    {
+        if ($score === null || $score === '') {
+            return null;
+        }
+
+        if (is_array($score) && isset($score['value']) && is_numeric($score['value'])) {
+            return (int) $score['value'];
+        }
+
+        if (is_numeric($score)) {
+            return (int) $score;
+        }
+
+        if (is_string($score) && is_numeric(trim($score))) {
+            return (int) trim($score);
+        }
+
+        return null;
     }
 
     /**

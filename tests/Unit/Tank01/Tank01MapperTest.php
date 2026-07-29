@@ -41,6 +41,48 @@ class Tank01MapperTest extends TestCase
         $this->assertSame(24, $mapped['player'][0]['points']);
     }
 
+    public function test_box_score_emits_team_rows_from_points_without_team_stats(): void
+    {
+        $mapper = new Tank01Mapper(2026);
+        $mapped = $mapper->mapBoxScore([
+            'gameID' => '20260701_NY@ATL',
+            'gameDate' => '20260701',
+            'away' => 'NY',
+            'home' => 'ATL',
+            'teamIDAway' => '9',
+            'teamIDHome' => '5',
+            'awayPts' => 41,
+            'homePts' => 48,
+            'playerStats' => [],
+            'teamStats' => [],
+        ]);
+
+        $this->assertCount(2, $mapped['team']);
+        $home = collect($mapped['team'])->firstWhere('home_away', 'home');
+        $this->assertSame(48, $home['team_score']);
+        $this->assertSame(41, $home['opponent_team_score']);
+    }
+
+    public function test_schedule_game_normalizes_live_status_and_scores(): void
+    {
+        $mapper = new Tank01Mapper(2026);
+        $row = $mapper->mapScheduleGame('20260701_NY@ATL', [
+            'gameDate' => '20260701',
+            'away' => 'NY',
+            'home' => 'ATL',
+            'teamIDAway' => '9',
+            'teamIDHome' => '5',
+            'awayPts' => 22,
+            'homePts' => 19,
+            'gameStatus' => 'In Progress',
+            'gameStatusCode' => '1',
+        ]);
+
+        $this->assertSame('STATUS_IN_PROGRESS', $row['status_name']);
+        $this->assertSame(19, $row['home_team_score']);
+        $this->assertSame(22, $row['away_team_score']);
+    }
+
     public function test_usage_tracker_blocks_near_monthly_limit(): void
     {
         Cache::flush();

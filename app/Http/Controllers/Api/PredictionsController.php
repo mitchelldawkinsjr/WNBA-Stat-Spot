@@ -26,6 +26,9 @@ use Illuminate\Support\Facades\Log;
 
 class PredictionsController extends Controller
 {
+    /** Bump when today's-props payload shape changes; keep in sync with RecordTodaysPredictions. */
+    public const TODAYS_PROPS_CACHE_VERSION = 'v6';
+
     private PropsPredictionService $propsPrediction;
 
     private StatisticalEngineService $statisticalEngine;
@@ -406,7 +409,7 @@ class PredictionsController extends Controller
                 'user_time' => Carbon::now($timezone)->toString(),
             ]);
 
-            $cacheKey = 'todays_best_props_with_odds_v6_'.str_replace('/', '_', $timezone);
+            $cacheKey = self::todaysPropsCacheKey($timezone);
 
             $props = Cache::remember($cacheKey, now()->addMinutes(30), function () use ($timezone) {
                 try {
@@ -420,8 +423,6 @@ class PredictionsController extends Controller
                         return [];
                     }
 
-                    $this->trackTodaysPredictions($props, $timezone);
-
                     return $props;
                 } catch (\Throwable $e) {
                     Log::warning('generateTodaysBestProps failed; returning empty props list', [
@@ -432,6 +433,12 @@ class PredictionsController extends Controller
                     return [];
                 }
             });
+
+            // Always persist the slate for accuracy (even on cache hits). Morning
+            // record command and UI hits both land here.
+            if (! empty($props)) {
+                $this->trackTodaysPredictions($props, $timezone);
+            }
 
             return response()->json([
                 'success' => true,
@@ -520,6 +527,16 @@ class PredictionsController extends Controller
     }
 
     /**
+     * Cache key for today's best props board (shared with RecordTodaysPredictions).
+     */
+    public static function todaysPropsCacheKey(string $timezone): string
+    {
+        return 'todays_best_props_with_odds_'.self::TODAYS_PROPS_CACHE_VERSION.'_'.str_replace('/', '_', $timezone);
+    }
+
+    /**
+     * Persist today's prop picks and game-score predictions for overnight grading.
+     *
      * @param  list<array<string, mixed>>  $props
      */
     private function trackTodaysPredictions(array $props, string $timezone): void
@@ -532,13 +549,16 @@ class PredictionsController extends Controller
             ]);
         }
 
-        $gameIds = collect($props)
+        $season = (int) config('wnba.seasons.current_season');
+
+        // Record game-score picks for every game on today's slate, not only
+        // games that happened to produce a qualifying prop.
+        $gameIds = collect($this->getTodaysGames($timezone))
             ->pluck('game_id')
             ->filter()
+            ->merge(collect($props)->pluck('game_id')->filter())
             ->unique()
             ->values();
-
-        $season = (int) config('wnba.seasons.current_season');
 
         foreach ($gameIds as $gameId) {
             try {
@@ -1126,11 +1146,13 @@ class PredictionsController extends Controller
             'STATUS_IN_PROGRESS', 'IN_PROGRESS', 'Live', 'LIVE',
             'STATUS_HALFTIME', 'HALFTIME', 'Half Time', 'Halftime',
             'STATUS_END_PERIOD', 'END_PERIOD', 'End of Period', 'End Period',
+            'In Progress', '1',
         ];
 
-        return in_array($status, $liveStatuses) ||
-               str_contains($status, 'IN_PROGRESS') ||
-               str_contains($status, 'LIVE');
+        return in_array($status, $liveStatuses, true) ||
+               str_contains(strtoupper($status), 'IN_PROGRESS') ||
+               str_contains(strtoupper($status), 'LIVE') ||
+               str_contains(strtolower($status), 'progress');
     }
 
     /**

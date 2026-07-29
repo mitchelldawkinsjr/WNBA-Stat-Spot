@@ -2,7 +2,7 @@ import type { Game } from '$lib/api/client';
 
 export const WNBA_TIMEZONE = 'America/New_York';
 
-const LIVE_STATUS_PATTERN = /IN_PROGRESS|HALFTIME|END_PERIOD|LIVE/i;
+const LIVE_STATUS_PATTERN = /IN_PROGRESS|HALFTIME|END_PERIOD|LIVE|In Progress|in_progress|\b1\b/i;
 const FINAL_STATUS_PATTERN = /FINAL|COMPLETED|POSTPONED|CANCEL/i;
 
 /** Calendar date for a game in US Eastern (WNBA schedule day). */
@@ -27,6 +27,16 @@ export function isGameLive(game: Pick<Game, 'status_name'>): boolean {
         return false;
     }
     return LIVE_STATUS_PATTERN.test(status);
+}
+
+/** Show scores for live or final games (not only when final_score.final is true). */
+export function shouldShowScore(game: Pick<Game, 'status_name' | 'final_score' | 'home_team' | 'away_team'>): boolean {
+    if (isGameFinal(game) || isGameLive(game)) {
+        return true;
+    }
+    const home = game.home_team?.score;
+    const away = game.away_team?.score;
+    return (typeof home === 'number' && home > 0) || (typeof away === 'number' && away > 0);
 }
 
 export function isGameFinal(game: Pick<Game, 'status_name'>): boolean {

@@ -112,4 +112,18 @@ class ConflictResolverTest extends TestCase
         $this->assertFalse((bool) $conflict->requires_review);
         $this->assertNotNull($conflict->resolved_at);
     }
+
+    public function test_higher_live_scores_win_even_from_lower_priority_source(): void
+    {
+        $incomingWins = $this->resolver->resolveStatConflicts(
+            'team_game_stat',
+            '401|5',
+            'espn',
+            'tank01',
+            ['team_score' => 12, 'opponent_team_score' => 8, 'assists' => 10],
+            ['team_score' => 48, 'opponent_team_score' => 41, 'assists' => 10],
+        );
+
+        $this->assertTrue($incomingWins);
+    }
 }
