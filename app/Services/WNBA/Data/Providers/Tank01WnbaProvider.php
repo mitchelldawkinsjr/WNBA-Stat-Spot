@@ -245,7 +245,27 @@ class Tank01WnbaProvider implements WnbaStatsProvider
             config('tank01.cache_ttl.scoreboard'),
         );
 
-        return is_array($body) && array_is_list($body) ? $body : [$body];
+        // getWNBAScoresOnly returns an object keyed by gameID; older fixtures used a list.
+        if (! is_array($body) || $body === []) {
+            return [];
+        }
+
+        if (array_is_list($body)) {
+            return array_values(array_filter($body, 'is_array'));
+        }
+
+        $games = [];
+        foreach ($body as $gameId => $game) {
+            if (! is_array($game)) {
+                continue;
+            }
+            if (! isset($game['gameID'])) {
+                $game['gameID'] = is_string($gameId) ? $gameId : null;
+            }
+            $games[] = $game;
+        }
+
+        return $games;
     }
 
     /**

@@ -8,11 +8,11 @@ return [
 
     'endpoints' => [
         'teams' => 'getWNBATeams',
-        'schedule' => 'getWNBASchedule',
-        'scoreboard' => 'getWNBAScoreboard',
+        'schedule' => 'getWNBAGamesForDate',
+        'scoreboard' => 'getWNBAScoresOnly',
         'box_score' => 'getWNBABoxScore',
         'game_info' => 'getWNBAGameInfo',
-        'betting_odds' => 'getWNBABettingOdds',
+        'betting_odds' => 'getWNBAOdds',
         'games_for_player' => 'getWNBAGamesForPlayer',
         'injuries' => 'getWNBAInjuries',
         'news' => 'getWNBANews',
