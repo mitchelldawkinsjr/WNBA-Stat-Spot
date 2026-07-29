@@ -15,19 +15,22 @@
 
     let baseChart: BaseChart;
 
+    // APIs return recent games newest-first; charts need oldest → newest on the x-axis.
+    $: chronological = [...data].reverse();
+
     // Transform data for Chart.js
     $: chartData = {
-        labels: data.map(d => d.date),
+        labels: chronological.map(d => d.date),
         datasets: [
             {
                 label: 'Points Scored',
-                data: data.map(d => d.points_scored),
+                data: chronological.map(d => d.points_scored),
                 borderColor: '#10b981',
                 backgroundColor: 'rgba(16, 185, 129, 0.1)',
                 tension: 0.4,
                 fill: false,
                 borderWidth: 2,
-                pointBackgroundColor: data.map(d => d.result === 'W' ? '#10b981' : '#ef4444'),
+                pointBackgroundColor: chronological.map(d => d.result === 'W' ? '#10b981' : '#ef4444'),
                 pointBorderColor: '#ffffff',
                 pointBorderWidth: 2,
                 pointRadius: 5,
@@ -35,7 +38,7 @@
             },
             {
                 label: 'Points Allowed',
-                data: data.map(d => d.points_allowed),
+                data: chronological.map(d => d.points_allowed),
                 borderColor: '#ef4444',
                 backgroundColor: 'rgba(239, 68, 68, 0.1)',
                 tension: 0.4,
@@ -87,9 +90,10 @@
                 titleColor: '#ffffff',
                 bodyColor: '#ffffff',
                 callbacks: {
-                    afterBody: function(context) {
+                    afterBody: (context) => {
                         const index = context[0].dataIndex;
-                        const gameData = data[index];
+                        const gameData = chronological[index];
+                        if (!gameData) return [];
                         return [
                             `Result: ${gameData.result}`,
                             `Location: ${gameData.home_away === 'home' ? 'Home' : 'Away'}`,
@@ -106,9 +110,9 @@
         },
         elements: {
             point: {
-                hoverBackgroundColor: function(context) {
+                hoverBackgroundColor: (context) => {
                     const index = context.dataIndex;
-                    const gameData = data[index];
+                    const gameData = chronological[index];
                     return gameData?.result === 'W' ? '#10b981' : '#ef4444';
                 },
             },

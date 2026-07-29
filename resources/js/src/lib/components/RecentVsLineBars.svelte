@@ -8,7 +8,8 @@
     export let games: RecentGameBar[] | null | undefined = [];
     export let maxBars: number = 10;
 
-    $: bars = (games ?? []).slice(0, maxBars);
+    // APIs return newest-first; render oldest → newest left → right.
+    $: bars = [...(games ?? [])].slice(0, maxBars).reverse();
     $: maxVal = Math.max(1, ...bars.map((g) => g.value));
 </script>
 

@@ -12,12 +12,15 @@
 
     let baseChart: BaseChart;
 
+    // APIs return recent games newest-first; charts need oldest → newest on the x-axis.
+    $: chronological = [...data].reverse();
+
     // Transform data for Chart.js
     $: chartData = {
-        labels: data.map(d => d.date),
+        labels: chronological.map(d => d.date),
         datasets: [{
             label: statName,
-            data: data.map(d => d.value),
+            data: chronological.map(d => d.value),
             borderColor: lineColor,
             backgroundColor: backgroundColor,
             tension: 0.4,

@@ -357,10 +357,13 @@ class GamePreviewService
     {
         $teamKeys = TeamForeignKeyResolver::foreignKeysForReference($teamId);
 
+        // Newest-first for "last N". Charts reverse for chronological x-axis.
+        // Exclude 0-0 schedule placeholders (same filter as TeamAnalyticsService).
         return WnbaGameTeam::query()
             ->with(['game', 'opponentTeam'])
             ->whereIn('team_id', $teamKeys)
             ->whereHas('game', fn ($q) => $q->where('season', $season))
+            ->whereRaw('(wnba_game_teams.team_score + wnba_game_teams.opponent_team_score) > 0')
             ->join('wnba_games', 'wnba_games.id', '=', 'wnba_game_teams.game_id')
             ->orderByDesc('wnba_games.game_date')
             ->select('wnba_game_teams.*')
