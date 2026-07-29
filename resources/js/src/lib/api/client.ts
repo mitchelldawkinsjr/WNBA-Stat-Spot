@@ -86,6 +86,8 @@ export interface Team {
     team_conference?: string;
     team_division?: string;
     team_founded?: string;
+    is_exhibition?: boolean;
+    competition_label?: string;
     created_at: string;
     updated_at: string;
 }
@@ -1219,6 +1221,31 @@ export const api = {
                     body: JSON.stringify(data),
                     cacheTtl: 'medium'
                 }),
+            getHitRates: (params: {
+                player_id: string;
+                stat: string;
+                line: number;
+                opponent_team_id?: string;
+                season?: number;
+            }) => {
+                const qs = new URLSearchParams();
+                qs.set('player_id', params.player_id);
+                qs.set('stat', params.stat);
+                qs.set('line', String(params.line));
+                if (params.opponent_team_id) qs.set('opponent_team_id', params.opponent_team_id);
+                if (params.season) qs.set('season', String(params.season));
+                return fetchApi<{
+                    success: boolean;
+                    data: {
+                        player_id: string;
+                        stat: string;
+                        line: number;
+                        season: number;
+                        hit_rates: PropHitRates;
+                        recent_games: RecentGameVsLine[];
+                    };
+                }>(`/wnba/predictions/hit-rates?${qs.toString()}`, { cacheTtl: 'short' });
+            },
             getPropBets: () =>
                 fetchApi<{ success: boolean; data: PropBet[] }>('/wnba/predictions/prop-bets', { cacheTtl: 'short' }),
             getTodaysBest: (timezone?: string) => {

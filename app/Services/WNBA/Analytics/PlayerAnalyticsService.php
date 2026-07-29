@@ -6,6 +6,7 @@ use App\Models\WnbaGame;
 use App\Models\WnbaPlayer;
 use App\Models\WnbaPlayerGame;
 use App\Services\WNBA\Data\PlayerGamelogService;
+use App\Services\WNBA\Data\Support\TeamCatalog;
 use App\Utils\StatisticsCalculator;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
@@ -24,8 +25,13 @@ class PlayerAnalyticsService
     {
         $recentGames = WnbaPlayerGame::with(['game.gameTeams.opponentTeam', 'team'])
             ->where('player_id', $playerId)
+            ->when(
+                TeamCatalog::excludedTeamIds() !== [],
+                fn ($query) => $query->whereNotIn('team_id', TeamCatalog::excludedTeamIds())
+            )
             ->whereHas('game', function ($query) {
-                $query->orderBy('game_date', 'desc');
+                $query->whereIn('season_type', TeamCatalog::primarySeasonTypes())
+                    ->orderBy('game_date', 'desc');
             })
             ->limit($games)
             ->get()
@@ -964,13 +970,19 @@ class PlayerAnalyticsService
     private function seasonGamesQuery(int $dbId, int $season, bool $filterSeason = true)
     {
         $query = WnbaPlayerGame::with(['game', 'team'])
-            ->where('player_id', $dbId);
-
-        if ($filterSeason) {
-            $query->whereHas('game', function ($q) use ($season) {
-                $q->where('season', (string) $season);
+            ->where('player_id', $dbId)
+            ->where(function ($q) {
+                $excluded = TeamCatalog::excludedTeamIds();
+                if ($excluded !== []) {
+                    $q->whereNotIn('team_id', $excluded);
+                }
+            })
+            ->whereHas('game', function ($q) use ($season, $filterSeason) {
+                $q->whereIn('season_type', TeamCatalog::primarySeasonTypes());
+                if ($filterSeason) {
+                    $q->where('season', (string) $season);
+                }
             });
-        }
 
         return $query;
     }

@@ -301,6 +301,7 @@ class GameScheduleService
             2 => 'Regular Season',
             3 => 'Playoffs',
             4 => 'Finals',
+            5 => 'All-Star',
             default => is_string($seasonType) && $seasonType !== '' ? $seasonType : 'Regular Season',
         };
     }

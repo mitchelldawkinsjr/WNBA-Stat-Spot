@@ -7,6 +7,7 @@ use App\Http\Traits\ApiResponseTrait;
 use App\Models\WnbaPlayer;
 use App\Models\WnbaPlayerGame;
 use App\Models\WnbaTeam;
+use App\Services\WNBA\Data\Support\TeamCatalog;
 use App\Services\WNBA\Data\Support\TeamForeignKeyResolver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -62,7 +63,11 @@ class TeamController extends Controller
             return $this->notFoundResponse('Team');
         }
 
-        return $this->successResponse($team);
+        $payload = $team->toArray();
+        $payload['is_exhibition'] = ! TeamCatalog::isLeagueTeamId((string) $team->team_id);
+        $payload['competition_label'] = $payload['is_exhibition'] ? 'All-Star / Exhibition' : 'League';
+
+        return $this->successResponse($payload);
     }
 
     public function players(Request $request, string $teamId): JsonResponse
@@ -78,6 +83,7 @@ class TeamController extends Controller
 
         $season = (int) ($request->input('season') ?? config('wnba.seasons.current_season'));
         $teamKeys = TeamForeignKeyResolver::foreignKeysForTeam($team);
+        $isExhibition = ! TeamCatalog::isLeagueTeamId((string) $team->team_id);
 
         // Season-scoped roster: players who appeared in a box score for this team in the selected year.
         $playerIds = WnbaPlayerGame::query()
@@ -105,12 +111,17 @@ class TeamController extends Controller
             return $playerArray;
         });
 
+        $teamPayload = $team->toArray();
+        $teamPayload['is_exhibition'] = $isExhibition;
+        $teamPayload['competition_label'] = $isExhibition ? 'All-Star / Exhibition' : 'League';
+
         return response()->json([
             'data' => $playersWithTeam,
             'meta' => [
                 'total' => $playersWithTeam->count(),
                 'season' => $season,
-                'team' => $team,
+                'team' => $teamPayload,
+                'is_exhibition' => $isExhibition,
             ],
         ]);
     }

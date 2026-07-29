@@ -166,10 +166,15 @@ return [
             'PHO' => 'PHX',  // Phoenix Mercury (legacy)
         ],
 
-        // All-star / exhibition national teams — hide from league team lists.
+        // Exhibition / national / All-Star sides — secondary to league franchises.
+        // Hidden from primary team lists; their box scores are excluded from
+        // primary season aggregates (player GP, trends, hit rates, rankings).
+        // Deep links (/teams/{id}) still work for All-Star roster views.
         'excluded_team_ids' => [
-            '17475', // Japan
-            '17476', // Nigeria
+            '17475', // Japan (exhibition)
+            '17476', // Nigeria (exhibition)
+            '133383', // TEAM SPOON (2026 All-Star)
+            '133384', // TEAM COOP (2026 All-Star)
         ],
     ],
 ];

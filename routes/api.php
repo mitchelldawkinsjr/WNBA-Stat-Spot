@@ -163,6 +163,7 @@ Route::prefix('wnba')->group(function () {
     // Predictions
     Route::prefix('predictions')->group(function () {
         Route::post('/generate', [PredictionsController::class, 'generatePrediction']);
+        Route::get('/hit-rates', [PredictionsController::class, 'getHitRates']);
         Route::get('/prop-bets', [PredictionsController::class, 'getPropBets']);
         Route::get('/todays-best', [PredictionsController::class, 'getTodaysBestProps']);
         Route::get('/accuracy', [PredictionsController::class, 'getPredictionAccuracy']);

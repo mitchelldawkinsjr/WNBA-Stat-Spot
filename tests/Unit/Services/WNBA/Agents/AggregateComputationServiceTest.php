@@ -298,4 +298,64 @@ class AggregateComputationServiceTest extends TestCase
         $this->assertNotNull($trend->offensive_rating);
         $this->assertNotNull($trend->defensive_rating);
     }
+
+    public function test_all_star_exhibition_games_excluded_from_primary_stats(): void
+    {
+        foreach ([['133383', 'SPO', 'TEAM SPOON'], ['133384', 'COOP', 'TEAM COOP']] as [$id, $abbr, $name]) {
+            WnbaTeam::create([
+                'team_id' => $id,
+                'team_name' => $name,
+                'team_location' => 'All-Star',
+                'team_abbreviation' => $abbr,
+                'team_display_name' => $name,
+            ]);
+        }
+
+        $player = WnbaPlayer::first();
+        $asg = WnbaGame::create([
+            'game_id' => '401857320',
+            'season' => self::SEASON,
+            'season_type' => 2, // ESPN stores All-Star as regular-season type
+            'game_date' => '2026-07-25',
+            'game_date_time' => '2026-07-25 20:00:00',
+        ]);
+
+        $this->seedPlayerGame($asg->id, $player->id, '133383', [
+            'minutes' => '20:00',
+            'field_goals_made' => 5, 'field_goals_attempted' => 10,
+            'three_point_field_goals_made' => 1, 'three_point_field_goals_attempted' => 3,
+            'free_throws_made' => 2, 'free_throws_attempted' => 2,
+            'offensive_rebounds' => 1, 'defensive_rebounds' => 2, 'rebounds' => 3,
+            'assists' => 2, 'steals' => 0, 'blocks' => 0, 'turnovers' => 1, 'fouls' => 1,
+            'points' => 40, 'starter' => true,
+        ]);
+
+        // Stale exhibition team season row should be purged on recompute.
+        WnbaTeamSeasonStat::create([
+            'team_id' => '133383',
+            'season' => self::SEASON,
+            'games_played' => 1,
+            'wins' => 1,
+            'losses' => 0,
+            'formula_version' => AggregateComputationService::FORMULA_VERSION,
+            'computed_at' => now(),
+        ]);
+
+        $this->service->computePlayerSeasonStats(self::SEASON);
+        $this->service->computeTeamSeasonStats(self::SEASON);
+        $this->service->computePlayerPerformanceTrends(self::SEASON);
+
+        $stat = WnbaPlayerSeasonStat::where('player_id', $player->id)->first();
+        $this->assertSame(2, $stat->games_played);
+        $this->assertSame(32, $stat->points_total);
+        $this->assertSame('5', $stat->team_id);
+
+        $this->assertNull(WnbaTeamSeasonStat::where('team_id', '133383')->first());
+
+        $seasonTrend = WnbaPlayerPerformanceTrend::where('player_id', $player->id)
+            ->where('window', 'season')
+            ->first();
+        $this->assertSame(2, $seasonTrend->games);
+        $this->assertSame(16.0, (float) $seasonTrend->points_avg);
+    }
 }

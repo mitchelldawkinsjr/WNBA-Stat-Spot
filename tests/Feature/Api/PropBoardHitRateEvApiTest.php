@@ -87,6 +87,28 @@ class PropBoardHitRateEvApiTest extends TestCase
         $this->assertSame(-110, $data['odds_data']['over_odds']);
     }
 
+    public function test_hit_rates_endpoint_returns_windows_vs_line(): void
+    {
+        $player = $this->seedPlayerWithGames();
+
+        $response = $this->getJson('/api/wnba/predictions/hit-rates?'.http_build_query([
+            'player_id' => $player->athlete_id,
+            'stat' => 'points',
+            'line' => 20.5,
+            'season' => self::SEASON,
+        ]));
+
+        $response->assertOk()->assertJsonPath('success', true);
+        $data = $response->json('data');
+
+        $this->assertSame('points', $data['stat']);
+        $this->assertSame(20.5, $data['line']);
+        $this->assertArrayHasKey('l5', $data['hit_rates']);
+        $this->assertSame(3, $data['hit_rates']['l5']['hits']);
+        $this->assertSame(5, $data['hit_rates']['l5']['games']);
+        $this->assertNotEmpty($data['recent_games']);
+    }
+
     private function seedPlayerWithGames(): WnbaPlayer
     {
         WnbaTeam::create([

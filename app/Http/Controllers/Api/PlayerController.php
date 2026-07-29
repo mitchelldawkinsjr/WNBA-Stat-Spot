@@ -7,6 +7,7 @@ use App\Http\Traits\ApiResponseTrait;
 use App\Models\WnbaPlayer;
 use App\Services\WNBA\Data\PlayerGamelogService;
 use App\Services\WNBA\Data\PlayerIntelService;
+use App\Services\WNBA\Data\Support\TeamCatalog;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -383,6 +384,11 @@ class PlayerController extends Controller
             ->join('wnba_games as g', 'g.id', '=', 'pg.game_id')
             ->join('wnba_teams as t', 't.team_id', '=', 'pg.team_id')
             ->where('pg.player_id', $playerDbId)
+            ->whereIn('g.season_type', TeamCatalog::primarySeasonTypes())
+            ->when(
+                TeamCatalog::excludedTeamIds() !== [],
+                fn ($query) => $query->whereNotIn('pg.team_id', TeamCatalog::excludedTeamIds())
+            )
             ->orderByDesc('g.game_date')
             ->select('t.team_abbreviation')
             ->first();

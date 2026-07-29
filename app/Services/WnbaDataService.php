@@ -255,8 +255,17 @@ class WnbaDataService
         if (str_contains($label, 'pre')) {
             return 1;
         }
+        if (str_contains($label, 'all') && str_contains($label, 'star')) {
+            return 5;
+        }
+        if (str_contains($label, 'asg') || $label === 'allstar') {
+            return 5;
+        }
         if (str_contains($label, 'post') || str_contains($label, 'playoff')) {
             return 3;
+        }
+        if (str_contains($label, 'final')) {
+            return 4;
         }
 
         return 2;

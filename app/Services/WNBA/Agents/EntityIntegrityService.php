@@ -341,6 +341,8 @@ class EntityIntegrityService
             ->join('wnba_games as g', 'g.id', '=', 'pg.game_id')
             ->select('pg.player_id', DB::raw('COUNT(DISTINCT pg.team_id) as team_count'));
 
+        TeamCatalog::whereLeagueTeam($query, 'pg.team_id');
+
         if ($season !== null) {
             $query->where('g.season', $season);
         }

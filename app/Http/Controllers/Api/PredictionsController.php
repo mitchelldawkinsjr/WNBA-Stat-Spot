@@ -1790,6 +1790,62 @@ class PredictionsController extends Controller
     }
 
     /**
+     * Empirical over/under hit rates vs a line (L5 / L10 / L20 / season / optional H2H).
+     */
+    public function getHitRates(Request $request)
+    {
+        $validated = $request->validate([
+            'player_id' => 'required|string',
+            'stat' => 'required|string|in:points,rebounds,assists,steals,blocks',
+            'line' => 'required|numeric|min:0.5',
+            'opponent_team_id' => 'nullable|string',
+            'season' => 'nullable|integer',
+        ]);
+
+        $player = DB::table('wnba_players')
+            ->where('athlete_id', $validated['player_id'])
+            ->select(['id', 'athlete_id', 'athlete_display_name as name'])
+            ->first();
+
+        if (! $player) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Player not found',
+            ], 404);
+        }
+
+        $season = isset($validated['season'])
+            ? (int) $validated['season']
+            : (int) config('wnba.seasons.current_season');
+
+        $hitRates = $this->hitRateCalculator->calculate(
+            (int) $player->id,
+            $validated['stat'],
+            (float) $validated['line'],
+            $validated['opponent_team_id'] ?? null,
+            $season
+        );
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'player_id' => $validated['player_id'],
+                'stat' => $validated['stat'],
+                'line' => (float) $validated['line'],
+                'season' => $season,
+                'hit_rates' => [
+                    'l5' => $hitRates['l5'],
+                    'l10' => $hitRates['l10'],
+                    'l20' => $hitRates['l20'],
+                    'season' => $hitRates['season'],
+                    'h2h' => $hitRates['h2h'],
+                ],
+                'recent_games' => $hitRates['recent_games'],
+            ],
+        ]);
+    }
+
+    /**
      * Calculate expected value from prediction probability and confidence
      */
     private function calculateExpectedValueFromPrediction(float $probabilityOver, float $confidence): float

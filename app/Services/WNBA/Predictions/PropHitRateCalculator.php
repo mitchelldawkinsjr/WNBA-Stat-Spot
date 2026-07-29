@@ -4,6 +4,7 @@ namespace App\Services\WNBA\Predictions;
 
 use App\Services\WNBA\Agents\BoxScoreValidator;
 use App\Services\WNBA\Data\Support\TeamForeignKeyResolver;
+use App\Services\WNBA\Data\Support\TeamCatalog;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -107,6 +108,11 @@ class PropHitRateCalculator
                 $query->whereNull('pg.validation_status')
                     ->orWhere('pg.validation_status', '!=', 'invalid');
             })
+            ->whereIn('g.season_type', TeamCatalog::primarySeasonTypes())
+            ->when(
+                TeamCatalog::excludedTeamIds() !== [],
+                fn ($query) => $query->whereNotIn('pg.team_id', TeamCatalog::excludedTeamIds())
+            )
             ->orderByDesc('g.game_date')
             ->orderByDesc('g.id')
             ->select([

@@ -12,6 +12,7 @@ use App\Models\WnbaPlayerSeasonStat;
 use App\Models\WnbaPlayerVsDefense;
 use App\Models\WnbaTeamPerformanceTrend;
 use App\Models\WnbaTeamSeasonStat;
+use App\Services\WNBA\Data\Support\TeamCatalog;
 use Illuminate\Support\Collection;
 
 /**
@@ -85,6 +86,7 @@ class AggregateComputationService
                 $query->whereNull('wnba_player_games.validation_status')
                     ->orWhere('wnba_player_games.validation_status', '!=', BoxScoreValidator::STATUS_INVALID);
             })
+            ->tap(fn ($query) => TeamCatalog::wherePrimaryCompetition($query, 'wnba_player_games.team_id'))
             ->select('wnba_player_games.*')
             ->orderBy('wnba_player_games.id')
             ->chunk(500, function (Collection $playerGames) use ($flaggedPlayers, &$computed) {
@@ -136,6 +138,7 @@ class AggregateComputationService
         $playerIds = WnbaPlayerGame::query()
             ->join('wnba_games as g', 'g.id', '=', 'wnba_player_games.game_id')
             ->where('g.season', $season)
+            ->tap(fn ($query) => TeamCatalog::wherePrimaryCompetition($query, 'wnba_player_games.team_id'))
             ->distinct()
             ->pluck('wnba_player_games.player_id');
 
@@ -159,6 +162,7 @@ class AggregateComputationService
                     $query->whereNull('wnba_player_games.validation_status')
                         ->orWhere('wnba_player_games.validation_status', '!=', BoxScoreValidator::STATUS_INVALID);
                 })
+                ->tap(fn ($query) => TeamCatalog::wherePrimaryCompetition($query, 'wnba_player_games.team_id'))
                 ->select('wnba_player_games.*', 'gt.home_away')
                 ->get();
 
@@ -170,11 +174,12 @@ class AggregateComputationService
             $minutesTotal = $games->sum(fn ($pg) => $this->validator->parseMinutes($pg->minutes) ?? 0.0);
             $totals = $this->sumCountingStats($games);
             $shotAttempts = $totals['fga'] + 0.44 * $totals['fta'];
+            $latestLeagueGame = $games->sortByDesc('game_id')->first();
 
             WnbaPlayerSeasonStat::updateOrCreate(
                 ['player_id' => $playerId, 'season' => $season],
                 [
-                    'team_id' => $games->sortByDesc('game_id')->first()->team_id,
+                    'team_id' => $latestLeagueGame->team_id,
                     'games_played' => $gp,
                     'games_started' => $games->where('starter', true)->count(),
                     'minutes_total' => round($minutesTotal, 1),
@@ -230,9 +235,23 @@ class AggregateComputationService
         $flaggedTeams = $this->unresolvedEntityKeys('team');
         $computed = 0;
 
+        // Drop stale exhibition / All-Star season rows so rankings stay league-only.
+        $excluded = TeamCatalog::excludedTeamIds();
+        if ($excluded !== []) {
+            WnbaTeamSeasonStat::query()
+                ->where('season', $season)
+                ->whereIn('team_id', $excluded)
+                ->delete();
+            WnbaTeamPerformanceTrend::query()
+                ->where('season', $season)
+                ->whereIn('team_id', $excluded)
+                ->delete();
+        }
+
         $teamIds = WnbaGameTeam::query()
             ->join('wnba_games as g', 'g.id', '=', 'wnba_game_teams.game_id')
             ->where('g.season', $season)
+            ->tap(fn ($query) => TeamCatalog::wherePrimaryCompetition($query, 'wnba_game_teams.team_id'))
             ->distinct()
             ->pluck('wnba_game_teams.team_id');
 
@@ -240,6 +259,10 @@ class AggregateComputationService
             if (in_array((string) $teamId, $flaggedTeams, true)) {
                 $this->reporter?->increment('entities_skipped_identity_conflict');
 
+                continue;
+            }
+
+            if (! TeamCatalog::isLeagueTeamId((string) $teamId)) {
                 continue;
             }
 
@@ -325,12 +348,25 @@ class AggregateComputationService
     public function computeMatchupSummaries(int $season): int
     {
         $computed = 0;
+        $excluded = TeamCatalog::excludedTeamIds();
+
+        if ($excluded !== []) {
+            WnbaMatchupSummary::query()
+                ->where('season', $season)
+                ->where(function ($query) use ($excluded) {
+                    $query->whereIn('team_a_id', $excluded)
+                        ->orWhereIn('team_b_id', $excluded);
+                })
+                ->delete();
+        }
 
         $homeRows = WnbaGameTeam::query()
             ->join('wnba_games as g', 'g.id', '=', 'wnba_game_teams.game_id')
             ->where('g.season', $season)
             ->where('wnba_game_teams.home_away', 'home')
             ->whereRaw('(wnba_game_teams.team_score + wnba_game_teams.opponent_team_score) > 0')
+            ->tap(fn ($query) => TeamCatalog::wherePrimaryCompetition($query, 'wnba_game_teams.team_id'))
+            ->when($excluded !== [], fn ($query) => $query->whereNotIn('wnba_game_teams.opponent_team_id', $excluded))
             ->select('wnba_game_teams.*', 'g.game_date')
             ->orderBy('g.game_date')
             ->get();
@@ -407,6 +443,7 @@ class AggregateComputationService
                     ->from('wnba_player_games')
                     ->join('wnba_games as g', 'g.id', '=', 'wnba_player_games.game_id')
                     ->where('g.season', $season);
+                TeamCatalog::wherePrimaryCompetition($query, 'wnba_player_games.team_id');
             })
             ->pluck('usage_pct', 'player_game_id')
             ->all();
@@ -416,6 +453,7 @@ class AggregateComputationService
         $playerIds = WnbaPlayerGame::query()
             ->join('wnba_games as g', 'g.id', '=', 'wnba_player_games.game_id')
             ->where('g.season', $season)
+            ->tap(fn ($query) => TeamCatalog::wherePrimaryCompetition($query, 'wnba_player_games.team_id'))
             ->distinct()
             ->pluck('wnba_player_games.player_id');
 
@@ -439,6 +477,7 @@ class AggregateComputationService
                     $query->whereNull('wnba_player_games.validation_status')
                         ->orWhere('wnba_player_games.validation_status', '!=', BoxScoreValidator::STATUS_INVALID);
                 })
+                ->tap(fn ($query) => TeamCatalog::wherePrimaryCompetition($query, 'wnba_player_games.team_id'))
                 ->select('wnba_player_games.*', 'gt.opponent_team_id')
                 ->get();
 
@@ -497,6 +536,7 @@ class AggregateComputationService
         $playerIds = WnbaPlayerGame::query()
             ->join('wnba_games as g', 'g.id', '=', 'wnba_player_games.game_id')
             ->where('g.season', $season)
+            ->tap(fn ($query) => TeamCatalog::wherePrimaryCompetition($query, 'wnba_player_games.team_id'))
             ->distinct()
             ->pluck('wnba_player_games.player_id');
 
@@ -516,6 +556,7 @@ class AggregateComputationService
                     $query->whereNull('wnba_player_games.validation_status')
                         ->orWhere('wnba_player_games.validation_status', '!=', BoxScoreValidator::STATUS_INVALID);
                 })
+                ->tap(fn ($query) => TeamCatalog::wherePrimaryCompetition($query, 'wnba_player_games.team_id'))
                 ->select('wnba_player_games.*', 'g.game_date')
                 ->orderBy('g.game_date')
                 ->orderBy('wnba_player_games.id')
@@ -571,6 +612,7 @@ class AggregateComputationService
         $teamIds = WnbaGameTeam::query()
             ->join('wnba_games as g', 'g.id', '=', 'wnba_game_teams.game_id')
             ->where('g.season', $season)
+            ->tap(fn ($query) => TeamCatalog::wherePrimaryCompetition($query, 'wnba_game_teams.team_id'))
             ->distinct()
             ->pluck('wnba_game_teams.team_id');
 
@@ -578,6 +620,10 @@ class AggregateComputationService
             if (in_array((string) $teamId, $flaggedTeams, true)) {
                 $this->reporter?->increment('entities_skipped_identity_conflict');
 
+                continue;
+            }
+
+            if (! TeamCatalog::isLeagueTeamId((string) $teamId)) {
                 continue;
             }
 
@@ -590,6 +636,7 @@ class AggregateComputationService
                     $query->whereNull('wnba_game_teams.validation_status')
                         ->orWhere('wnba_game_teams.validation_status', '!=', BoxScoreValidator::STATUS_INVALID);
                 })
+                ->tap(fn ($query) => TeamCatalog::wherePrimaryCompetition($query, 'wnba_game_teams.team_id'))
                 ->select('wnba_game_teams.*', 'g.game_date')
                 ->orderBy('g.game_date')
                 ->orderBy('wnba_game_teams.id')
@@ -883,6 +930,7 @@ class AggregateComputationService
                 $query->whereNull('wnba_game_teams.validation_status')
                     ->orWhere('wnba_game_teams.validation_status', '!=', BoxScoreValidator::STATUS_INVALID);
             })
+            ->tap(fn ($query) => TeamCatalog::wherePrimaryCompetition($query, 'wnba_game_teams.team_id'))
             ->select('wnba_game_teams.*')
             ->get();
     }

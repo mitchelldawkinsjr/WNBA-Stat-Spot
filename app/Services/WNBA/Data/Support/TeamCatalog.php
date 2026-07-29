@@ -54,6 +54,45 @@ class TeamCatalog
         return ! in_array($teamId, self::excludedTeamIds(), true);
     }
 
+    /**
+     * Season types that count toward primary league stats.
+     * 2 = Regular Season, 3 = Playoffs, 4 = Finals.
+     * Preseason (1) and All-Star (5) are secondary.
+     *
+     * @return list<int>
+     */
+    public static function primarySeasonTypes(): array
+    {
+        return [2, 3, 4];
+    }
+
+    /**
+     * Restrict a query (already joining wnba_games as g) to league competition:
+     * regular season / playoffs / finals, and non-exhibition team_ids.
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder|\Illuminate\Database\Query\Builder  $query
+     */
+    public static function wherePrimaryCompetition($query, string $teamIdColumn): void
+    {
+        $query->whereIn('g.season_type', self::primarySeasonTypes());
+
+        $excluded = self::excludedTeamIds();
+        if ($excluded !== []) {
+            $query->whereNotIn($teamIdColumn, $excluded);
+        }
+    }
+
+    /**
+     * @param  \Illuminate\Database\Eloquent\Builder|\Illuminate\Database\Query\Builder  $query
+     */
+    public static function whereLeagueTeam($query, string $teamIdColumn): void
+    {
+        $excluded = self::excludedTeamIds();
+        if ($excluded !== []) {
+            $query->whereNotIn($teamIdColumn, $excluded);
+        }
+    }
+
     public static function teamMatchKey(?string $location, ?string $name): string
     {
         return self::normalizeToken($location).self::normalizeToken($name);

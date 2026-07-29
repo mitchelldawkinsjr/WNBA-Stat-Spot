@@ -12,6 +12,7 @@
     import PlayerStatsChart from '$lib/components/charts/PlayerStatsChart.svelte';
     import ShootingEfficiencyChart from '$lib/components/charts/ShootingEfficiencyChart.svelte';
     import HomeAwayComparisonChart from '$lib/components/charts/HomeAwayComparisonChart.svelte';
+    import PlayerHitRateCard from '$lib/components/PlayerHitRateCard.svelte';
 
     let chartStat: 'points' | 'rebounds' | 'assists' = 'points';
     let loading = false;
@@ -80,6 +81,16 @@
     </div>
 {:else}
     <div class="row g-3">
+        {#if athleteId}
+            <div class="col-12">
+                <PlayerHitRateCard
+                    playerId={athleteId}
+                    {season}
+                    seasonStats={profile.seasonStats}
+                />
+            </div>
+        {/if}
+
         <div class="col-xl-6">
             <div class="card h-100">
                 <div class="card-header">

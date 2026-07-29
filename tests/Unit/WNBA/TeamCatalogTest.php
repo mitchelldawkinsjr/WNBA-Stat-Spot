@@ -42,6 +42,9 @@ class TeamCatalogTest extends TestCase
     public function test_excludes_exhibition_team_ids(): void
     {
         $this->assertFalse(TeamCatalog::isLeagueTeamId('17475'));
+        $this->assertFalse(TeamCatalog::isLeagueTeamId('133383'));
+        $this->assertFalse(TeamCatalog::isLeagueTeamId('133384'));
         $this->assertTrue(TeamCatalog::isLeagueTeamId('20'));
+        $this->assertSame([2, 3, 4], TeamCatalog::primarySeasonTypes());
     }
 }

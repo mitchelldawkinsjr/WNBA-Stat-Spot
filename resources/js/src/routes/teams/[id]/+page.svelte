@@ -190,6 +190,14 @@
                 </div>
             </div>
 
+            {#if team.is_exhibition}
+                <div class="alert alert-secondary mb-3" role="status">
+                    <strong>{team.competition_label || 'All-Star / Exhibition'}</strong>
+                    — This side is not a league franchise. Roster and box scores here are secondary
+                    to regular-season / playoff team stats and do not count toward primary season averages.
+                </div>
+            {/if}
+
             <!-- Identity -->
             <div class="card mb-3">
                 <div class="card-body">
@@ -214,6 +222,9 @@
                             <p class="text-muted mb-3">{team.team_location}</p>
                             <div class="d-flex flex-wrap gap-2 justify-content-center justify-content-md-start">
                                 <span class="badge bg-primary fs-6">{team.team_abbreviation}</span>
+                                {#if team.is_exhibition}
+                                    <span class="badge bg-secondary fs-6">{team.competition_label || 'Exhibition'}</span>
+                                {/if}
                                 {#if $seasonStatsData}
                                     <span class="badge bg-success fs-6">{$seasonStatsData.record}</span>
                                     <span class="badge bg-info fs-6">{$seasonStatsData.streak} streak</span>
