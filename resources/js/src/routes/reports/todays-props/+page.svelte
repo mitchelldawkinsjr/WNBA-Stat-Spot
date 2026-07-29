@@ -528,7 +528,7 @@
                                             {(() => {
                                                 const evs = filteredProps
                                                     .map(p => p.expected_value)
-                                                    .filter((v): v is number => v !== null);
+                                                    .filter(v => typeof v === 'number');
                                                 return evs.length ? formatNumber(Math.max(...evs)) + '%' : '—';
                                             })()}
                                         </h4>
