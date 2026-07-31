@@ -9,11 +9,11 @@ Artisan::command('inspire', function () {
 })->purpose('Display an inspiring quote');
 
 // Nightly Data Agent run: ingests schedule/boxes/PBP/injuries/odds with raw
-// payload lineage, then chains Entity → Analytics → GradePredictionsJob so
-// yesterday's saved game-score + prop picks are graded once finals land.
+// payload lineage, then chains Entity → Verification → Analytics →
+// GradePredictionsJob so yesterday's saved picks are graded once finals land.
 Schedule::command('app:wnba-agent data --mode=incremental')
     ->dailyAt('02:00')
-    ->description('WNBA data agent: incremental ingest + chained audits/aggregates/grading')
+    ->description('WNBA data agent: incremental ingest + chained audits/verification/aggregates/grading')
     ->withoutOverlapping()
     ->onOneServer();
 
@@ -21,6 +21,14 @@ Schedule::command('app:wnba-agent data --mode=incremental')
 Schedule::command('app:wnba-agent entity --mode=audit --season=all')
     ->weeklyOn(1, '03:00')
     ->description('WNBA entity integrity agent: weekly full audit')
+    ->withoutOverlapping()
+    ->onOneServer();
+
+// Weekly full-season league-oracle box-score reconciliation (lookback is
+// covered by the nightly chain; this sweeps the whole current season).
+Schedule::command('app:wnba-agent verification --mode=season')
+    ->weeklyOn(1, '04:00')
+    ->description('WNBA verification agent: weekly full-season league oracle sweep')
     ->withoutOverlapping()
     ->onOneServer();
 

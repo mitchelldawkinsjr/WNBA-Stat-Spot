@@ -103,6 +103,28 @@ return [
         // Payloads above this size store only their hash + metadata (8MB default).
         'raw_payload_max_bytes' => (int) env('WNBA_RAW_PAYLOAD_MAX_BYTES', 8388608),
         'queue' => env('WNBA_AGENT_QUEUE', 'default'),
+        // League-oracle verification against stats.wnba.com (read-only; not an ingest source).
+        'verification' => [
+            'lookback_days' => (int) env('WNBA_VERIFY_LOOKBACK_DAYS', 3),
+            'request_delay_ms' => (int) env('WNBA_VERIFY_DELAY_MS', 400),
+            'minutes_tolerance' => (float) env('WNBA_VERIFY_MINUTES_TOLERANCE', 1.0),
+            'timeout' => (int) env('WNBA_VERIFY_TIMEOUT', 30),
+            'user_agent' => env(
+                'WNBA_VERIFY_USER_AGENT',
+                'Mozilla/5.0 (compatible; WnbaStatSpot/1.0; +https://wnbastatspot.com)'
+            ),
+            'stats_base_url' => rtrim(env('WNBA_STATS_BASE_URL', 'https://stats.wnba.com'), '/'),
+            'schedule_url' => env(
+                'WNBA_STATS_SCHEDULE_URL',
+                'https://cdn.wnba.com/static/json/staticData/scheduleLeagueV2.json'
+            ),
+            'referer' => env('WNBA_STATS_REFERER', 'https://www.wnba.com/'),
+            'cache_ttl' => [
+                'schedule' => (int) env('WNBA_VERIFY_CACHE_SCHEDULE', 3600),
+                'boxscore' => (int) env('WNBA_VERIFY_CACHE_BOXSCORE', 21600),
+            ],
+            'cache_prefix' => 'wnba_stats:',
+        ],
     ],
 
     // External WNBA-only news feeds merged into /api/wnba/news (live, cached).
@@ -164,6 +186,7 @@ return [
             'CONN' => 'CON', // Connecticut Sun (legacy)
             'GSV' => 'GS',   // Golden State Valkyries (alternate)
             'PHO' => 'PHX',  // Phoenix Mercury (legacy)
+            'PDX' => 'POR',  // Portland Fire (WNBA.com tricode)
         ],
 
         // Exhibition / national / All-Star sides — secondary to league franchises.
@@ -171,6 +194,10 @@ return [
         // primary season aggregates (player GP, trends, hit rates, rankings).
         // Deep links (/teams/{id}) still work for All-Star roster views.
         'excluded_team_ids' => [
+            '1',     // Stub ATL shell (Tank01 short-id collision)
+            '2',     // Stub CHI shell
+            '4',     // Stub DAL shell
+            '15',    // Stub TOR shell
             '17475', // Japan (exhibition)
             '17476', // Nigeria (exhibition)
             '133383', // TEAM SPOON (2026 All-Star)

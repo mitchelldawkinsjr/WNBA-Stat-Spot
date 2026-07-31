@@ -1,0 +1,68 @@
+---
+description: WNBA Verification Agent — league-oracle box-score reconciliation against stats.wnba.com. Apply when working on verification, oracle diffs, wnba_stats IDs, or league schedule matching.
+---
+
+# WNBA Verification Agent
+
+The Verification Agent is a deterministic in-app pipeline (not an LLM). It
+pulls official traditional box scores from `stats.wnba.com` (the API behind
+wnba.com), diffs them against our final canonical rows, and opens review-queue
+findings. It never overwrites `wnba_*` box-score tables.
+
+Orchestrator: `app/Services/WNBA/Agents/VerificationService.php`, queued via
+`app/Jobs/RunVerificationAgent.php`. Triggered by the nightly chain after the
+Entity Agent, `app:wnba-agent verification`, or
+`POST /api/wnba/data/agent-run` with `agent=verification`. Weekly full-season
+sweep: Mondays 04:00 (`--mode=season`).
+
+## Non-negotiable rules
+
+1. **Oracle is verify-only.** Do not add `wnba_stats` to
+   `config('wnba.agents.source_priority')` or write box scores from this agent.
+2. **Raw payloads first.** Store schedule and box responses via
+   `RawPayloadStore` with `source_id = wnba_stats` (skipped on `--dry-run`).
+3. **No name-only player matches.** Join games by date + home/away
+   abbreviations (`TeamCatalog`). Join players by `wnba_stats_player_id`, or
+   a unique counting-stat fingerprint when exactly one unmapped candidate
+   exists. Ambiguous joins → `oracle_player_unmapped` / `oracle_game_unmapped`.
+4. **Findings only.** Mismatches go to `wnba_data_conflicts` with
+   `requires_review = true` and candidates
+   `[{source_id: canonical, value}, {source_id: wnba_stats, value}]`. Identical
+   open findings are not duplicated.
+5. **Never invent values.** Missing oracle data stays a finding or a skip —
+   never a fabricated fill for our tables.
+6. **Finals only.** Skip in-progress / scheduled games. Default lookback is
+   `WNBA_VERIFY_LOOKBACK_DAYS` (3); `--mode=season` verifies the whole season.
+
+## Identity columns
+
+- `wnba_games.wnba_stats_game_id`
+- `wnba_players.wnba_stats_player_id`
+- `wnba_teams.wnba_stats_team_id`
+
+Persist mappings when a join is deterministic and collision-free. Do not clear
+existing mappings from this agent.
+
+## Finding shapes
+
+| entity_type | entity_key | field |
+|---|---|---|
+| `player_game_stat` | `{game.game_id}\|{athlete_id}` | stat column / `minutes` / `missing_from_oracle` |
+| `team_game_stat` | `{game.game_id}\|{team_id}` | `team_score` or counting stat |
+| `game` | `game_id` | `oracle_game_unmapped` / `oracle_fetch_failed` |
+| `player` | oracle person id | `oracle_player_unmapped` |
+
+## Chain position
+
+Nightly: **data → entity → verification → analytics**. Analytics must not
+depend on verification success for writes in v1; verification findings are
+informational review-queue items.
+
+## Run contract
+
+`AgentRunReporter` agent name `verification`. Modes: `audit` (lookback),
+`season` (full season). Counters: `findings_games_checked`,
+`findings_games_unmapped`, `findings_stat_mismatches`,
+`findings_players_unmapped`, `findings_players_missing`, `findings_ids_linked`,
+`review_queue_added`. Status follows the shared reporter rules
+(`success` / `partial` / `failed`).

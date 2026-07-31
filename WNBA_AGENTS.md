@@ -1,6 +1,6 @@
 # WNBA Agents — Operations Guide
 
-Three deterministic in-app pipelines ("agents") keep the data reliable. They
+Four deterministic in-app pipelines ("agents") keep the data reliable. They
 run on production via the Laravel scheduler and queue worker — no external
 process needed.
 
@@ -8,9 +8,10 @@ process needed.
 |---|---|---|
 | **Data** | Ingests schedule, team/player box scores, play-by-play, injuries, odds. Stores raw payloads, lineage, validation status; resolves cross-source conflicts by priority. | Nightly 02:00 (scheduler), `app:wnba-agent data`, `POST /api/wnba/data/agent-run` |
 | **Entity Integrity** | Audits teams/players/games: orphans, duplicates, ID-mapping gaps, metadata problems. Writes findings to the review queue. | Chained after every data run; weekly full audit Mon 03:00 |
-| **Analytics** | Precomputes player/team season stats, per-game advanced stats, and matchup summaries into aggregate tables the API reads. | Chained after the entity audit; `app:wnba-agent analytics` |
+| **Verification** | Diffs our final box scores against the league oracle (`stats.wnba.com`). Read-only; mismatches open review-queue items. | Chained after entity; weekly full-season sweep Mon 04:00 (`--mode=season`) |
+| **Analytics** | Precomputes player/team season stats, per-game advanced stats, and matchup summaries into aggregate tables the API reads. | Chained after verification; `app:wnba-agent analytics` |
 
-Nightly chain: **data → entity (audit) → analytics**. Response cache is
+Nightly chain: **data → entity → verification → analytics**. Response cache is
 cleared after a successful **data** run (so schedule/box/injury APIs refresh
 immediately) and again after **analytics** (so leaders/previews/aggregates
 refresh). Live sync (`app:sync-wnba-live`) keeps short TTLs and does not
@@ -28,6 +29,8 @@ php artisan app:wnba-agent data --queue                # dispatch to queue inste
 php artisan app:wnba-agent data --mode=backfill --no-chain
 php artisan app:wnba-agent analytics --season=2026
 php artisan app:wnba-agent entity --mode=audit --season=all
+php artisan app:wnba-agent verification                # lookback vs stats.wnba.com
+php artisan app:wnba-agent verification --mode=season  # full current season
 php artisan app:wnba-agent data --dry-run              # report without writing
 ```
 
@@ -41,14 +44,17 @@ GET  /api/wnba/data/review-queue             ?entity_type=&limit=
 POST /api/wnba/data/review-queue/{id}/resolve {resolution_reason, selected_value?}
 ```
 
+`agent` accepts `data` | `analytics` | `entity` | `verification`.
+
 ## Key tables
 
 - `wnba_agent_runs` — structured summary of every run (status, counters, warnings, errors)
 - `wnba_raw_payloads` — untouched provider responses (sha256-deduped, pruned after `WNBA_RAW_PAYLOAD_RETENTION_DAYS`)
-- `wnba_data_conflicts` — cross-source disagreements + integrity findings; `requires_review=true` rows are the human review queue
+- `wnba_data_conflicts` — cross-source disagreements + integrity/verification findings; `requires_review=true` rows are the human review queue
 - `wnba_injury_reports`, `wnba_odds_snapshots` — append-only history for grading predictions
 - `wnba_player_season_stats`, `wnba_team_season_stats`, `wnba_player_game_advanced`, `wnba_matchup_summaries` — Analytics Agent output; API controllers read these (with on-the-fly fallback until first run)
 - Lineage columns on `wnba_games`, `wnba_game_teams`, `wnba_player_games`, `wnba_plays`: `source_id`, `raw_payload_id`, `ingested_at`, `validation_status`
+- League-oracle IDs: `wnba_games.wnba_stats_game_id`, `wnba_players.wnba_stats_player_id`, `wnba_teams.wnba_stats_team_id`
 
 ## Production rollout
 
@@ -62,7 +68,7 @@ php artisan migrate --force
 # 2. Restart the queue worker so the new job classes load
 php artisan queue:restart
 
-# 3. First runs (order matters: data → entity → analytics happen automatically via chain)
+# 3. First runs (order matters: data → entity → verification → analytics happen automatically via chain)
 php artisan app:wnba-agent data --queue
 
 # 4. Verify
@@ -88,5 +94,9 @@ validation, and conflict handling on top.
   `wnba_data_conflicts` (counting-stat gaps > 5 require human review).
 - **Invalid box rows** (impossible stat math) are stored with
   `validation_status='invalid'` and excluded from aggregates and leaders.
+- **Verification** uses `stats.wnba.com` as a read-only league oracle (not an
+  ingest source). Lookback defaults to `WNBA_VERIFY_LOOKBACK_DAYS=3`; findings
+  never auto-repair canonical rows.
 - Rules for future development live in `.cursor/rules/wnba-data-agent.mdc`,
-  `wnba-analytics-agent.mdc`, and `wnba-entity-agent.mdc`.
+  `wnba-analytics-agent.mdc`, `wnba-entity-agent.mdc`, and
+  `wnba-verification-agent.mdc`.

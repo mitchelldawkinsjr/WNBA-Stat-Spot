@@ -12,6 +12,7 @@ class WnbaPlayer extends Model
         'espn_athlete_id',
         'tank01_player_id',
         'sportsblaze_player_id',
+        'wnba_stats_player_id',
         'athlete_display_name',
         'athlete_short_name',
         'athlete_jersey',
@@ -32,6 +33,7 @@ class WnbaPlayer extends Model
             ->orWhere('espn_athlete_id', $id)
             ->orWhere('tank01_player_id', $id)
             ->orWhere('sportsblaze_player_id', $id)
+            ->orWhere('wnba_stats_player_id', $id)
             ->first();
     }
 

@@ -5,6 +5,7 @@ namespace Tests\Feature\Api;
 use App\Models\WnbaAgentRun;
 use App\Models\WnbaDataConflict;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 class AgentRunApiTest extends TestCase
@@ -36,6 +37,27 @@ class AgentRunApiTest extends TestCase
         $run = WnbaAgentRun::where('agent', 'entity')->first();
         $this->assertNotNull($run);
         $this->assertSame('audit', $run->mode);
+        $this->assertContains($run->status, ['success', 'partial']);
+    }
+
+    public function test_triggering_a_verification_agent_run(): void
+    {
+        Http::fake([
+            'cdn.wnba.com/*' => Http::response(['leagueSchedule' => ['gameDates' => []]], 200),
+            'stats.wnba.com/*' => Http::response(['boxScoreTraditional' => []], 200),
+        ]);
+
+        $response = $this->postJson('/api/wnba/data/agent-run', [
+            'agent' => 'verification',
+            'dry_run' => true,
+        ]);
+
+        $response->assertStatus(202)->assertJson(['success' => true]);
+
+        $run = WnbaAgentRun::where('agent', 'verification')->first();
+        $this->assertNotNull($run);
+        $this->assertSame('audit', $run->mode);
+        $this->assertTrue((bool) $run->dry_run);
         $this->assertContains($run->status, ['success', 'partial']);
     }
 

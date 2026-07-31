@@ -28,6 +28,7 @@ class WnbaGame extends Model
         'status_type',
         'status_abbreviation',
         'sportsblaze_game_id',
+        'wnba_stats_game_id',
         'source_id',
         'raw_payload_id',
         'ingested_at',

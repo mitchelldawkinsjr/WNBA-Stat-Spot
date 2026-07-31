@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Jobs\RunAnalyticsAgent;
 use App\Jobs\RunDataAgent;
 use App\Jobs\RunEntityAgent;
+use App\Jobs\RunVerificationAgent;
 use App\Models\WnbaAgentRun;
 use App\Models\WnbaDataConflict;
 use Illuminate\Http\JsonResponse;
@@ -20,14 +21,19 @@ class AgentRunController extends Controller
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'agent' => 'required|in:data,analytics,entity',
-            'mode' => 'nullable|in:incremental,backfill,repair,audit,live',
+            'agent' => 'required|in:data,analytics,entity,verification',
+            'mode' => 'nullable|in:incremental,backfill,repair,audit,live,season',
             'season' => 'nullable|integer',
             'dry_run' => 'nullable|boolean',
         ]);
 
+        $defaultMode = match ($validated['agent']) {
+            'entity', 'verification' => 'audit',
+            default => 'incremental',
+        };
+
         $params = [
-            'mode' => $validated['mode'] ?? ($validated['agent'] === 'entity' ? 'audit' : 'incremental'),
+            'mode' => $validated['mode'] ?? $defaultMode,
             'season' => $validated['season'] ?? (int) config('wnba.seasons.current_season'),
             'dry_run' => (bool) ($validated['dry_run'] ?? false),
         ];
@@ -36,6 +42,7 @@ class AgentRunController extends Controller
             'data' => RunDataAgent::dispatch(array_merge($params, ['chain' => true])),
             'analytics' => RunAnalyticsAgent::dispatch($params),
             'entity' => RunEntityAgent::dispatch($params),
+            'verification' => RunVerificationAgent::dispatch($params),
         };
 
         return response()->json([
@@ -48,7 +55,7 @@ class AgentRunController extends Controller
     public function index(Request $request): JsonResponse
     {
         $request->validate([
-            'agent' => 'nullable|in:data,analytics,entity',
+            'agent' => 'nullable|in:data,analytics,entity,verification',
             'limit' => 'nullable|integer|min:1|max:100',
         ]);
 

@@ -163,7 +163,7 @@ class AggregateComputationService
                         ->orWhere('wnba_player_games.validation_status', '!=', BoxScoreValidator::STATUS_INVALID);
                 })
                 ->tap(fn ($query) => TeamCatalog::wherePrimaryCompetition($query, 'wnba_player_games.team_id'))
-                ->select('wnba_player_games.*', 'gt.home_away')
+                ->select('wnba_player_games.*', 'gt.home_away', 'g.game_date')
                 ->get();
 
             if ($games->isEmpty()) {
@@ -174,7 +174,12 @@ class AggregateComputationService
             $minutesTotal = $games->sum(fn ($pg) => $this->validator->parseMinutes($pg->minutes) ?? 0.0);
             $totals = $this->sumCountingStats($games);
             $shotAttempts = $totals['fga'] + 0.44 * $totals['fta'];
-            $latestLeagueGame = $games->sortByDesc('game_id')->first();
+            // Prefer most recent game_date for current team (not wnba_player_games.game_id PK).
+            $latestLeagueGame = $games->sortByDesc(fn ($pg) => sprintf(
+                '%s#%010d',
+                (string) ($pg->game_date ?? ''),
+                (int) $pg->id
+            ))->first();
 
             WnbaPlayerSeasonStat::updateOrCreate(
                 ['player_id' => $playerId, 'season' => $season],
