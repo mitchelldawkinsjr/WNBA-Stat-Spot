@@ -402,7 +402,7 @@ class PredictionAccuracyService
                         'accuracy' => $this->pct($correct, $total),
                     ];
                 })->values()->all(),
-                'recent' => $props->sortByDesc('graded_at')->take(10)->values()->map(fn (TrackedPropPrediction $row) => [
+                'recent' => $props->sortByDesc('graded_at')->values()->map(fn (TrackedPropPrediction $row) => [
                     'player_id' => $row->player_id,
                     'player_name' => $row->player_name,
                     'team_abbreviation' => $row->team_abbreviation,

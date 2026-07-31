@@ -6,6 +6,8 @@
     let dashboard: PredictionAccuracyDashboard | null = null;
     let loading = true;
     let error = '';
+    let propPage = 1;
+    const PROP_PAGE_SIZE = 10;
 
     onMount(async () => {
         await loadAccuracy();
@@ -17,6 +19,7 @@
             error = '';
             const response = await api.wnba.predictions.getAccuracy('America/New_York');
             dashboard = response.data ?? null;
+            propPage = 1;
         } catch (err) {
             error = err instanceof Error ? err.message : 'Failed to load prediction accuracy';
             dashboard = null;
@@ -47,6 +50,13 @@
     }
 
     $: topProp = dashboard?.top_prop_of_day ?? null;
+    $: gradedProps = dashboard?.props.recent ?? [];
+    $: propTotalPages = Math.max(1, Math.ceil(gradedProps.length / PROP_PAGE_SIZE));
+    $: propPageSafe = Math.min(propPage, propTotalPages);
+    $: pagedProps = gradedProps.slice(
+        (propPageSafe - 1) * PROP_PAGE_SIZE,
+        propPageSafe * PROP_PAGE_SIZE
+    );
 </script>
 
 <svelte:head>
@@ -329,8 +339,8 @@
                                 </div>
                             </div>
 
-                            {#if dashboard.props.recent.length > 0}
-                                <div class="table-responsive mb-3">
+                            {#if gradedProps.length > 0}
+                                <div class="table-responsive mb-2">
                                     <table class="table table-sm align-middle mb-0">
                                         <thead>
                                             <tr>
@@ -342,7 +352,7 @@
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {#each dashboard.props.recent as row}
+                                            {#each pagedProps as row}
                                                 <tr>
                                                     <td>
                                                         <div class="fw-semibold">{row.player_name}</div>
@@ -377,6 +387,35 @@
                                             {/each}
                                         </tbody>
                                     </table>
+                                </div>
+                                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                                    <small class="text-muted">
+                                        {(propPageSafe - 1) * PROP_PAGE_SIZE + 1}–{Math.min(propPageSafe * PROP_PAGE_SIZE, gradedProps.length)}
+                                        of {gradedProps.length}
+                                    </small>
+                                    {#if propTotalPages > 1}
+                                        <div class="btn-group btn-group-sm">
+                                            <button
+                                                type="button"
+                                                class="btn btn-outline-secondary"
+                                                disabled={propPageSafe <= 1}
+                                                on:click={() => (propPage = propPageSafe - 1)}
+                                            >
+                                                Prev
+                                            </button>
+                                            <button type="button" class="btn btn-outline-secondary" disabled>
+                                                {propPageSafe} / {propTotalPages}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                class="btn btn-outline-secondary"
+                                                disabled={propPageSafe >= propTotalPages}
+                                                on:click={() => (propPage = propPageSafe + 1)}
+                                            >
+                                                Next
+                                            </button>
+                                        </div>
+                                    {/if}
                                 </div>
                             {:else}
                                 <p class="text-muted mb-3">
