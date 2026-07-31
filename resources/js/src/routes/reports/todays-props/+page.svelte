@@ -1,10 +1,11 @@
 <script lang="ts">
-    import { onMount } from 'svelte';
+    import { onDestroy, onMount } from 'svelte';
     import { api } from '$lib/api/client';
     import type { TodaysProp } from '$lib/api/client';
     import DefaultLayout from "$lib/layouts/DefaultLayout.svelte";
     import HitRateStrip from '$lib/components/HitRateStrip.svelte';
     import RecentVsLineBars from '$lib/components/RecentVsLineBars.svelte';
+    import { pageLoading, trackPageLoad } from '$lib/stores/pageLoading';
 
     let props: TodaysProp[] = [];
     let loading = true;
@@ -55,6 +56,9 @@
         { value: 'game_time', label: 'Game Time' }
     ];
 
+    const doneLoading = trackPageLoad();
+    onDestroy(doneLoading);
+
     function sortValue(prop: TodaysProp, key: string): number | string | null {
         if (key === 'l10_hit_rate') {
             return prop.hit_rates?.l10?.rate ?? -1;
@@ -97,7 +101,8 @@
         return aVal > bVal ? 1 : -1;
     });
 
-    async function loadTodaysProps() {
+    async function loadTodaysProps(opts: { initial?: boolean } = {}) {
+        if (!opts.initial) pageLoading.start();
         try {
             loading = true;
             error = '';
@@ -121,7 +126,13 @@
             console.error('Error loading today\'s props:', err);
         } finally {
             loading = false;
+            if (opts.initial) doneLoading();
+            else pageLoading.stop();
         }
+    }
+
+    function refreshTodaysProps() {
+        void loadTodaysProps();
     }
 
     function formatPercentage(value: number): string {
@@ -196,7 +207,7 @@
     }
 
     onMount(() => {
-        loadTodaysProps();
+        void loadTodaysProps({ initial: true });
     });
 </script>
 
@@ -211,7 +222,7 @@
                 <div class="page-title-box">
                     <div class="page-title-right">
                         <button
-                            on:click={loadTodaysProps}
+                            on:click={refreshTodaysProps}
                             class="btn btn-outline-primary me-2"
                             disabled={loading}
                         >
@@ -351,19 +362,14 @@
                         </div>
                     </div>
                     <div class="card-body">
-                        {#if loading}
-                            <div class="text-center py-5">
-                                <div class="spinner-border text-primary" role="status">
-                                    <span class="visually-hidden">Loading...</span>
-                                </div>
-                                <p class="mt-2 mb-0">Loading today's best props...</p>
-                            </div>
+                        {#if loading && props.length === 0}
+                            <!-- Global BrandLoadingScreen covers the viewport -->
                         {:else if error}
                             <div class="alert alert-danger" role="alert">
                                 <i class="fas fa-exclamation-triangle me-2"></i>
                                 <strong>Error:</strong> {error}
                                 <button
-                                    on:click={loadTodaysProps}
+                                    on:click={refreshTodaysProps}
                                     class="btn btn-sm btn-outline-danger ms-2"
                                 >
                                     Try Again

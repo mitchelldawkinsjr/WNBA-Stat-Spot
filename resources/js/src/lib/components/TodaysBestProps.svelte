@@ -4,6 +4,7 @@
     import type { TodaysProp } from '$lib/api/client';
     import HitRateStrip from '$lib/components/HitRateStrip.svelte';
     import RecentVsLineBars from '$lib/components/RecentVsLineBars.svelte';
+    import BrandLoadingScreen from '$lib/components/BrandLoadingScreen.svelte';
 
     let todaysProps: TodaysProp[] = [];
     let topProp: TodaysProp | null = null;
@@ -97,13 +98,8 @@
         </div>
     </div>
     <div class="card-body">
-        {#if loading}
-            <div class="text-center py-4">
-                <div class="spinner-border text-primary" role="status">
-                    <span class="visually-hidden">Loading...</span>
-                </div>
-                <p class="mt-2 mb-0 text-muted">Analyzing today's games...</p>
-            </div>
+        {#if loading && todaysProps.length === 0}
+            <BrandLoadingScreen label="Loading props" size="sm" page={false} />
         {:else if error}
             <div class="alert alert-warning" role="alert">
                 <i class="fas fa-exclamation-triangle me-2"></i>

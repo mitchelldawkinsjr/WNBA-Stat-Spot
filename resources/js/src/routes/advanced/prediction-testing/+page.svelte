@@ -1,8 +1,9 @@
 <script lang="ts">
-    import { onMount } from 'svelte';
+    import { onDestroy, onMount } from 'svelte';
     import { page } from '$app/stores';
     import { api } from '$lib/api/client';
     import DefaultLayout from "$lib/layouts/DefaultLayout.svelte";
+    import { pageLoading, trackPageLoad } from '$lib/stores/pageLoading';
     import type {
         HistoricalTestResult,
         HistoricalTestAnalytics,
@@ -57,6 +58,9 @@
 
     const statTypes = ['points', 'rebounds', 'assists', 'steals', 'blocks'];
 
+    const doneLoading = trackPageLoad();
+    onDestroy(doneLoading);
+
     onMount(async () => {
         mounted = true;
 
@@ -68,7 +72,7 @@
             await loadSelectedPlayer(playerParam);
         }
 
-        await loadDashboardData();
+        await loadDashboardData({ initial: true });
     });
 
     async function loadSelectedPlayer(playerId: string) {
@@ -80,7 +84,8 @@
         }
     }
 
-    async function loadDashboardData() {
+    async function loadDashboardData(opts: { initial?: boolean } = {}) {
+        if (!opts.initial) pageLoading.start();
         try {
             loading = true;
             error = '';
@@ -125,6 +130,8 @@
             console.error('Dashboard loading error:', err);
         } finally {
             loading = false;
+            if (opts.initial) doneLoading();
+            else pageLoading.stop();
         }
     }
 
@@ -157,6 +164,7 @@
     }
 
     async function loadResults() {
+        pageLoading.start();
         try {
             loading = true;
 
@@ -175,10 +183,12 @@
             error = err instanceof Error ? err.message : 'Failed to load results';
         } finally {
             loading = false;
+            pageLoading.stop();
         }
     }
 
     async function loadLeaderboard() {
+        pageLoading.start();
         try {
             loading = true;
 
@@ -196,6 +206,7 @@
             error = err instanceof Error ? err.message : 'Failed to load leaderboard';
         } finally {
             loading = false;
+            pageLoading.stop();
         }
     }
 
@@ -793,12 +804,7 @@
                         </div>
                         <div class="card-body">
                             {#if loading}
-                                <div class="text-center py-5">
-                                    <div class="spinner-border text-primary" role="status">
-                                        <span class="visually-hidden">Loading...</span>
-                                    </div>
-                                    <p class="mt-2 mb-0">Loading test results...</p>
-                                </div>
+                                <!-- Global BrandLoadingScreen covers the viewport -->
                             {:else if recentResults.length === 0}
                                 <div class="text-center py-5">
                                     <i class="fas fa-search text-muted fs-48 mb-3"></i>
@@ -926,12 +932,7 @@
                         </div>
                         <div class="card-body">
                             {#if loading}
-                                <div class="text-center py-5">
-                                    <div class="spinner-border text-primary" role="status">
-                                        <span class="visually-hidden">Loading...</span>
-                                    </div>
-                                    <p class="mt-2 mb-0">Loading leaderboard...</p>
-                                </div>
+                                <!-- Global BrandLoadingScreen covers the viewport -->
                             {:else if leaderboard.length === 0}
                                 <div class="text-center py-5">
                                     <i class="fas fa-trophy text-muted fs-48 mb-3"></i>

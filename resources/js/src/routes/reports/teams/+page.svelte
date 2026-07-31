@@ -1,7 +1,8 @@
 <script lang="ts">
-    import { onMount } from 'svelte';
+    import { onDestroy, onMount } from 'svelte';
     import { api } from '$lib/api/client';
     import DefaultLayout from "$lib/layouts/DefaultLayout.svelte";
+    import { pageLoading, trackPageLoad } from '$lib/stores/pageLoading';
     import type { Team } from '$lib/api/client';
 
     let teams: Team[] = [];
@@ -11,16 +12,20 @@
 
     const activeSeasonYear = new Date().getFullYear();
 
+    const doneLoading = trackPageLoad();
+    onDestroy(doneLoading);
+
     function hideImage(e: Event) {
         const img = e.target as HTMLImageElement;
         img.style.display = 'none';
     }
 
     onMount(async () => {
-        await loadTeams();
+        await loadTeams({ initial: true });
     });
 
-    async function loadTeams() {
+    async function loadTeams(opts: { initial?: boolean } = {}) {
+        if (!opts.initial) pageLoading.start();
         try {
             loading = true;
             const response = await api.teams.getAll({ search: searchTerm || undefined });
@@ -29,6 +34,8 @@
             error = err instanceof Error ? err.message : 'Failed to load teams';
         } finally {
             loading = false;
+            if (opts.initial) doneLoading();
+            else pageLoading.stop();
         }
     }
 
@@ -70,19 +77,8 @@
             </div>
         </div>
 
-        {#if loading}
-            <div class="row">
-                <div class="col-12">
-                    <div class="card">
-                        <div class="card-body text-center">
-                            <div class="spinner-border text-primary" role="status">
-                                <span class="visually-hidden">Loading...</span>
-                            </div>
-                            <p class="mt-2 mb-0">Loading teams data...</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
+        {#if loading && teams.length === 0}
+            <!-- Global BrandLoadingScreen covers the viewport -->
         {:else if error}
             <div class="row">
                 <div class="col-12">

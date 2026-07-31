@@ -1,6 +1,5 @@
 <script lang="ts">
-    import { onMount } from 'svelte';
-    import { page } from '$app/stores';
+    import { onDestroy, onMount } from 'svelte';
     import {
         playerAnalytics,
         gameStatsChartData,
@@ -9,15 +8,20 @@
     } from '$lib/stores/playerAnalytics';
     import { playerProfile } from '$lib/stores/playerProfile';
     import { api } from '$lib/api/client';
+    import { pageLoading, trackPageLoad } from '$lib/stores/pageLoading';
     import PlayerStatsChart from '$lib/components/charts/PlayerStatsChart.svelte';
     import ShootingEfficiencyChart from '$lib/components/charts/ShootingEfficiencyChart.svelte';
     import HomeAwayComparisonChart from '$lib/components/charts/HomeAwayComparisonChart.svelte';
     import PlayerHitRateCard from '$lib/components/PlayerHitRateCard.svelte';
+    import { page } from '$app/stores';
 
     let chartStat: 'points' | 'rebounds' | 'assists' = 'points';
     let loading = false;
     let error: string | null = null;
     let loadedKey = '';
+
+    const doneLoading = trackPageLoad();
+    onDestroy(doneLoading);
 
     const chartStatLabels = {
         points: 'Points per Game',
@@ -38,6 +42,8 @@
         if (!athleteId) return;
         const key = `${athleteId}:${season}`;
         if (key === loadedKey) return;
+        const isInitial = loadedKey === '';
+        if (!isInitial) pageLoading.start();
         loadedKey = key;
 
         loading = true;
@@ -55,6 +61,8 @@
             error = err instanceof Error ? err.message : 'Failed to load analytics';
         } finally {
             loading = false;
+            if (isInitial) doneLoading();
+            else pageLoading.stop();
         }
     }
 
@@ -67,14 +75,7 @@
 </svelte:head>
 
 {#if loading || $playerAnalytics.loading}
-    <div class="card">
-        <div class="card-body text-center py-5">
-            <div class="spinner-border text-primary" role="status">
-                <span class="visually-hidden">Loading...</span>
-            </div>
-            <p class="mt-2 mb-0">Loading trends...</p>
-        </div>
-    </div>
+    <!-- Global BrandLoadingScreen covers the viewport -->
 {:else if error || $playerAnalytics.error}
     <div class="alert alert-danger" role="alert">
         <strong>Error:</strong> {error || $playerAnalytics.error}

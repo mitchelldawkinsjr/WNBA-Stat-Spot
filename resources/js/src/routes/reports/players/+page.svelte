@@ -1,7 +1,8 @@
 <script lang="ts">
-    import { onMount } from 'svelte';
+    import { onDestroy, onMount } from 'svelte';
     import { api } from '$lib/api/client';
     import DefaultLayout from "$lib/layouts/DefaultLayout.svelte";
+    import { pageLoading, trackPageLoad } from '$lib/stores/pageLoading';
     import type { Player, Team, PaginatedResponse } from '$lib/api/client';
 
     let players: Player[] = [];
@@ -23,16 +24,20 @@
 
     const positions = ['G', 'F', 'C', 'PG', 'SG', 'SF', 'PF'];
 
+    const doneLoading = trackPageLoad();
+    onDestroy(doneLoading);
+
     function hideImage(e: Event) {
         const img = e.target as HTMLImageElement;
         img.style.display = 'none';
     }
 
     onMount(async () => {
-        await loadPlayers();
+        await loadPlayers(1, false, { initial: true });
     });
 
-    async function loadPlayers(page = 1, append = false) {
+    async function loadPlayers(page = 1, append = false, opts: { initial?: boolean } = {}) {
+        if (!opts.initial && !append) pageLoading.start();
         try {
             if (!append) {
                 loading = true;
@@ -66,6 +71,8 @@
         } finally {
             loading = false;
             loadingMore = false;
+            if (opts.initial) doneLoading();
+            else if (!append) pageLoading.stop();
         }
     }
 
@@ -138,18 +145,7 @@
         </div>
 
         {#if loading && players.length === 0}
-            <div class="row">
-                <div class="col-12">
-                    <div class="card">
-                        <div class="card-body text-center">
-                            <div class="spinner-border text-primary" role="status">
-                                <span class="visually-hidden">Loading...</span>
-                            </div>
-                            <p class="mt-2 mb-0">Loading players data...</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
+            <!-- Global BrandLoadingScreen covers the viewport -->
         {:else if error}
             <div class="row">
                 <div class="col-12">

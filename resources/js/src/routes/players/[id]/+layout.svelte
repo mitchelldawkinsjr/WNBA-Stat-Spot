@@ -4,7 +4,7 @@
     import { page } from '$app/stores';
     import { goto } from '$app/navigation';
     import DefaultLayout from '$lib/layouts/DefaultLayout.svelte';
-    import BrandLoadingScreen from '$lib/components/BrandLoadingScreen.svelte';
+    import { trackPageLoad } from '$lib/stores/pageLoading';
     import {
         playerProfile,
         AVAILABLE_SEASONS,
@@ -14,6 +14,15 @@
         tabHref,
     } from '$lib/stores/playerProfile';
 
+    // Hold the global loader until playerProfile.init() takes over (or finds cached data).
+    const holdLoader = trackPageLoad();
+    let holdReleased = false;
+    function releaseHold() {
+        if (holdReleased) return;
+        holdReleased = true;
+        holdLoader();
+    }
+
     $: playerId = $page.params.id ?? '';
     $: seasonParam = Number($page.url.searchParams.get('season') || DEFAULT_SEASON);
     $: season = AVAILABLE_SEASONS.includes(seasonParam as (typeof AVAILABLE_SEASONS)[number])
@@ -21,6 +30,10 @@
         : DEFAULT_SEASON;
     $: activeTab = playerId ? activeTabFromPath($page.url.pathname, playerId) : 'overview';
     $: profile = $playerProfile;
+
+    $: if (!profile.loading || profile.player || profile.error) {
+        releaseHold();
+    }
 
     $: currentTeam =
         profile.player?.player_games?.find((g) => g.team)?.team ?? null;
@@ -44,6 +57,7 @@
     }
 
     onDestroy(() => {
+        releaseHold();
         playerProfile.reset();
     });
 
@@ -62,7 +76,7 @@
 <DefaultLayout>
     <div class="container-xxl player-profile">
         {#if profile.loading && !profile.player}
-            <BrandLoadingScreen label="Loading player" />
+            <!-- Global BrandLoadingScreen covers the viewport -->
         {:else if profile.error && !profile.player}
             <div class="alert alert-danger" role="alert">
                 <strong>Error:</strong> {profile.error}

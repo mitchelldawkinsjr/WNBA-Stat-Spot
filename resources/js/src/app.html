@@ -40,7 +40,7 @@
 			role="status"
 			aria-live="polite"
 			aria-busy="true"
-			aria-label="Loading"
+			aria-label="Loading 8%"
 		>
 			<div class="brand-loading__inner">
 				<div class="brand-loading__logo" aria-hidden="true">
@@ -57,11 +57,13 @@
 						/>
 					</div>
 				</div>
+				<p class="brand-loading__percent" id="app-boot-percent" aria-hidden="true">8%</p>
 			</div>
 		</div>
 		<script>
 			(function () {
 				var boot = document.getElementById('app-boot');
+				var percentEl = document.getElementById('app-boot-percent');
 				if (!boot) return;
 				var progress = 8;
 				var reduceMotion =
@@ -70,7 +72,10 @@
 
 				function setProgress(value) {
 					progress = value;
+					var rounded = Math.round(value);
 					boot.style.setProperty('--brand-load-progress', value + '%');
+					boot.setAttribute('aria-label', 'Loading ' + rounded + '%');
+					if (percentEl) percentEl.textContent = rounded + '%';
 				}
 
 				if (reduceMotion) {

@@ -1,8 +1,9 @@
 <script lang="ts">
-    import { onMount } from 'svelte';
+    import { onDestroy, onMount } from 'svelte';
     import { api, type ReviewQueueItem } from '$lib/api/client';
     import DefaultLayout from '$lib/layouts/DefaultLayout.svelte';
     import PageHeader from '$lib/components/ui/PageHeader.svelte';
+    import { pageLoading, trackPageLoad } from '$lib/stores/pageLoading';
 
     let items: ReviewQueueItem[] = [];
     let count = 0;
@@ -15,11 +16,15 @@
     let successMessage: string | null = null;
     let entityFilter: '' | 'player' | 'team' | 'game' = '';
 
+    const doneLoading = trackPageLoad();
+    onDestroy(doneLoading);
+
     onMount(() => {
-        void loadQueue();
+        void loadQueue({ initial: true });
     });
 
-    async function loadQueue() {
+    async function loadQueue(opts: { initial?: boolean } = {}) {
+        if (!opts.initial) pageLoading.start();
         loading = true;
         error = null;
         try {
@@ -35,6 +40,8 @@
             count = 0;
         } finally {
             loading = false;
+            if (opts.initial) doneLoading();
+            else pageLoading.stop();
         }
     }
 
@@ -153,12 +160,8 @@
             <div class="alert alert-success" role="alert">{successMessage}</div>
         {/if}
 
-        {#if loading}
-            <div class="text-center py-5">
-                <div class="spinner-border text-primary" role="status">
-                    <span class="visually-hidden">Loading…</span>
-                </div>
-            </div>
+        {#if loading && items.length === 0}
+            <!-- Global BrandLoadingScreen covers the viewport -->
         {:else if items.length === 0}
             <div class="card">
                 <div class="card-body">

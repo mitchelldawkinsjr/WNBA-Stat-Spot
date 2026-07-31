@@ -1,8 +1,10 @@
 <script lang="ts">
     import {onMount} from "svelte";
-    import {page} from '$app/stores';
+    import {navigating, page} from '$app/stores';
     import GoogleAnalytics from '$lib/components/GoogleAnalytics.svelte';
     import InstallPrompt from '$lib/components/InstallPrompt.svelte';
+    import BrandLoadingScreen from '$lib/components/BrandLoadingScreen.svelte';
+    import {isPageLoading, pageLoading} from '$lib/stores/pageLoading';
 
     const favicon = '/favicon.ico';
 
@@ -13,9 +15,28 @@
     // Re-enabling layout store
     import {initLayout} from "$lib/stores/layout";
 
+    let mounted = false;
+    let bootDismissed = false;
+
+    $: loading = $isPageLoading || !!$navigating;
+    $: loadProgress = $pageLoading.progress;
+    // After first paint, client navigations use the same fullscreen logo loader.
+    $: showClientLoader = bootDismissed && loading;
+
+    $: if (mounted && !loading && !bootDismissed && typeof document !== 'undefined') {
+        bootDismissed = true;
+        document.documentElement.classList.add('ds-app-ready');
+    }
+
     onMount(() => {
         initLayout()
-        document.documentElement.classList.add('ds-app-ready');
+        mounted = true;
+
+        // Static routes that never call pageLoading.start() still need boot to clear.
+        if (!$isPageLoading && !$navigating) {
+            bootDismissed = true;
+            document.documentElement.classList.add('ds-app-ready');
+        }
 
         if (!('serviceWorker' in navigator)) return;
 
@@ -68,6 +89,10 @@
 
 <GoogleAnalytics/>
 <InstallPrompt/>
+
+{#if showClientLoader}
+    <BrandLoadingScreen fullscreen size="lg" progress={loadProgress} />
+{/if}
 
 {#key $page.url.pathname}
     <slot/>

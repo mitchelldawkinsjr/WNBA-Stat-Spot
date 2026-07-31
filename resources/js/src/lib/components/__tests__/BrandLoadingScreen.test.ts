@@ -3,7 +3,7 @@ import { render } from '@testing-library/svelte';
 import BrandLoadingScreen from '../BrandLoadingScreen.svelte';
 
 describe('BrandLoadingScreen', () => {
-    it('renders grayscale and color logo layers', () => {
+    it('renders grayscale and color logo layers with a percent counter', () => {
         const { container } = render(BrandLoadingScreen, {
             props: { progress: 40 },
         });
@@ -12,6 +12,7 @@ describe('BrandLoadingScreen', () => {
         expect(images.length).toBe(2);
         expect(container.querySelector('.brand-loading__img--bw')).toBeTruthy();
         expect(container.querySelector('.brand-loading__color')).toBeTruthy();
+        expect(container.querySelector('.brand-loading__percent')?.textContent).toBe('40%');
     });
 
     it('exposes progress on the root for the color fill', () => {
@@ -24,9 +25,11 @@ describe('BrandLoadingScreen', () => {
         expect(root.getAttribute('aria-label')).toContain('25%');
     });
 
-    it('uses indeterminate animation when progress is omitted', () => {
+    it('shows a climbing percent when progress is omitted', () => {
         const { container } = render(BrandLoadingScreen);
 
-        expect(container.querySelector('.brand-loading--indeterminate')).toBeTruthy();
+        const percent = container.querySelector('.brand-loading__percent');
+        expect(percent).toBeTruthy();
+        expect(percent?.textContent).toMatch(/%$/);
     });
 });

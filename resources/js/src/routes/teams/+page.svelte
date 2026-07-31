@@ -1,8 +1,8 @@
 <script lang="ts">
-    import { onMount } from 'svelte';
+    import { onDestroy, onMount } from 'svelte';
     import { api } from '$lib/api/client';
     import DefaultLayout from "$lib/layouts/DefaultLayout.svelte";
-    import BrandLoadingScreen from '$lib/components/BrandLoadingScreen.svelte';
+    import { trackPageLoad } from '$lib/stores/pageLoading';
 
     interface Team {
         id: number;
@@ -26,6 +26,9 @@
     let searchTerm = '';
     let viewMode: 'cards' | 'table' = 'cards';
 
+    const doneLoading = trackPageLoad();
+    onDestroy(doneLoading);
+
     $: filteredTeams = teams.filter(team =>
         team.team_display_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         team.team_location.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -40,6 +43,7 @@
             error = e instanceof Error ? e.message : 'An error occurred';
         } finally {
             loading = false;
+            doneLoading();
         }
     });
 </script>
@@ -103,7 +107,7 @@
         </div>
 
         {#if loading}
-            <BrandLoadingScreen label="Loading teams" />
+            <!-- Global BrandLoadingScreen covers the viewport -->
         {:else if error}
             <div class="row">
                 <div class="col-12">

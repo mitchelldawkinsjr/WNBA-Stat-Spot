@@ -1,9 +1,9 @@
 <script lang="ts">
-    import { onMount } from 'svelte';
+    import { onDestroy, onMount } from 'svelte';
     import { api } from '$lib/api/client';
     import type { Game } from '$lib/api/client';
     import DefaultLayout from "$lib/layouts/DefaultLayout.svelte";
-    import BrandLoadingScreen from '$lib/components/BrandLoadingScreen.svelte';
+    import { pageLoading, trackPageLoad } from '$lib/stores/pageLoading';
     import { isGameTodayEt, shouldShowScore, sortGamesForToday, WNBA_TIMEZONE } from '$lib/utils/gameDates';
 
     let games: Game[] = [];
@@ -13,6 +13,9 @@
     let viewMode: 'cards' | 'table' = 'cards';
     let selectedSeason = 2026;
     let dateFilter: 'all' | 'today' = 'today';
+
+    const doneInitialLoad = trackPageLoad();
+    onDestroy(doneInitialLoad);
 
     $: filteredGames = (dateFilter === 'today'
         ? sortGamesForToday(games.filter(isGameTodayEt))
@@ -26,7 +29,8 @@
         (game.home_team?.abbreviation && game.home_team.abbreviation.toLowerCase().includes(searchTerm.toLowerCase()))
     );
 
-    async function loadGames(season = selectedSeason) {
+    async function loadGames(season = selectedSeason, opts: { initial?: boolean } = {}) {
+        if (!opts.initial) pageLoading.start();
         try {
             loading = true;
             error = null;
@@ -36,6 +40,8 @@
             error = e instanceof Error ? e.message : 'An error occurred';
         } finally {
             loading = false;
+            if (opts.initial) doneInitialLoad();
+            else pageLoading.stop();
         }
     }
 
@@ -45,7 +51,7 @@
     }
 
     onMount(() => {
-        loadGames();
+        void loadGames(selectedSeason, { initial: true });
     });
 
     function formatDate(dateString: string): string {
@@ -174,7 +180,7 @@
         </div>
 
         {#if loading}
-            <BrandLoadingScreen label="Loading games" />
+            <!-- Global BrandLoadingScreen covers the viewport -->
         {:else if error}
             <div class="row">
                 <div class="col-12">

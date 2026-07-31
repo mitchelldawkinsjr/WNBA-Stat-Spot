@@ -1,11 +1,12 @@
 <script lang="ts">
-    import { onMount } from 'svelte';
+    import { onDestroy, onMount } from 'svelte';
     import DefaultLayout from '$lib/layouts/DefaultLayout.svelte';
     import {
         api,
         type ChampionReportDetail,
         type ChampionReportListItem,
     } from '$lib/api/client';
+    import { pageLoading, trackPageLoad } from '$lib/stores/pageLoading';
 
     let reports: ChampionReportListItem[] = [];
     let championVersion = '';
@@ -14,11 +15,15 @@
     let detailLoading = false;
     let error = '';
 
+    const doneLoading = trackPageLoad();
+    onDestroy(doneLoading);
+
     onMount(async () => {
-        await loadReports();
+        await loadReports({ initial: true });
     });
 
-    async function loadReports() {
+    async function loadReports(opts: { initial?: boolean } = {}) {
+        if (!opts.initial) pageLoading.start();
         try {
             loading = true;
             error = '';
@@ -32,6 +37,8 @@
             error = err instanceof Error ? err.message : 'Failed to load champion reports';
         } finally {
             loading = false;
+            if (opts.initial) doneLoading();
+            else pageLoading.stop();
         }
     }
 
@@ -95,12 +102,7 @@
         {/if}
 
         {#if loading && reports.length === 0}
-            <div class="card">
-                <div class="card-body text-center py-5">
-                    <div class="spinner-border text-primary" role="status"></div>
-                    <p class="mt-3 mb-0 text-muted">Loading champion reports…</p>
-                </div>
-            </div>
+            <!-- Global BrandLoadingScreen covers the viewport -->
         {:else if reports.length === 0}
             <div class="card">
                 <div class="card-body text-center py-5">

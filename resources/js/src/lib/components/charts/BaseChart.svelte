@@ -3,6 +3,7 @@
     import { Card, CardBody, CardHeader, CardTitle } from '@sveltestrap/sveltestrap';
     import { Chart } from '$lib/chart/register';
     import type { ChartConfiguration, ChartData, ChartOptions } from 'chart.js';
+    import BrandLoadingScreen from '$lib/components/BrandLoadingScreen.svelte';
 
     export let title: string = '';
     export let chartType: 'line' | 'bar' | 'doughnut' | 'pie' | 'radar' = 'bar';
@@ -147,9 +148,7 @@
     <CardBody class="d-flex flex-column">
         {#if loading}
             <div class="d-flex justify-content-center align-items-center flex-grow-1">
-                <div class="spinner-border text-primary" role="status">
-                    <span class="visually-hidden">Loading chart...</span>
-                </div>
+                <BrandLoadingScreen label="Loading chart" size="sm" page={false} />
             </div>
         {:else if error}
             <div class="alert alert-danger mb-0" role="alert">

@@ -13,6 +13,7 @@
     import StatusBadge from '$lib/components/ui/StatusBadge.svelte';
     import DsIcon from '$lib/components/ui/DsIcon.svelte';
     import TodaysBestProps from '$lib/components/TodaysBestProps.svelte';
+    import { trackPageLoad } from '$lib/stores/pageLoading';
     import {
         WNBA_TIMEZONE,
         isGameFinal,
@@ -44,6 +45,8 @@
     let loading = true;
     let refreshTimer: ReturnType<typeof setInterval> | null = null;
 
+    const doneLoading = trackPageLoad();
+
     $: todaysGames = sortGamesForToday(games.filter((game) => isGameTodayEt(game) && !isGameFinal(game)));
     $: liveGames = todaysGames.filter(isGameLive);
     $: displayGames = todaysGames;
@@ -58,6 +61,7 @@
     });
 
     onDestroy(() => {
+        doneLoading();
         if (refreshTimer) clearInterval(refreshTimer);
     });
 
@@ -94,6 +98,7 @@
             console.error('Dashboard load failed', e);
         } finally {
             loading = false;
+            doneLoading();
         }
 
         void loadNews();
@@ -204,100 +209,7 @@
 </script>
 
 {#if loading}
-    <div class="ds-dashboard-skeleton" role="status" aria-live="polite" aria-busy="true">
-        <span class="visually-hidden">Loading dashboard…</span>
-
-        <section class="ds-dashboard-section">
-            <div class="ds-section-header">
-                <div>
-                    <div class="ds-skel ds-skel--title"></div>
-                    <div class="ds-skel ds-skel--subtitle mt-2"></div>
-                </div>
-                <div class="ds-skel ds-skel--link"></div>
-            </div>
-            <div class="ds-horizontal-scroll" aria-hidden="true">
-                {#each Array(4) as _}
-                    <div class="ds-score-card ds-skel-card">
-                        <div class="ds-skel ds-skel--line ds-skel--w-40 mb-3"></div>
-                        <div class="ds-skel ds-skel--line mb-2"></div>
-                        <div class="ds-skel ds-skel--line"></div>
-                    </div>
-                {/each}
-            </div>
-        </section>
-
-        <div class="ds-dashboard-grid">
-            <section class="ds-dashboard-main">
-                <div class="ds-hero ds-hero--skeleton" aria-hidden="true">
-                    <div class="ds-hero__gradient"></div>
-                    <div class="ds-hero__content">
-                        <div class="d-flex align-items-center gap-2 mb-3">
-                            <div class="ds-skel ds-skel--badge"></div>
-                            <div class="ds-skel ds-skel--subtitle"></div>
-                        </div>
-                        <div class="ds-skel ds-skel--display mb-3"></div>
-                        <div class="d-flex gap-4">
-                            <div class="ds-skel ds-skel--stat"></div>
-                            <div class="ds-skel ds-skel--stat"></div>
-                            <div class="ds-skel ds-skel--stat"></div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="ds-bento-grid" aria-hidden="true">
-                    {#each Array(3) as _}
-                        <div class="ds-panel">
-                            <div class="ds-skel ds-skel--panel-title mb-3"></div>
-                            <div class="ds-skel ds-skel--subtitle mb-3"></div>
-                            {#each Array(4) as __}
-                                <div class="d-flex justify-content-between align-items-center py-2">
-                                    <div class="d-flex align-items-center gap-3">
-                                        <div class="ds-skel ds-skel--avatar"></div>
-                                        <div>
-                                            <div class="ds-skel ds-skel--line ds-skel--w-120 mb-1"></div>
-                                            <div class="ds-skel ds-skel--line ds-skel--w-64"></div>
-                                        </div>
-                                    </div>
-                                    <div class="ds-skel ds-skel--line ds-skel--w-40"></div>
-                                </div>
-                            {/each}
-                        </div>
-                    {/each}
-                </div>
-
-                <section class="ds-dashboard-section" aria-hidden="true">
-                    <div class="ds-section-header">
-                        <div>
-                            <div class="ds-skel ds-skel--title"></div>
-                            <div class="ds-skel ds-skel--subtitle mt-2"></div>
-                        </div>
-                    </div>
-                    <div class="ds-insight-grid">
-                        {#each Array(4) as _}
-                            <div class="ds-insight-card">
-                                <div class="ds-skel ds-skel--line ds-skel--w-64 mb-2"></div>
-                                <div class="ds-skel ds-skel--line mb-2"></div>
-                                <div class="ds-skel ds-skel--line ds-skel--w-80"></div>
-                            </div>
-                        {/each}
-                    </div>
-                </section>
-            </section>
-
-            <aside class="ds-dashboard-aside" aria-hidden="true">
-                <div class="ds-skel ds-skel--panel-title mb-3"></div>
-                <div class="ds-news-list">
-                    {#each Array(4) as _}
-                        <article class="ds-news-item">
-                            <div class="ds-skel ds-skel--line ds-skel--w-64 mb-2"></div>
-                            <div class="ds-skel ds-skel--line mb-2"></div>
-                            <div class="ds-skel ds-skel--line ds-skel--w-80"></div>
-                        </article>
-                    {/each}
-                </div>
-            </aside>
-        </div>
-    </div>
+    <!-- Global BrandLoadingScreen covers the viewport -->
 {:else}
 <!-- Live / Today's Games -->
 <section class="ds-dashboard-section">

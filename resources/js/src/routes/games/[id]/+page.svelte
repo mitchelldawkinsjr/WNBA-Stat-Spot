@@ -1,14 +1,14 @@
 <script lang="ts">
-    import { onMount } from 'svelte';
+    import { onDestroy, onMount } from 'svelte';
     import { page } from '$app/stores';
     import { api } from '$lib/api/client';
     import type { Game, GameBoxScorePlayer, GamePreview } from '$lib/api/client';
     import DefaultLayout from '$lib/layouts/DefaultLayout.svelte';
     import PageHeader from '$lib/components/ui/PageHeader.svelte';
     import StatusBadge from '$lib/components/ui/StatusBadge.svelte';
-    import BrandLoadingScreen from '$lib/components/BrandLoadingScreen.svelte';
     import GamePreviewPanel from '$lib/components/GamePreviewPanel.svelte';
     import ErrorMessage from '$lib/components/ErrorMessage.svelte';
+    import { pageLoading, trackPageLoad } from '$lib/stores/pageLoading';
 
     let game: Game | null = null;
     let preview: GamePreview | null = null;
@@ -18,8 +18,10 @@
     let error: string | null = null;
     let previewError: string | null = null;
     let activeTab: 'preview' | 'boxscore' = 'preview';
-    let loadProgress = 8;
     let landedOnMain = false;
+
+    const doneLoading = trackPageLoad();
+    onDestroy(doneLoading);
 
     $: gameId = $page.params.id;
     $: isScheduled = game?.status_name === 'STATUS_SCHEDULED' || !game?.status_name;
@@ -27,17 +29,16 @@
     $: pageReady = !loading && !previewLoading;
 
     $: {
-        // Game + preview each contribute half; keep a small baseline so the fill is visible immediately.
         let next = 8;
         if (!loading) next += 46;
         if (!previewLoading) next += 46;
-        loadProgress = next;
+        pageLoading.setProgress(next);
     }
 
-    // Once both fetches finish, land on the main Preview tab (box score only if preview isn't available).
     $: if (pageReady && game && !landedOnMain) {
         landedOnMain = true;
         activeTab = showPreviewTab ? 'preview' : 'boxscore';
+        doneLoading();
     }
 
     onMount(() => {
@@ -59,6 +60,7 @@
             boxScore = [];
         } finally {
             loading = false;
+            if (!previewLoading) doneLoading();
         }
     }
 
@@ -78,6 +80,7 @@
             preview = null;
         } finally {
             previewLoading = false;
+            if (!loading) doneLoading();
         }
     }
 
@@ -145,7 +148,7 @@
 
 <DefaultLayout>
     {#if !pageReady}
-        <BrandLoadingScreen progress={loadProgress} />
+        <!-- Global BrandLoadingScreen covers the viewport -->
     {:else if error}
         <PageHeader title="Game Preview" subtitle="Data-driven matchup analysis and prediction">
             <svelte:fragment slot="actions">

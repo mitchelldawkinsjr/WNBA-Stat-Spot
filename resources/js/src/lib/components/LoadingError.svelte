@@ -1,16 +1,12 @@
 <script lang="ts">
+    import BrandLoadingScreen from '$lib/components/BrandLoadingScreen.svelte';
+
     export let loading: boolean = false;
     export let error: string | null = null;
-    export let loadingText: string = 'Loading...';
+    export let loadingText: string = 'Loading';
     export let size: 'sm' | 'md' | 'lg' = 'md';
     export let showIcon: boolean = true;
     export let retryAction: (() => void) | null = null;
-
-    const sizeClasses = {
-        sm: 'spinner-border-sm',
-        md: '',
-        lg: 'spinner-border-lg'
-    };
 
     const iconClasses = {
         sm: 'fs-3',
@@ -20,16 +16,7 @@
 </script>
 
 {#if loading}
-    <div class="d-flex justify-content-center align-items-center py-4">
-        <div class="text-center">
-            <div class="spinner-border text-primary {sizeClasses[size]}" role="status">
-                <span class="visually-hidden">{loadingText}</span>
-            </div>
-            {#if loadingText}
-                <p class="mt-2 mb-0 text-muted">{loadingText}</p>
-            {/if}
-        </div>
-    </div>
+    <BrandLoadingScreen label={loadingText} {size} page={false} />
 {:else if error}
     <div class="d-flex justify-content-center align-items-center py-4">
         <div class="text-center">
@@ -41,7 +28,7 @@
                     <strong>Error:</strong> {error}
                 </div>
                 {#if retryAction}
-                    <button 
+                    <button
                         class="btn btn-outline-danger btn-sm mt-2"
                         on:click={retryAction}
                     >

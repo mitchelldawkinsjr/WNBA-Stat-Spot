@@ -1,8 +1,9 @@
 <script lang="ts">
-    import { onMount, onDestroy } from 'svelte';
+    import { onDestroy, onMount } from 'svelte';
     import { api } from '$lib/api/client';
     import DefaultLayout from "$lib/layouts/DefaultLayout.svelte";
     import type { OddsApiEvent, OddsApiPlayerProp, OddsApiUsageStats } from '$lib/api/client';
+    import { pageLoading, trackPageLoad } from '$lib/stores/pageLoading';
 
     let liveOdds: OddsApiEvent[] = [];
     let playerProps: OddsApiPlayerProp[] = [];
@@ -43,20 +44,24 @@
         'draftkings', 'fanduel', 'betmgm', 'caesars', 'pointsbet_us', 'unibet_us', 'betrivers'
     ];
 
+    const doneLoading = trackPageLoad();
+
     onMount(async () => {
-        await loadData();
+        await loadData({ initial: true });
         if (autoRefresh) {
             startAutoRefresh();
         }
     });
 
     onDestroy(() => {
+        doneLoading();
         if (refreshInterval) {
             clearInterval(refreshInterval);
         }
     });
 
-    async function loadData() {
+    async function loadData(opts: { initial?: boolean } = {}) {
+        if (!opts.initial) pageLoading.start();
         try {
             loading = true;
             error = '';
@@ -114,6 +119,8 @@
             usageStats = null;
         } finally {
             loading = false;
+            if (opts.initial) doneLoading();
+            else pageLoading.stop();
         }
     }
 
@@ -584,19 +591,8 @@
             </div>
         {/if}
 
-        {#if loading}
-            <div class="row">
-                <div class="col-12">
-                    <div class="card">
-                        <div class="card-body text-center py-5">
-                            <div class="spinner-border text-primary" role="status">
-                                <span class="visually-hidden">Loading...</span>
-                            </div>
-                            <p class="mt-2 mb-0">Loading live odds...</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
+        {#if loading && !lastUpdate}
+            <!-- Global BrandLoadingScreen covers the viewport -->
         {/if}
     </div>
 </DefaultLayout>

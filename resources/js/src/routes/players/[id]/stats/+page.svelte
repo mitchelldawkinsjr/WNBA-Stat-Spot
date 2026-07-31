@@ -1,8 +1,9 @@
 <script lang="ts">
-    import { onMount } from 'svelte';
+    import { onDestroy, onMount } from 'svelte';
     import { page } from '$app/stores';
     import { api, type AggregatedPlayerData } from '$lib/api/client';
     import { playerProfile } from '$lib/stores/playerProfile';
+    import { pageLoading, trackPageLoad } from '$lib/stores/pageLoading';
 
     type TrendWindow = {
         games?: number;
@@ -31,6 +32,9 @@
     let showSituational = false;
     let loadedKey = '';
 
+    const doneLoading = trackPageLoad();
+    onDestroy(doneLoading);
+
     $: profile = $playerProfile;
     $: playerId = $page.params.id;
     $: season = profile.season;
@@ -43,6 +47,8 @@
         if (!playerId) return;
         const key = `${playerId}:${season}`;
         if (key === loadedKey) return;
+        const isInitial = loadedKey === '';
+        if (!isInitial) pageLoading.start();
         loadedKey = key;
 
         loading = true;
@@ -61,6 +67,8 @@
             aggregatedData = null;
         } finally {
             loading = false;
+            if (isInitial) doneLoading();
+            else pageLoading.stop();
         }
     }
 
@@ -140,14 +148,7 @@
 </svelte:head>
 
 {#if loading}
-    <div class="card">
-        <div class="card-body text-center py-5">
-            <div class="spinner-border text-primary" role="status">
-                <span class="visually-hidden">Loading...</span>
-            </div>
-            <p class="mt-2 mb-0">Loading season stats...</p>
-        </div>
-    </div>
+    <!-- Global BrandLoadingScreen covers the viewport -->
 {:else if error}
     <div class="alert alert-danger" role="alert"><strong>Error:</strong> {error}</div>
 {:else if aggregatedData}

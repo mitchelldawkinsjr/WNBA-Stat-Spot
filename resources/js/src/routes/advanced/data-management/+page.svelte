@@ -1,7 +1,8 @@
 <script lang="ts">
-    import { onMount } from 'svelte';
+    import { onDestroy, onMount } from 'svelte';
     import { api } from '$lib/api/client';
     import DefaultLayout from "$lib/layouts/DefaultLayout.svelte";
+    import { pageLoading, trackPageLoad } from '$lib/stores/pageLoading';
 
     interface DataSummary {
         teams: number;
@@ -17,11 +18,15 @@
     let successMessage: string | null = null;
     let importInProgress = false;
 
+    const doneLoading = trackPageLoad();
+    onDestroy(doneLoading);
+
     onMount(async () => {
-        await loadDataSummary();
+        await loadDataSummary({ initial: true });
     });
 
-    async function loadDataSummary() {
+    async function loadDataSummary(opts: { initial?: boolean } = {}) {
+        if (!opts.initial) pageLoading.start();
         try {
             loading = true;
             error = null;
@@ -31,6 +36,8 @@
             error = err instanceof Error ? err.message : 'Failed to load data summary';
         } finally {
             loading = false;
+            if (opts.initial) doneLoading();
+            else pageLoading.stop();
         }
     }
 
@@ -155,13 +162,8 @@
                         </h5>
                     </div>
                     <div class="card-body">
-                        {#if loading}
-                            <div class="text-center py-3">
-                                <div class="spinner-border text-primary" role="status">
-                                    <span class="visually-hidden">Loading...</span>
-                                </div>
-                                <p class="mt-2 mb-0">Loading data summary...</p>
-                            </div>
+                        {#if loading && !dataSummary}
+                            <!-- Global BrandLoadingScreen covers the viewport -->
                         {:else if dataSummary}
                             <div class="row">
                                 <div class="col-md-3">

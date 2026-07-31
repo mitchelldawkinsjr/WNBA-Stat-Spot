@@ -1,8 +1,9 @@
 <script lang="ts">
-    import { onMount } from 'svelte';
+    import { onDestroy, onMount } from 'svelte';
     import { api } from '$lib/api/client';
     import DefaultLayout from "$lib/layouts/DefaultLayout.svelte";
     import TodaysBestProps from "$lib/components/TodaysBestProps.svelte";
+    import { trackPageLoad } from '$lib/stores/pageLoading';
     import type { Player, Prediction, PropBet } from '$lib/api/client';
 
     let players: Player[] = [];
@@ -28,6 +29,9 @@
         { value: 'minutes', label: 'Minutes' }
     ];
 
+    const doneLoading = trackPageLoad();
+    onDestroy(doneLoading);
+
     onMount(async () => {
         try {
             const [playersResponse, propBetsResponse] = await Promise.all([
@@ -41,6 +45,7 @@
             error = err instanceof Error ? err.message : 'Failed to load data';
         } finally {
             loading = false;
+            doneLoading();
         }
     });
 
@@ -110,18 +115,7 @@
         </div>
 
         {#if loading}
-            <div class="row">
-                <div class="col-12">
-                    <div class="card">
-                        <div class="card-body text-center">
-                            <div class="spinner-border text-primary" role="status">
-                                <span class="visually-hidden">Loading...</span>
-                            </div>
-                            <p class="mt-2 mb-0">Loading prediction data...</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
+            <!-- Global BrandLoadingScreen covers the viewport -->
         {:else if error}
             <div class="row">
                 <div class="col-12">

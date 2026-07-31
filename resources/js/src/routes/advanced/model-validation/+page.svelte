@@ -1,7 +1,8 @@
 <script lang="ts">
-    import { onMount } from 'svelte';
+    import { onDestroy, onMount } from 'svelte';
     import DefaultLayout from '$lib/layouts/DefaultLayout.svelte';
     import { api, type PredictionAccuracyDashboard } from '$lib/api/client';
+    import { pageLoading, trackPageLoad } from '$lib/stores/pageLoading';
 
     let dashboard: PredictionAccuracyDashboard | null = null;
     let loading = true;
@@ -9,11 +10,15 @@
     let propPage = 1;
     const PROP_PAGE_SIZE = 10;
 
+    const doneLoading = trackPageLoad();
+    onDestroy(doneLoading);
+
     onMount(async () => {
-        await loadAccuracy();
+        await loadAccuracy({ initial: true });
     });
 
-    async function loadAccuracy() {
+    async function loadAccuracy(opts: { initial?: boolean } = {}) {
+        if (!opts.initial) pageLoading.start();
         try {
             loading = true;
             error = '';
@@ -25,6 +30,8 @@
             dashboard = null;
         } finally {
             loading = false;
+            if (opts.initial) doneLoading();
+            else pageLoading.stop();
         }
     }
 
@@ -107,12 +114,7 @@
         </div>
 
         {#if loading && !dashboard}
-            <div class="card">
-                <div class="card-body text-center py-5">
-                    <div class="spinner-border text-primary" role="status"></div>
-                    <p class="mt-2 mb-0 text-muted">Loading tracked prediction accuracy…</p>
-                </div>
-            </div>
+            <!-- Global BrandLoadingScreen covers the viewport -->
         {:else if error}
             <div class="alert alert-danger" role="alert">{error}</div>
         {:else if dashboard}

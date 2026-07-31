@@ -94,16 +94,24 @@ html[data-bs-theme='light'] .brand-loading__img--bw {
 	bottom: 0;
 }
 
-.brand-loading--indeterminate .brand-loading__color {
-	transition: none;
-	animation: brand-load-fill 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
-}
-
 .brand-loading--ready .brand-loading__color,
 html.ds-app-ready #app-boot .brand-loading__color {
 	height: 100%;
-	animation: none;
 	transition: height 0.2s ease;
+}
+
+.brand-loading__percent {
+	margin: 0;
+	font-family: 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
+	font-size: 0.95rem;
+	font-weight: 600;
+	letter-spacing: 0.12em;
+	font-variant-numeric: tabular-nums;
+	color: var(--ds-text-muted, #aab8c5);
+}
+
+html[data-bs-theme='light'] .brand-loading__percent {
+	color: var(--ds-text-muted, #5e5e5f);
 }
 
 .brand-loading__label {
@@ -121,26 +129,10 @@ html[data-bs-theme='light'] .brand-loading__label {
 	color: var(--ds-text-muted, #5e5e5f);
 }
 
-@keyframes brand-load-fill {
-	0% {
-		height: 0%;
-	}
-	70% {
-		height: 88%;
-	}
-	100% {
-		height: 0%;
-	}
-}
-
+/* Determinate fill only — indeterminate progress is driven via --brand-load-progress */
 @media (prefers-reduced-motion: reduce) {
 	.brand-loading__color {
 		transition: none;
-	}
-
-	.brand-loading--indeterminate .brand-loading__color {
-		animation: none;
-		height: 65%;
 	}
 
 	.brand-loading--fullscreen {

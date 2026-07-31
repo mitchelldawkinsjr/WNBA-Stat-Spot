@@ -1,7 +1,8 @@
 <script lang="ts">
-    import { onMount } from 'svelte';
+    import { onDestroy, onMount } from 'svelte';
     import { api } from '$lib/api/client';
     import DefaultLayout from "$lib/layouts/DefaultLayout.svelte";
+    import { trackPageLoad } from '$lib/stores/pageLoading';
 
     interface Stats {
         id: number;
@@ -56,6 +57,9 @@
 
     $: sortedStats = [...filteredStats].sort((a, b) => b[sortBy] - a[sortBy]);
 
+    const doneLoading = trackPageLoad();
+    onDestroy(doneLoading);
+
     onMount(async () => {
         try {
             const response = await api.stats.getAll();
@@ -64,6 +68,7 @@
             error = e instanceof Error ? e.message : 'An error occurred';
         } finally {
             loading = false;
+            doneLoading();
         }
     });
 
@@ -130,18 +135,7 @@
         </div>
 
         {#if loading}
-            <div class="row">
-                <div class="col-12">
-                    <div class="card">
-                        <div class="card-body text-center">
-                            <div class="spinner-border text-primary" role="status">
-                                <span class="visually-hidden">Loading...</span>
-                            </div>
-                            <p class="mt-2 mb-0">Loading statistics...</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
+            <!-- Global BrandLoadingScreen covers the viewport -->
         {:else if error}
             <div class="row">
                 <div class="col-12">

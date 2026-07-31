@@ -1,12 +1,12 @@
 <script lang="ts">
-    import { onMount } from 'svelte';
+    import { onDestroy, onMount } from 'svelte';
     import { api } from '$lib/api/client';
     import DefaultLayout from '$lib/layouts/DefaultLayout.svelte';
-    import BrandLoadingScreen from '$lib/components/BrandLoadingScreen.svelte';
     import ErrorMessage from '$lib/components/ErrorMessage.svelte';
     import DsSearchInput from '$lib/components/ui/DsSearchInput.svelte';
     import DsChip from '$lib/components/ui/DsChip.svelte';
     import DsIcon from '$lib/components/ui/DsIcon.svelte';
+    import { trackPageLoad } from '$lib/stores/pageLoading';
 
     interface Player {
         id: number;
@@ -24,6 +24,9 @@
     let error: string | null = null;
     let searchTerm = '';
     let positionFilter = 'all';
+
+    const doneLoading = trackPageLoad();
+    onDestroy(doneLoading);
 
     const positionChips = [
         { key: 'all', label: 'All Players' },
@@ -54,6 +57,7 @@
             error = e instanceof Error ? e.message : 'An error occurred';
         } finally {
             loading = false;
+            doneLoading();
         }
     });
 </script>
@@ -81,7 +85,7 @@
         </div>
 
         {#if loading}
-            <BrandLoadingScreen label="Loading players" size="sm" />
+            <!-- Global BrandLoadingScreen covers the viewport -->
         {:else if error}
             <ErrorMessage message={error} />
         {:else}

@@ -1,8 +1,8 @@
 <script lang="ts">
     import BrandLoadingScreen from '$lib/components/BrandLoadingScreen.svelte';
 
-    /** 0–100 progress toward matchup readiness */
-    export let progress = 0;
+    /** @deprecated Prefer trackPageLoad() + the global BrandLoadingScreen overlay. */
+    export let progress: number | null = null;
 </script>
 
-<BrandLoadingScreen {progress} size="md" page />
+<BrandLoadingScreen {progress} size="md" fullscreen />

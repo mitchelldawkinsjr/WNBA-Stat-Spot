@@ -1,3 +1,4 @@
+import { pageLoading } from '$lib/stores/pageLoading';
 import { writable, get } from 'svelte/store';
 import { api, type Player } from '$lib/api/client';
 
@@ -84,6 +85,9 @@ function createPlayerProfileStore() {
                 return;
             }
 
+            const needsGate = !current.player || current.playerId !== playerId;
+            if (needsGate) pageLoading.start();
+
             update((s) => ({
                 ...s,
                 playerId,
@@ -109,6 +113,8 @@ function createPlayerProfileStore() {
                     error: e instanceof Error ? e.message : 'Failed to load player',
                     player: null,
                 }));
+            } finally {
+                if (needsGate) pageLoading.stop();
             }
         },
         async setSeason(season: number) {

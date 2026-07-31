@@ -7,6 +7,7 @@
     import type { Player, Team } from '$lib/api/client';
     import DefaultLayout from '$lib/layouts/DefaultLayout.svelte';
     import BrandLoadingScreen from '$lib/components/BrandLoadingScreen.svelte';
+    import { trackPageLoad } from '$lib/stores/pageLoading';
     import {
         teamAnalytics,
         gameResultsChartData,
@@ -26,6 +27,12 @@
     let sortBy = 'athlete_display_name';
     let sortOrder: 'asc' | 'desc' = 'asc';
     let loadedKey = '';
+
+    const doneInitialLoad = trackPageLoad();
+    onDestroy(() => {
+        doneInitialLoad();
+        teamAnalytics.reset();
+    });
 
     const positions = ['G', 'F', 'C', 'PG', 'SG', 'SF', 'PF'];
 
@@ -108,12 +115,9 @@
         } finally {
             loading = false;
             rosterLoading = false;
+            doneInitialLoad();
         }
     }
-
-    onDestroy(() => {
-        teamAnalytics.reset();
-    });
 
     async function changeSeason(next: number) {
         if (next === season) return;
@@ -153,7 +157,7 @@
 <DefaultLayout>
     <div class="container-xxl team-profile">
         {#if loading}
-            <BrandLoadingScreen label="Loading team" />
+            <!-- Global BrandLoadingScreen covers the viewport -->
         {:else if error && !team}
             <div class="alert alert-danger" role="alert">
                 <strong>Error:</strong> {error}
@@ -238,9 +242,8 @@
 
                 {#if $teamAnalytics.loading && !$seasonStatsData}
                     <div class="card">
-                        <div class="card-body text-center py-4">
-                            <div class="spinner-border text-primary spinner-border-sm" role="status"></div>
-                            <span class="ms-2 text-muted">Loading analytics…</span>
+                        <div class="card-body">
+                            <BrandLoadingScreen label="Loading analytics" size="sm" page={false} />
                         </div>
                     </div>
                 {:else if $teamAnalytics.error && !$seasonStatsData}
