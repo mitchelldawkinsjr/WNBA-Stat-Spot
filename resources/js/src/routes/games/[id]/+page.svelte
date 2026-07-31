@@ -6,9 +6,9 @@
     import DefaultLayout from '$lib/layouts/DefaultLayout.svelte';
     import PageHeader from '$lib/components/ui/PageHeader.svelte';
     import StatusBadge from '$lib/components/ui/StatusBadge.svelte';
-    import ErrorMessage from '$lib/components/ErrorMessage.svelte';
+    import BrandLoadingScreen from '$lib/components/BrandLoadingScreen.svelte';
     import GamePreviewPanel from '$lib/components/GamePreviewPanel.svelte';
-    import MatchupLoadingScreen from '$lib/components/MatchupLoadingScreen.svelte';
+    import ErrorMessage from '$lib/components/ErrorMessage.svelte';
 
     let game: Game | null = null;
     let preview: GamePreview | null = null;
@@ -145,7 +145,7 @@
 
 <DefaultLayout>
     {#if !pageReady}
-        <MatchupLoadingScreen progress={loadProgress} />
+        <BrandLoadingScreen progress={loadProgress} />
     {:else if error}
         <PageHeader title="Game Preview" subtitle="Data-driven matchup analysis and prediction">
             <svelte:fragment slot="actions">

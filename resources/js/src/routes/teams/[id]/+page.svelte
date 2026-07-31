@@ -6,6 +6,7 @@
     import { api } from '$lib/api/client';
     import type { Player, Team } from '$lib/api/client';
     import DefaultLayout from '$lib/layouts/DefaultLayout.svelte';
+    import BrandLoadingScreen from '$lib/components/BrandLoadingScreen.svelte';
     import {
         teamAnalytics,
         gameResultsChartData,
@@ -152,14 +153,7 @@
 <DefaultLayout>
     <div class="container-xxl team-profile">
         {#if loading}
-            <div class="card">
-                <div class="card-body text-center py-5">
-                    <div class="spinner-border text-primary" role="status">
-                        <span class="visually-hidden">Loading...</span>
-                    </div>
-                    <p class="mt-2 mb-0">Loading team…</p>
-                </div>
-            </div>
+            <BrandLoadingScreen label="Loading team" />
         {:else if error && !team}
             <div class="alert alert-danger" role="alert">
                 <strong>Error:</strong> {error}

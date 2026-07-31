@@ -4,6 +4,7 @@
     import { page } from '$app/stores';
     import { goto } from '$app/navigation';
     import DefaultLayout from '$lib/layouts/DefaultLayout.svelte';
+    import BrandLoadingScreen from '$lib/components/BrandLoadingScreen.svelte';
     import {
         playerProfile,
         AVAILABLE_SEASONS,
@@ -61,14 +62,7 @@
 <DefaultLayout>
     <div class="container-xxl player-profile">
         {#if profile.loading && !profile.player}
-            <div class="card">
-                <div class="card-body text-center py-5">
-                    <div class="spinner-border text-primary" role="status">
-                        <span class="visually-hidden">Loading...</span>
-                    </div>
-                    <p class="mt-2 mb-0">Loading player...</p>
-                </div>
-            </div>
+            <BrandLoadingScreen label="Loading player" />
         {:else if profile.error && !profile.player}
             <div class="alert alert-danger" role="alert">
                 <strong>Error:</strong> {profile.error}

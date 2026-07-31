@@ -15,6 +15,7 @@
 
     onMount(() => {
         initLayout()
+        document.documentElement.classList.add('ds-app-ready');
 
         if (!('serviceWorker' in navigator)) return;
 
@@ -62,6 +63,7 @@
     <link rel="icon" type="image/png" sizes="512x512" href="/icons/icon-512.png"/>
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=swap" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/brand-loading.css"/>
 </svelte:head>
 
 <GoogleAnalytics/>

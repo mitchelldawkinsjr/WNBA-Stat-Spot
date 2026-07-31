@@ -4,6 +4,7 @@
 		<meta charset="utf-8" />
 		<link rel="icon" href="%sveltekit.assets%/favicon.png" />
 		<link rel="manifest" href="%sveltekit.assets%/manifest.json" />
+		<link rel="stylesheet" href="%sveltekit.assets%/brand-loading.css" />
 		<meta name="theme-color" content="#ff6c2f" />
 		<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 		<script>
@@ -32,6 +33,64 @@
 		%sveltekit.head%
 	</head>
 	<body data-sveltekit-preload-data="hover">
+		<div
+			id="app-boot"
+			class="brand-loading brand-loading--fullscreen brand-loading--lg"
+			style="--brand-load-progress: 8%"
+			role="status"
+			aria-live="polite"
+			aria-busy="true"
+			aria-label="Loading"
+		>
+			<div class="brand-loading__inner">
+				<div class="brand-loading__logo" aria-hidden="true">
+					<img
+						class="brand-loading__img brand-loading__img--bw"
+						src="%sveltekit.assets%/images/logo-sm.png"
+						alt=""
+					/>
+					<div class="brand-loading__color">
+						<img
+							class="brand-loading__img"
+							src="%sveltekit.assets%/images/logo-sm.png"
+							alt=""
+						/>
+					</div>
+				</div>
+			</div>
+		</div>
+		<script>
+			(function () {
+				var boot = document.getElementById('app-boot');
+				if (!boot) return;
+				var progress = 8;
+				var reduceMotion =
+					window.matchMedia &&
+					window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+				function setProgress(value) {
+					progress = value;
+					boot.style.setProperty('--brand-load-progress', value + '%');
+				}
+
+				if (reduceMotion) {
+					setProgress(40);
+					return;
+				}
+
+				var timer = window.setInterval(function () {
+					if (document.documentElement.classList.contains('ds-app-ready')) {
+						setProgress(100);
+						window.clearInterval(timer);
+						return;
+					}
+					// Ease toward ~90% while JS boots — color climbs the logo from the bottom
+					var remaining = 90 - progress;
+					if (remaining <= 0.15) return;
+					setProgress(Math.min(90, progress + Math.max(0.35, remaining * 0.07)));
+				}, 50);
+			})();
+		</script>
 		<div style="display: contents">%sveltekit.body%</div>
 	</body>
 </html>

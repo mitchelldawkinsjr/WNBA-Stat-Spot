@@ -203,6 +203,102 @@
     }
 </script>
 
+{#if loading}
+    <div class="ds-dashboard-skeleton" role="status" aria-live="polite" aria-busy="true">
+        <span class="visually-hidden">Loading dashboard…</span>
+
+        <section class="ds-dashboard-section">
+            <div class="ds-section-header">
+                <div>
+                    <div class="ds-skel ds-skel--title"></div>
+                    <div class="ds-skel ds-skel--subtitle mt-2"></div>
+                </div>
+                <div class="ds-skel ds-skel--link"></div>
+            </div>
+            <div class="ds-horizontal-scroll" aria-hidden="true">
+                {#each Array(4) as _}
+                    <div class="ds-score-card ds-skel-card">
+                        <div class="ds-skel ds-skel--line ds-skel--w-40 mb-3"></div>
+                        <div class="ds-skel ds-skel--line mb-2"></div>
+                        <div class="ds-skel ds-skel--line"></div>
+                    </div>
+                {/each}
+            </div>
+        </section>
+
+        <div class="ds-dashboard-grid">
+            <section class="ds-dashboard-main">
+                <div class="ds-hero ds-hero--skeleton" aria-hidden="true">
+                    <div class="ds-hero__gradient"></div>
+                    <div class="ds-hero__content">
+                        <div class="d-flex align-items-center gap-2 mb-3">
+                            <div class="ds-skel ds-skel--badge"></div>
+                            <div class="ds-skel ds-skel--subtitle"></div>
+                        </div>
+                        <div class="ds-skel ds-skel--display mb-3"></div>
+                        <div class="d-flex gap-4">
+                            <div class="ds-skel ds-skel--stat"></div>
+                            <div class="ds-skel ds-skel--stat"></div>
+                            <div class="ds-skel ds-skel--stat"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="ds-bento-grid" aria-hidden="true">
+                    {#each Array(3) as _}
+                        <div class="ds-panel">
+                            <div class="ds-skel ds-skel--panel-title mb-3"></div>
+                            <div class="ds-skel ds-skel--subtitle mb-3"></div>
+                            {#each Array(4) as __}
+                                <div class="d-flex justify-content-between align-items-center py-2">
+                                    <div class="d-flex align-items-center gap-3">
+                                        <div class="ds-skel ds-skel--avatar"></div>
+                                        <div>
+                                            <div class="ds-skel ds-skel--line ds-skel--w-120 mb-1"></div>
+                                            <div class="ds-skel ds-skel--line ds-skel--w-64"></div>
+                                        </div>
+                                    </div>
+                                    <div class="ds-skel ds-skel--line ds-skel--w-40"></div>
+                                </div>
+                            {/each}
+                        </div>
+                    {/each}
+                </div>
+
+                <section class="ds-dashboard-section" aria-hidden="true">
+                    <div class="ds-section-header">
+                        <div>
+                            <div class="ds-skel ds-skel--title"></div>
+                            <div class="ds-skel ds-skel--subtitle mt-2"></div>
+                        </div>
+                    </div>
+                    <div class="ds-insight-grid">
+                        {#each Array(4) as _}
+                            <div class="ds-insight-card">
+                                <div class="ds-skel ds-skel--line ds-skel--w-64 mb-2"></div>
+                                <div class="ds-skel ds-skel--line mb-2"></div>
+                                <div class="ds-skel ds-skel--line ds-skel--w-80"></div>
+                            </div>
+                        {/each}
+                    </div>
+                </section>
+            </section>
+
+            <aside class="ds-dashboard-aside" aria-hidden="true">
+                <div class="ds-skel ds-skel--panel-title mb-3"></div>
+                <div class="ds-news-list">
+                    {#each Array(4) as _}
+                        <article class="ds-news-item">
+                            <div class="ds-skel ds-skel--line ds-skel--w-64 mb-2"></div>
+                            <div class="ds-skel ds-skel--line mb-2"></div>
+                            <div class="ds-skel ds-skel--line ds-skel--w-80"></div>
+                        </article>
+                    {/each}
+                </div>
+            </aside>
+        </div>
+    </div>
+{:else}
 <!-- Live / Today's Games -->
 <section class="ds-dashboard-section">
     <div class="ds-section-header">
@@ -218,9 +314,7 @@
         <a href="/games" class="ds-link-caps">View All</a>
     </div>
 
-    {#if loading}
-        <p class="ds-text-muted">Loading games…</p>
-    {:else if displayGames.length === 0}
+    {#if displayGames.length === 0}
         <div class="ds-score-card"><span class="ds-text-muted">No live or scheduled games right now. Check back on game day.</span></div>
     {:else}
         <div class="ds-horizontal-scroll">
@@ -456,6 +550,7 @@
         <a href="/reports" class="ds-btn-outline w-100 mt-3">Load More Stories</a>
     </aside>
 </div>
+{/if}
 
 <style>
     .ds-dashboard-section { margin-bottom: var(--ds-spacing-lg); }
@@ -738,5 +833,41 @@
     .ds-btn-outline:hover {
         background: var(--ds-surface-container-high);
         color: var(--ds-on-surface);
+    }
+
+    /* Loading skeletons — preserve layout while dashboard data loads */
+    .ds-skel {
+        display: block;
+        border-radius: var(--ds-radius-lg, 8px);
+        background: linear-gradient(
+            90deg,
+            var(--ds-surface-container-high, #1a2330) 0%,
+            var(--ds-surface-variant, #243041) 50%,
+            var(--ds-surface-container-high, #1a2330) 100%
+        );
+        background-size: 200% 100%;
+        animation: ds-skel-shimmer 1.4s ease-in-out infinite;
+    }
+    .ds-skel--title { width: 140px; height: 18px; }
+    .ds-skel--subtitle { width: 180px; height: 12px; }
+    .ds-skel--link { width: 64px; height: 12px; }
+    .ds-skel--panel-title { width: 160px; height: 20px; }
+    .ds-skel--display { width: min(280px, 70%); height: 36px; }
+    .ds-skel--badge { width: 110px; height: 22px; border-radius: var(--ds-radius-pill, 999px); }
+    .ds-skel--stat { width: 56px; height: 40px; }
+    .ds-skel--avatar { width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0; }
+    .ds-skel--line { width: 100%; height: 12px; }
+    .ds-skel--w-40 { width: 40%; }
+    .ds-skel--w-64 { width: 64px; }
+    .ds-skel--w-80 { width: 80%; }
+    .ds-skel--w-120 { width: 120px; }
+    .ds-skel-card { min-width: 160px; pointer-events: none; }
+    .ds-hero--skeleton { background: var(--ds-surface-container, #151c26); }
+    @keyframes ds-skel-shimmer {
+        0% { background-position: 100% 0; }
+        100% { background-position: -100% 0; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .ds-skel { animation: none; }
     }
 </style>

@@ -2,6 +2,7 @@
     import { onMount } from 'svelte';
     import { api } from '$lib/api/client';
     import DefaultLayout from "$lib/layouts/DefaultLayout.svelte";
+    import BrandLoadingScreen from '$lib/components/BrandLoadingScreen.svelte';
 
     interface Team {
         id: number;
@@ -102,18 +103,7 @@
         </div>
 
         {#if loading}
-            <div class="row">
-                <div class="col-12">
-                    <div class="card">
-                        <div class="card-body text-center">
-                            <div class="spinner-border text-primary" role="status">
-                                <span class="visually-hidden">Loading...</span>
-                            </div>
-                            <p class="mt-2 mb-0">Loading teams...</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
+            <BrandLoadingScreen label="Loading teams" />
         {:else if error}
             <div class="row">
                 <div class="col-12">

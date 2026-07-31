@@ -2,6 +2,7 @@
     import { onMount } from 'svelte';
     import { api } from '$lib/api/client';
     import DefaultLayout from '$lib/layouts/DefaultLayout.svelte';
+    import BrandLoadingScreen from '$lib/components/BrandLoadingScreen.svelte';
     import ErrorMessage from '$lib/components/ErrorMessage.svelte';
     import DsSearchInput from '$lib/components/ui/DsSearchInput.svelte';
     import DsChip from '$lib/components/ui/DsChip.svelte';
@@ -80,7 +81,7 @@
         </div>
 
         {#if loading}
-            <p class="ds-text-muted">Loading players…</p>
+            <BrandLoadingScreen label="Loading players" size="sm" />
         {:else if error}
             <ErrorMessage message={error} />
         {:else}

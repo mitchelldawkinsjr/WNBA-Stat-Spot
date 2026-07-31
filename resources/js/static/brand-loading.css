@@ -1,0 +1,156 @@
+/**
+ * Shared brand loading visual: grayscale logo fills with color from bottom → top.
+ * Used by BrandLoadingScreen.svelte and the app.html boot splash.
+ */
+.brand-loading {
+	--brand-load-progress: 0%;
+	--brand-load-logo-height: 88px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 100%;
+	padding: 2rem 1rem;
+	box-sizing: border-box;
+}
+
+.brand-loading--page {
+	min-height: min(70vh, 36rem);
+}
+
+.brand-loading--fullscreen {
+	position: fixed;
+	inset: 0;
+	z-index: 9999;
+	min-height: 100%;
+	padding: 0;
+	background: #0e141a;
+	transition: opacity 0.28s ease 0.12s, visibility 0.28s ease 0.12s;
+}
+
+html[data-bs-theme='light'] .brand-loading--fullscreen {
+	background: #f9f9f9;
+}
+
+.brand-loading--sm {
+	--brand-load-logo-height: 56px;
+}
+
+.brand-loading--md {
+	--brand-load-logo-height: 88px;
+}
+
+.brand-loading--lg {
+	--brand-load-logo-height: 128px;
+}
+
+.brand-loading__inner {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 1.25rem;
+}
+
+.brand-loading__logo {
+	position: relative;
+	height: var(--brand-load-logo-height);
+	width: auto;
+	line-height: 0;
+	user-select: none;
+	/* Keep aspect from the grayscale base image */
+	display: inline-block;
+}
+
+.brand-loading__img {
+	display: block;
+	height: var(--brand-load-logo-height);
+	width: auto;
+	object-fit: contain;
+	pointer-events: none;
+}
+
+.brand-loading__img--bw {
+	filter: grayscale(1) contrast(1.05) brightness(1.08);
+}
+
+html[data-bs-theme='light'] .brand-loading__img--bw {
+	filter: grayscale(1) contrast(1.08) brightness(0.92);
+}
+
+/* Color layer: height grows from the bottom like a vertical loading bar */
+.brand-loading__color {
+	position: absolute;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	height: var(--brand-load-progress, 0%);
+	overflow: hidden;
+	transition: height 0.35s ease;
+	will-change: height;
+}
+
+.brand-loading__color .brand-loading__img {
+	position: absolute;
+	left: 0;
+	bottom: 0;
+}
+
+.brand-loading--indeterminate .brand-loading__color {
+	transition: none;
+	animation: brand-load-fill 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.brand-loading--ready .brand-loading__color,
+html.ds-app-ready #app-boot .brand-loading__color {
+	height: 100%;
+	animation: none;
+	transition: height 0.2s ease;
+}
+
+.brand-loading__label {
+	margin: 0;
+	font-family: 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
+	font-size: 0.7rem;
+	font-weight: 600;
+	letter-spacing: 0.28em;
+	text-transform: uppercase;
+	color: var(--ds-text-muted, #aab8c5);
+	opacity: 0.7;
+}
+
+html[data-bs-theme='light'] .brand-loading__label {
+	color: var(--ds-text-muted, #5e5e5f);
+}
+
+@keyframes brand-load-fill {
+	0% {
+		height: 0%;
+	}
+	70% {
+		height: 88%;
+	}
+	100% {
+		height: 0%;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.brand-loading__color {
+		transition: none;
+	}
+
+	.brand-loading--indeterminate .brand-loading__color {
+		animation: none;
+		height: 65%;
+	}
+
+	.brand-loading--fullscreen {
+		transition: none;
+	}
+}
+
+/* Boot splash dismiss */
+html.ds-app-ready #app-boot {
+	opacity: 0;
+	visibility: hidden;
+	pointer-events: none;
+}

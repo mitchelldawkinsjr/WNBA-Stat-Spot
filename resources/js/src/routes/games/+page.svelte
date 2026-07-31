@@ -3,6 +3,7 @@
     import { api } from '$lib/api/client';
     import type { Game } from '$lib/api/client';
     import DefaultLayout from "$lib/layouts/DefaultLayout.svelte";
+    import BrandLoadingScreen from '$lib/components/BrandLoadingScreen.svelte';
     import { isGameTodayEt, shouldShowScore, sortGamesForToday, WNBA_TIMEZONE } from '$lib/utils/gameDates';
 
     let games: Game[] = [];
@@ -173,18 +174,7 @@
         </div>
 
         {#if loading}
-            <div class="row">
-                <div class="col-12">
-                    <div class="card">
-                        <div class="card-body text-center">
-                            <div class="spinner-border text-primary" role="status">
-                                <span class="visually-hidden">Loading...</span>
-                            </div>
-                            <p class="mt-2 mb-0">Loading games...</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
+            <BrandLoadingScreen label="Loading games" />
         {:else if error}
             <div class="row">
                 <div class="col-12">
