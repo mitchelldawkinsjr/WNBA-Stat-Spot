@@ -49,6 +49,27 @@
         return statType.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase());
     }
 
+    function formatPropDate(value: string | null | undefined): string {
+        if (!value) return '';
+        // prediction_date is YYYY-MM-DD; parse as local calendar date
+        const [y, m, d] = value.split('-').map(Number);
+        if (!y || !m || !d) return value;
+        return new Date(y, m - 1, d).toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+        });
+    }
+
+    function propMatchupLabel(row: {
+        team_abbreviation: string | null;
+        opponent: string | null;
+    }): string {
+        const team = row.team_abbreviation?.trim() ?? '';
+        const opponent = row.opponent?.trim() ?? '';
+        return [team, opponent].filter(Boolean).join(' ');
+    }
+
     $: topProp = dashboard?.top_prop_of_day ?? null;
     $: gradedProps = dashboard?.props.recent ?? [];
     $: propTotalPages = Math.max(1, Math.ceil(gradedProps.length / PROP_PAGE_SIZE));
@@ -356,12 +377,18 @@
                                                 <tr>
                                                     <td>
                                                         <div class="fw-semibold">{row.player_name}</div>
-                                                        <div class="small text-muted">
-                                                            {#if row.team_abbreviation}
-                                                                {row.team_abbreviation}
+                                                        <div class="small">
+                                                            {#if propMatchupLabel(row)}
+                                                                {#if row.game_id}
+                                                                    <a href="/games/{row.game_id}">{propMatchupLabel(row)}</a>
+                                                                {:else}
+                                                                    <span class="text-muted">{propMatchupLabel(row)}</span>
+                                                                {/if}
                                                             {/if}
-                                                            {#if row.opponent}
-                                                                {' '}{row.opponent}
+                                                            {#if row.prediction_date}
+                                                                <span class="text-muted">
+                                                                    {#if propMatchupLabel(row)} · {/if}{formatPropDate(row.prediction_date)}
+                                                                </span>
                                                             {/if}
                                                             {#if row.is_top_prop}
                                                                 <span class="badge bg-primary-subtle text-primary-emphasis ms-1">Top</span>
