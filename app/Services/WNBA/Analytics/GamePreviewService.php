@@ -34,7 +34,7 @@ class GamePreviewService
      */
     public function buildPreview(string $externalGameId, int $season): array
     {
-        $cacheKey = "game_preview_v5_{$externalGameId}_{$season}";
+        $cacheKey = "game_preview_v6_{$externalGameId}_{$season}";
 
         $preview = Cache::remember($cacheKey, self::CACHE_TTL, function () use ($externalGameId, $season) {
             return $this->generatePreview($externalGameId, $season);
@@ -82,12 +82,19 @@ class GamePreviewService
         }
 
         try {
-            $homeTeam = $this->buildTeamPreview($homeTeamId, $awayTeamId, $season, true);
-            $awayTeam = $this->buildTeamPreview($awayTeamId, $homeTeamId, $season, false);
-            $headToHead = $this->buildHeadToHead($homeTeamId, $awayTeamId, $season);
+            $homeTeamModel = WnbaTeam::find($homeTeamId);
+            $awayTeamModel = WnbaTeam::find($awayTeamId);
+            // Analytics lookups key on external provider team_id; Eloquent PKs collide
+            // with ESPN ids (e.g. pk 17 → LV "17") if passed through foreignKeysForReference.
+            $homeExternalId = (string) ($homeTeamModel?->team_id ?? $game['home_team']['team_id'] ?? $homeTeamId);
+            $awayExternalId = (string) ($awayTeamModel?->team_id ?? $game['away_team']['team_id'] ?? $awayTeamId);
+
+            $homeTeam = $this->buildTeamPreview($homeTeamModel, $awayTeamModel, $homeTeamId, $season, true);
+            $awayTeam = $this->buildTeamPreview($awayTeamModel, $homeTeamModel, $awayTeamId, $season, false);
+            $headToHead = $this->buildHeadToHead($homeTeamModel, $awayTeamModel, $homeExternalId, $awayExternalId, $season);
             $prediction = $this->generatePrediction($homeTeam, $awayTeam, $headToHead, $game);
             $analysis = $this->generateAnalysis($homeTeam, $awayTeam, $headToHead, $prediction);
-            $matchupGrade = $this->aggregates->matchupGrade($homeTeamId, $awayTeamId, $season);
+            $matchupGrade = $this->aggregates->matchupGrade($homeExternalId, $awayExternalId, $season);
 
             return [
                 'game' => $this->formatGameMeta($game),
@@ -311,22 +318,27 @@ class GamePreviewService
     /**
      * @return array<string, mixed>
      */
-    private function buildTeamPreview(int $teamId, int $opponentId, int $season, bool $isHome): array
-    {
-        $team = WnbaTeam::find($teamId);
-        $metrics = $this->teamAnalytics->getTeamPerformanceMetrics($teamId, $season);
-        $defense = $this->teamAnalytics->getDefensiveMetrics($teamId, $season);
-        $shootingTrends = $this->teamAnalytics->getShootingTrends($teamId, $season, 10);
-        $recentGames = $this->getRecentGameLog($teamId, $season, 10);
-        $keyPlayers = $this->getKeyPlayers($teamId, $season, $opponentId);
+    private function buildTeamPreview(
+        ?WnbaTeam $team,
+        ?WnbaTeam $opponent,
+        int $internalTeamId,
+        int $season,
+        bool $isHome,
+    ): array {
+        $teamExternalId = (string) ($team?->team_id ?? $internalTeamId);
+        $metrics = $this->teamAnalytics->getTeamPerformanceMetrics($teamExternalId, $season);
+        $defense = $this->teamAnalytics->getDefensiveMetrics($teamExternalId, $season);
+        $shootingTrends = $this->teamAnalytics->getShootingTrends($teamExternalId, $season, 10);
+        $recentGames = $this->getRecentGameLog($team, $season, 10);
+        $keyPlayers = $this->getKeyPlayers($team, $opponent, $season);
 
         $basic = $metrics['basic_stats'] ?? [];
         $splits = $metrics['home_away_splits'] ?? [];
         $contextSplit = $isHome ? ($splits['home'] ?? []) : ($splits['away'] ?? []);
 
         return [
-            'team_id' => $teamId,
-            'team_external_id' => $team?->team_id,
+            'team_id' => $internalTeamId,
+            'team_external_id' => $team?->team_id ?? $teamExternalId,
             'name' => $team?->team_display_name ?? $team?->team_name ?? 'Unknown',
             'abbreviation' => $team?->team_abbreviation ?? '',
             'logo' => $team?->team_logo,
@@ -353,9 +365,13 @@ class GamePreviewService
     /**
      * @return array<int, array<string, mixed>>
      */
-    private function getRecentGameLog(int $teamId, int $season, int $limit): array
+    private function getRecentGameLog(?WnbaTeam $team, int $season, int $limit): array
     {
-        $teamKeys = TeamForeignKeyResolver::foreignKeysForReference($teamId);
+        if ($team === null) {
+            return [];
+        }
+
+        $teamKeys = TeamForeignKeyResolver::foreignKeysForTeam($team);
 
         // Newest-first for "last N". Charts reverse for chronological x-axis.
         // Exclude 0-0 schedule placeholders (same filter as TeamAnalyticsService).
@@ -383,12 +399,20 @@ class GamePreviewService
     }
 
     /**
+     * Top scorers from this team's season box scores (roster appearances in the matchup).
+     *
      * @return array<int, array<string, mixed>>
      */
-    private function getKeyPlayers(int $teamId, int $season, int $opponentId): array
+    private function getKeyPlayers(?WnbaTeam $team, ?WnbaTeam $opponent, int $season): array
     {
-        $teamKeys = TeamForeignKeyResolver::foreignKeysForReference($teamId);
-        $opponentKeys = TeamForeignKeyResolver::foreignKeysForReference($opponentId);
+        if ($team === null) {
+            return [];
+        }
+
+        $teamKeys = TeamForeignKeyResolver::foreignKeysForTeam($team);
+        $opponentKeys = $opponent !== null
+            ? TeamForeignKeyResolver::foreignKeysForTeam($opponent)
+            : [];
 
         $leaders = WnbaPlayerGame::query()
             ->join('wnba_games', 'wnba_games.id', '=', 'wnba_player_games.game_id')
@@ -427,20 +451,22 @@ class GamePreviewService
             $dbPlayerId = (int) $leader->player_id;
             $recentForm = $this->getPlayerRecentForm($dbPlayerId, $season);
 
-            $vsOpponent = WnbaPlayerGame::query()
-                ->join('wnba_games', 'wnba_games.id', '=', 'wnba_player_games.game_id')
-                ->join('wnba_game_teams as opp_gt', function ($join) use ($opponentKeys) {
-                    $join->on('opp_gt.game_id', '=', 'wnba_games.id')
-                        ->whereIn('opp_gt.team_id', $opponentKeys);
-                })
-                ->where('wnba_player_games.player_id', $dbPlayerId)
-                ->where('wnba_games.season', $season)
-                ->where('wnba_player_games.did_not_play', false)
-                ->select([
-                    DB::raw('ROUND(AVG(wnba_player_games.points), 1) as ppg'),
-                    DB::raw('COUNT(*) as games'),
-                ])
-                ->first();
+            $vsOpponent = empty($opponentKeys)
+                ? null
+                : WnbaPlayerGame::query()
+                    ->join('wnba_games', 'wnba_games.id', '=', 'wnba_player_games.game_id')
+                    ->join('wnba_game_teams as opp_gt', function ($join) use ($opponentKeys) {
+                        $join->on('opp_gt.game_id', '=', 'wnba_games.id')
+                            ->whereIn('opp_gt.team_id', $opponentKeys);
+                    })
+                    ->where('wnba_player_games.player_id', $dbPlayerId)
+                    ->where('wnba_games.season', $season)
+                    ->where('wnba_player_games.did_not_play', false)
+                    ->select([
+                        DB::raw('ROUND(AVG(wnba_player_games.points), 1) as ppg'),
+                        DB::raw('COUNT(*) as games'),
+                    ])
+                    ->first();
 
             return [
                 'player_id' => (string) $leader->athlete_id,
@@ -530,9 +556,14 @@ class GamePreviewService
     /**
      * @return array<string, mixed>
      */
-    private function buildHeadToHead(int $homeTeamId, int $awayTeamId, int $season): array
-    {
-        $summary = $this->aggregates->matchupSummary($homeTeamId, $awayTeamId, $season);
+    private function buildHeadToHead(
+        ?WnbaTeam $homeTeam,
+        ?WnbaTeam $awayTeam,
+        string $homeExternalId,
+        string $awayExternalId,
+        int $season,
+    ): array {
+        $summary = $this->aggregates->matchupSummary($homeExternalId, $awayExternalId, $season);
 
         if ($summary === null) {
             return [
@@ -546,7 +577,9 @@ class GamePreviewService
             ];
         }
 
-        $homeKeys = TeamForeignKeyResolver::foreignKeysForReference($homeTeamId);
+        $homeKeys = $homeTeam !== null
+            ? TeamForeignKeyResolver::foreignKeysForTeam($homeTeam)
+            : [$homeExternalId];
         $homeIsA = in_array((string) $summary->team_a_id, $homeKeys, true);
 
         return [

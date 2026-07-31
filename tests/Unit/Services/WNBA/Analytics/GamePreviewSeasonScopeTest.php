@@ -46,7 +46,14 @@ class GamePreviewSeasonScopeTest extends TestCase
         $method = new ReflectionMethod(GamePreviewService::class, 'buildHeadToHead');
         $method->setAccessible(true);
 
-        $h2h = $method->invoke($service, (int) $home->team_id, (int) $away->team_id, 2026);
+        $h2h = $method->invoke(
+            $service,
+            $home,
+            $away,
+            (string) $home->team_id,
+            (string) $away->team_id,
+            2026
+        );
 
         $this->assertSame(2, $h2h['total_games']);
         $this->assertCount(2, $h2h['recent_meetings']);
@@ -120,12 +127,115 @@ class GamePreviewSeasonScopeTest extends TestCase
         $method = new ReflectionMethod(GamePreviewService::class, 'getKeyPlayers');
         $method->setAccessible(true);
 
-        $keyPlayers = $method->invoke($service, (int) $home->team_id, 2026, (int) $away->team_id);
+        $keyPlayers = $method->invoke($service, $home, $away, 2026);
 
         $this->assertCount(1, $keyPlayers);
         $this->assertSame('4433630', $keyPlayers[0]['player_id']);
         $this->assertSame('Rickea Jackson', $keyPlayers[0]['name']);
         $this->assertNotSame((string) $player->id, $keyPlayers[0]['player_id']);
+    }
+
+    public function test_key_players_use_matchup_team_roster_not_colliding_external_id(): void
+    {
+        // Mimic prod: Aces external team_id "17", and a later team whose Eloquent pk is 17.
+        // foreignKeysForReference(17) would wrongly resolve to the Aces.
+        $aces = WnbaTeam::create([
+            'team_id' => '17',
+            'espn_team_id' => '17',
+            'team_name' => 'Aces',
+            'team_location' => 'Las Vegas',
+            'team_abbreviation' => 'LV',
+            'team_display_name' => 'Las Vegas Aces',
+        ]);
+
+        for ($i = 2; $i <= 17; $i++) {
+            WnbaTeam::create([
+                'team_id' => (string) (100000 + $i),
+                'espn_team_id' => (string) (100000 + $i),
+                'team_name' => "Team {$i}",
+                'team_location' => 'City',
+                'team_abbreviation' => 'T'.$i,
+                'team_display_name' => "City Team {$i}",
+            ]);
+        }
+
+        $tempo = WnbaTeam::find(17);
+        $this->assertNotNull($tempo);
+        $this->assertSame('100017', $tempo->team_id);
+        $this->assertNotSame($aces->id, $tempo->id);
+
+        $acesPlayer = WnbaPlayer::create([
+            'athlete_id' => '1001',
+            'athlete_display_name' => 'Aces Star',
+            'athlete_short_name' => 'A. Star',
+            'athlete_position_abbreviation' => 'G',
+        ]);
+        $tempoPlayer = WnbaPlayer::create([
+            'athlete_id' => '1002',
+            'athlete_display_name' => 'Tempo Guard',
+            'athlete_short_name' => 'T. Guard',
+            'athlete_position_abbreviation' => 'G',
+        ]);
+
+        $this->seedPlayerGame($acesPlayer->id, $aces->team_id, '401900100', 2026, 30);
+        $this->seedPlayerGame($tempoPlayer->id, $tempo->team_id, '401900101', 2026, 18);
+
+        $opponent = WnbaTeam::where('team_id', '100002')->first();
+        $this->assertNotNull($opponent);
+
+        $service = app(GamePreviewService::class);
+        $method = new ReflectionMethod(GamePreviewService::class, 'getKeyPlayers');
+        $method->setAccessible(true);
+
+        $keyPlayers = $method->invoke($service, $tempo, $opponent, 2026);
+
+        $this->assertCount(1, $keyPlayers);
+        $this->assertSame('1002', $keyPlayers[0]['player_id']);
+        $this->assertSame('Tempo Guard', $keyPlayers[0]['name']);
+        $this->assertNotSame('Aces Star', $keyPlayers[0]['name']);
+    }
+
+    private function seedPlayerGame(
+        int $playerId,
+        string $teamId,
+        string $gameId,
+        int $season,
+        int $points,
+    ): void {
+        $game = WnbaGame::create([
+            'game_id' => $gameId,
+            'season' => $season,
+            'season_type' => 2,
+            'game_date' => '2026-07-01',
+            'game_date_time' => '2026-07-01 19:00:00',
+        ]);
+
+        WnbaPlayerGame::create([
+            'game_id' => $game->id,
+            'player_id' => $playerId,
+            'team_id' => $teamId,
+            'minutes' => '28:00',
+            'points' => $points,
+            'rebounds' => 4,
+            'assists' => 3,
+            'field_goals_made' => 5,
+            'field_goals_attempted' => 10,
+            'three_point_field_goals_made' => 1,
+            'three_point_field_goals_attempted' => 3,
+            'free_throws_made' => 2,
+            'free_throws_attempted' => 2,
+            'offensive_rebounds' => 1,
+            'defensive_rebounds' => 3,
+            'steals' => 1,
+            'blocks' => 0,
+            'turnovers' => 1,
+            'fouls' => 2,
+            'plus_minus' => 5,
+            'starter' => true,
+            'ejected' => false,
+            'did_not_play' => false,
+            'active' => true,
+        ]);
     }
 
     private function seedMeeting(
